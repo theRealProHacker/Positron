@@ -1,0 +1,11 @@
+__pycache__
+env
+concepts
+.pytest_cache
+.mypy_cache
+
+# testing
+test.*
+example.*
+trash.*
+playground.py
