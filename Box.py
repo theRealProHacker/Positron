@@ -110,6 +110,13 @@ class Box:
         self.width = width if not outer_width else convert(self, "width", "outer-box", value = width)
         self.height = height
 
+    @staticmethod
+    def empty():
+        return Box("content-box")
+
+    def is_empty(self):
+        return Box.empty() == self
+
     @property
     def pos(self):
         return self.x, self.y
@@ -134,7 +141,7 @@ class Box:
         )
 
     def __repr__(self):
-        if is_box_empty(self):
+        if self.is_empty():
             return "<EmptyBox>"
         else:
             return f"<Box {tuple(self.outer_box)}>"
@@ -271,14 +278,8 @@ def make_box(
     set_height = box.set_height if height == -1 else noop
     return box, set_height # set_height is the function that should be called when the height is ready to be set
 
-def empty_box():
-    return Box("content-box")
-
-def is_box_empty(box: Box):
-    return empty_box() == box
-
 def test():
-    assert is_box_empty(empty_box())
+    assert Box.empty().is_empty()
     box = Box(
         "content-box",
         border = (3,)*4,

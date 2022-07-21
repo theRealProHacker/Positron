@@ -10,7 +10,7 @@ import pygame as pg
 from pygame import Vector2
 
 import own_css_parser as css
-from Box import Box, empty_box, is_box_empty, make_box
+from Box import Box, make_box
 from config import g
 from own_types import (Auto, Color, ComputeError, Dimension, FontStyle, Normal,
                        Number, Percentage, Sentinel, StyleAttr, _XMLElement,
@@ -201,7 +201,7 @@ def create_element(elem: _XMLElement, parent: Type["Element"]|None = None):
     return new
 
 class Element:
-    box: Box = empty_box()
+    box: Box = Box.empty()
     display: str # the used display state. Is set before layout
 
     def __init__(
