@@ -18,8 +18,8 @@
 
 ### Global stylesheets
 - User agent stylesheet for each attribute
-    - inherited values have a default of inherit, most others auto
-    - display: inline
+    - inherited values have a default of inherit
+    - display: "inline"
 - User stylesheet overrides
 - Author stylesheet overrides (--root)
 
@@ -69,33 +69,22 @@ These specify the attributes with their types and constraints. Every computed ty
 - width: 
     - From: "auto" or length-percentage
     - To: Length (>=0) or a keyword or percentage
-    - Implementation:  
-        instead they fill up their parent element completely while respecting its padding. That's how width: auto works.
-- height: Length (>=0) or auto or percentage
+- height: Length (>=0) or Auto or percentage
 - position: 
     - From: keyword
     - To: str
 - top: 
     - From: "auto" or length-percentage
-    - To: float or auto or percentage
+    - To: float or Auto or percentage
 - same for bottom, right and left
 - box-sizing: "content-box" or "border-box"
-- margin(tbrl): float or auto or percentage
-- padding(tbrl): float or auto or percentage
-- border-width(tbrl): float or auto
-- line-height: float or percentage or normal
-- word-spacing: float or percentage or normal
+- margin(tbrl): float or Auto or percentage
+- padding(tbrl): float or Auto or percentage
+- border-width(tbrl): float or Auto
+- line-height: float or percentage or Normal
+- word-spacing: float or percentage or Normal
 
 # The Element class
 
-x: Number
-y: Number
-
-Have different meanings in diferent contexts
-Between layout and draw it is set to the location of the margin-box inside the parents content-box
-In draw it becomes the location of the margin-box on the screen
-
-width: Number
-height: Number
-
-The dimensions of the margin-box of the element.
+box: Box
+display: str

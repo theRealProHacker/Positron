@@ -1,226 +1,304 @@
 
-from abc import ABC, abstractmethod
+from collections import ChainMap
+from collections.abc import Iterable
+from contextlib import suppress
+from dataclasses import dataclass, field
+from functools import partial
+from itertools import chain
 from numbers import Number
+from typing import Any, Callable, Mapping
 
-from own_types import NumTuple4, Dimension, Percentage
-
+import pygame as pg
 from pygame.rect import Rect
 
-@ABC
-class Box:
-    x: Number
-    y: Number
-    def __init__(
-        self,
-        pos: Dimension,
-        margin: NumTuple4,
-        border: NumTuple4,
-        padding: NumTuple4,
-        size: Dimension
-    ):
-        self.x, self.y = pos
-        self.margin = margin
-        self.border = border
-        self.padding = padding
-        self.width, self.height = size # we want to activate the width and height properties of the subclasses
+from own_types import Auto, Dimension, Index, computed_value, style_computed
+from util import (Calculator, Dotted, bw_getter, draw_text, ensure_suffix,
+                  mrg_getter, noop, not_neg, pad_getter, rs_getter, MutableFloat)
 
-    # margin
-    @property
-    def margin(self):
-        return self._mt, self._mb, self._mr, self._ml
+l = [("border", "padding"),("margin",)]
+box_types = [
+    "content-box",
+    "border-box",
+    "outer-box",
+]
 
-    @margin.setter
-    def _(self, margin: NumTuple4):
-        self._mt, self._mb, self._mr, self._ml = margin
+def box_sizing(name: str):
+    _name = ensure_suffix(name, "-box")
+    assert _name in box_types, f"{name} is not a box-sizing"
+    return _name
 
-    # convenience
-    @property
-    def margin_horizontal(self)->Dimension:
-        return self.margin[2:]
 
-    @property
-    def margin_vertical(self)->Dimension:
-        return self.margin[:2]
-
-    # border
-    @property
-    def border(self):
-        return self._bt, self._bb, self._br, self._bl
-
-    @border.setter
-    def _(self, border: NumTuple4):
-        self._bt, self._bb, self._br, self._bl = border
-
-    # convenience
-    @property
-    def border_horizontal(self)->Dimension:
-        return self.border[2:]
-
-    @property
-    def border_vertical(self)->Dimension:
-        return self.border[:2]
-
-    #padding
-    @property
-    def padding(self):
-        return self._pt, self._pb, self._pr, self._pl
-
-    @padding.setter
-    def _(self, padding: NumTuple4):
-        self._pt, self._pb, self._pr, self._pl = padding
-
-    # convenience
-    @property
-    def padding_horizontal(self)->Dimension:
-        return self.padding[2:]
-
-    @property
-    def padding_vertical(self)->Dimension:
-        return self.padding[:2]
-
-    #width
-    @property
-    def width(self)->Number:
-        return self._width
-
-    @width.setter
-    def _(self, width: Number):
-        self._width = width
-
-    # height
-    @property
-    def height(self)->Number:
-        return self._height
-
-    @height.setter
-    def _(self, height: Number):
-        self._height = height
-
-    # to be implemented
-    @abstractmethod
-    @property
-    def margin_box(self)->Rect:
-        ...
-
-    @abstractmethod
-    @property
-    def border_box(self)->Rect:
-        ...
-
-    @abstractmethod
-    @property
-    def content_box(self)->Rect:
-        ...
-
-class ContentBox(Box):
-    @property
-    def margin_box(self): 
-        width = self.width \
-            + self.margin_horizontal \
-            + self.border_horizontal \
-            + self.padding_horizontal
-        height = self.height \
-            + self.margin_vertical \
-            + self.border_vertical \
-            + self.padding_vertical
-
-        return Rect(
-            self.x,
-            self.y,
-            width,
-            height
-        )
-
-    @property
-    def border_box(self):
-        width = self.width \
-            + self.border_horizontal \
-            + self.padding_horizontal
-        height = self.height \
-            + self.border_vertical \
-            + self.padding_vertical
-
-        return Rect(
-            self.x,
-            self.y,
-            width,
-            height
-        )
-
-    @property
-    def content_box(self):
-        return Rect(
-            self.x,
-            self.y,
-            self.width,
-            self.height
-        )
-
-class BorderBox(Box):
-    @property
-    def margin_box(self):
-        width = self.width + self.margin_horizontal
-        height = self.height + self.margin_vertical
-
-        return Rect(
-            self.x,
-            self.y,
-            width,
-            height
-        )
-
-    @property
-    def border_box(self):
-        return Rect(
-            self.x,
-            self.y,
-            self.width,
-            self.height
-        )
-
-    @property
-    def content_box(self):
-        width = self.width \
-            - self.border_horizontal \
-            - self.padding_horizontal
-        height = self.height \
-            - self.border_vertical \
-            - self.padding_vertical
-        return Rect(
-            self.x,
-            self.y,
-            max(width,0),
-            max(height,0)
-        )
-
-box_types: dict[str, Box] = {
-    "content-box": ContentBox,
-    "border-box": BorderBox,
+_indices: dict[str, Index] = {
+    "top": 0,
+    "bottom": 1,
+    "left": 2,
+    "right": 3,
 }
 
-str_Num_Perc = str|Number|Percentage
-snp_box = tuple[str_Num_Perc, str_Num_Perc, str_Num_Perc, str_Num_Perc]
+part_slices: Mapping[str, Index] = ChainMap(_indices,{ 
+    "horizontal": slice(2, None),
+    "vertical": slice(None, 2)
+})
 
-def make_box(
-    box_sizing: str,
-    x: Number,
-    y: Number,
-    margin: snp_box,
-    border: NumTuple4,
-    padding: snp_box,
+guess_slicing: dict[str, Index] = {
+    k: part_slices[v] for k,v in [
+        ("x", "left"),
+        ("y", "top"),
+        ("width", "horizontal"),
+        ("height", "vertical")
+    ]
+}
+
+def _sum(*args: Number)->Number:
+    """ This function can take a single value or an iterable and returns a single Number"""
+    if len(args) == 1:
+        x = args[0]
+        if isinstance(x, Number):
+            return x
+        elif isinstance(x, Iterable):
+            return sum(x)
+    else:
+        return sum(args)
+    raise TypeError
+
+def _convert(box: 'Box', frm: str, to: str, part: Index)->Number:
+    if frm == to:
+        return 0
+    _frm = box_types.index(frm)
+    _to = box_types.index(to)
+    if _frm > _to: # we are converting from a bigger box to a smaller box
+        return -_convert(box, to, frm, part)
+    lookup_chain = [*chain(*l[_frm:_to])]
+    return sum(
+        _sum(getattr(box, name)[part]) for name in lookup_chain
+    )
+
+def convert(box: 'Box', attr: str, frm: str|None = None, to: str|None = None, value: Number|None = None)->Number:
+    value = getattr(box, attr) if value is None else value
+    part = guess_slicing[attr]
+    _frm = box.t if frm is None else frm
+    _to = box.t if to is None else to
+    converted = _convert(box, _frm, _to, part)
+    if type(part) is int: # single value (x,y)
+        return value - converted
+    assert type(part) is slice
+    return not_neg(value + converted)
+
+def mutate_tuple(tup: tuple, val, slicing: Index):
+    l = list(tup)
+    l[slicing] = val
+    return tuple(l)
+
+class Box:
+    __slots__ = ['t', 'x', 'y', 'width', 'height', 'margin', 'border', 'padding']
+    def __init__(
+        self,
+        t: str,
+        margin: tuple[Number,...] = (0,)*4,
+        border: tuple[Number,...] = (0,)*4,
+        padding: tuple[Number,...] = (0,)*4,
+        width: Number = 0,
+        height: Number = 0,
+        pos: Dimension = (0,0),
+        outer_width: bool = False
+    ):
+        self.t = box_sizing(t)
+        self.margin = margin 
+        self.border = border
+        self.padding = padding
+        self.x, self.y = pos
+        self.width = width if not outer_width else convert(self, "width", "outer-box", value = width)
+        self.height = height
+
+    @property
+    def pos(self):
+        return self.x, self.y
+
+    def set_pos(self, pos: tuple[Number, Number], t: str = "outer-box"):
+        _t = box_sizing(t)
+        for attr, val in zip(("x","y"), pos):
+            self._set(attr, val, _t)
+
+    def __eq__(self, other):
+        assert isinstance(other, Box), other
+        return self.outer_box == other.outer_box
+
+    def __copy__(self):
+        return Box(
+            self.t,
+            self.margin,
+            self.border,
+            self.padding,
+            self.width, self.height,
+            self.pos
+        )
+
+    def __repr__(self):
+        if is_box_empty(self):
+            return "<EmptyBox>"
+        else:
+            return f"<Box {tuple(self.outer_box)}>"
+
+    def _set(self, attr: str, value: Any, t: str = "outer"):
+        _t = box_sizing(t)
+        setattr(self, attr, convert(self, attr, frm = _t, value = value))
+
+    def _box(self, t: str)->Rect:
+        _t = box_sizing(t)
+        return Rect(
+            convert(self, "x", to = _t),
+            convert(self, "y", to = _t),
+            convert(self, "width", to = _t),
+            convert(self, "height", to = _t)
+        )
+
+    def __getattr__(self, name: str):
+        """
+        Enables special member access, like padding_top, or margin_vertical
+        """
+        with suppress(AssertionError):
+            match name.split("_"):
+                case [prop]:
+                    return self._box(prop)
+                case prop, part if part == "box":
+                    return self._box(prop)
+                case prop, part if prop == "set":
+                    return partial(self._set, part)
+                case prop, part if part in part_slices:
+                    slicing = part_slices[part]
+                    return getattr(self,prop)[slicing]
+        raise AttributeError(name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """ Enables things like self.margin_horizontal = (0,)*2"""
+        split = name.split("_")
+        if len(split) == 2:
+            print(f"Setting {name} in Box")
+            prop, part = split
+            slicing = part_slices[part]
+            new_val = mutate_tuple(getattr(self, prop), value, slicing)
+            setattr(self, prop, new_val)
+        else:
+            return super().__setattr__(name, value)
+
+    ########################### Visualisation ###################################
+    def show(self, size)->pg.surface.Surface:
+        # TODO: actually finish this
+        size = pg.Vector2(size)
+        totw, toth = size
+        surf = pg.Surface(size)
+        # margin
+        rect = pg.rect.Rect(0,0,*size)
+        pg.draw.rect(
+            surf,
+            "lightyellow",
+            rect
+        )
+        Dotted.from_rect(
+            rect, color = "lightgrey"
+        ).draw_rect(surf)
+        # margin_nums
+        rect = pg.rect.Rect(0,0,*size*0.8)
+        rect.center = size/2
+        for point, margin in zip(rs_getter(rect), mrg_getter(self._style)):
+            draw_text(
+                surf, str(margin), "MonoLisa",
+                12, "grey", center = point
+            )
+        return surf
     
 
-)->Box:
+def make_box(
+    given_width: Number,
+    style: style_computed,
+    parent_width: Number,
+    parent_height: Number
+)->tuple[Box, Callable[[Number],None]]:
     """
-    Makes a box from input
-
-    Returns a Box
-
-    Raises KeyError if box_sizing is not valid
-
+    Makes a box from input. 
+    If height is Auto it leaves the boxes height by setting it to a sentinel (-1).
+    The caller has to set that height later to an appropriate value by calling the returned function
+    Raises KeyError if box_sizing is invalid, or any attributes are missing in style
     """
-    box = box_types[box_sizing]
-    return box(
-        (x,y),
+    calc = Calculator(parent_width)
 
+    # the auto keyword has a special meaning with horizontal margins
+    def merge_horizontal_margin(mrg_h: tuple[computed_value, computed_value], avail: Number)->Dimension:
+        _avail = MutableFloat(avail)
+        to_do = MutableFloat(0)
+        def helper(val: computed_value)->Number|None:
+            if val is not Auto:
+                value = calc(val)
+                _avail.set(_avail - value)
+                return value
+            to_do.set(to_do + 1)
+        rv = [helper(x) for x in mrg_h]
+        if to_do:
+            split = not_neg(_avail)/to_do
+            rv = [split if x is None else x for x in rv]
+        return rv
+
+    box_attrs = {}
+    box_sizing: str = style["box-sizing"]
+
+    padding = calc.multi(pad_getter(style), 0)
+    border = calc.multi(bw_getter(style))
+    if style["width"] is Auto:
+        margin = calc.multi(mrg_getter(style), 0)
+        width = not_neg(given_width - _sum(*margin[2:], *border[2:], *padding[2:]))
+        box_attrs["outer_width"] = True
+    else:
+        # width is a resolvable value. So margin: auto resolves to all of the remaining space
+        width = calc(style["width"]) # no auto
+        margin = mrg_getter(style)
+        margin = tuple((
+            *calc.multi(margin[:2], 0), # vertical
+            *merge_horizontal_margin(margin[2:], avail = given_width - _sum(width, *border[2:], *padding[2:])) # horizontal
+        ))
+
+    # -1 is a sentinel value to say that the height hasn't yet been specified (height auto)
+    height = calc(style["height"], auto_val=-1, perc_val = parent_height)
+
+    box: Box = Box(
+        box_sizing,
+        margin,
+        border,
+        padding,
+        width,
+        height,
+        **box_attrs
     )
+    set_height = box.set_height if height == -1 else noop
+    return box, set_height # set_height is the function that should be called when the height is ready to be set
+
+def empty_box():
+    return Box("content-box")
+
+def is_box_empty(box: Box):
+    return empty_box() == box
+
+def test():
+    assert is_box_empty(empty_box())
+    box = Box(
+        "content-box",
+        border = (3,)*4,
+        width = 500,
+        height = 150,
+        outer_width=True # as if the width was the parents inner width
+    )
+    assert box.width == 500 - 6, box.width
+    assert box.height == 150
+    assert box.content_box == pg.Rect(
+        0,0, 500-6, 150
+    ), box.content_box
+
+    box.set_pos((0,0))
+    assert box.content_box == pg.Rect(
+        3,3, 500-6, 150
+    ), box.content_box
+    assert box.outer_box == pg.Rect(
+        0,0, 500, 150+6
+    ), box.outer_box
+
+if __name__ == "__main__":
+    test()

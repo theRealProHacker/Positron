@@ -1,13 +1,11 @@
 """ Any global variables are stored here"""
-import pygame as pg
+from own_types import FontStyle, Auto, Normal, Color
+directions = ("top", "bottom", "left", "right")
 
-from own_types import FontStyle
-directions = ["top", "right", "bottom", "left"] # copied from css
-
-g = {
+g: dict[str, int|None|dict|tuple|set] = {
     "W":900,
     "H":600,
-    "root":None, # this is set in main.py and is the html element 
+    "root":None, # this is set in main.py and is the html element
     "lang":None, # this is set in Element.py by the HTMLElement
     "title":None, # this is set in Element.py by the title element
     "global_stylesheet": {
@@ -23,12 +21,12 @@ g = {
         "font-family": "Arial",
         "font-size": 16,
         "font-style": None, # set by Element.py because we don't have access to the FontStyle type
-        "color": pg.Color("black"),
+        "color": Color("black"),
         "display": "block",
-        "background-color": pg.Color("white"),
+        "background-color": Color("white"),
         "position" : "fixed",
-        "width": "auto",
-        "height": "auto",
+        "width": Auto,
+        "height": Auto,
         "top":0,
         "left":0,
         "bottom":0,
@@ -36,18 +34,21 @@ g = {
         **{f"margin-{k}": 0 for k in ["top", "right", "bottom", "left"]},
         **{f"padding-{k}": 0 for k in ["top", "right", "bottom", "left"]},
         **{f"border-{k}-width": 2 for k in ["top", "right", "bottom", "left"]},
-        "line-height": "normal",
-        "word-spacing": "normal",
+        "box-sizing": "content-box",
+        "line-height": Normal,
+        "word-spacing": Normal,
         "font-style" : FontStyle("normal"),
     },
     # pg.Rect
-    "side-keys": (f"mid{k}" for k in directions),
+    "side-keys": tuple(f"mid{k}" for k in directions),
     # padding
-    "padding-keys": (f"padding-{k}" for k in directions),
+    "padding-keys": tuple(f"padding-{k}" for k in directions),
     # margin
-    "margin-keys": (f"margin-{k}" for k in directions),
+    "margin-keys": tuple(f"margin-{k}" for k in directions),
     # border
-    "border-width-keys": (f"border-{k}-width" for k in directions),
+    "border-width-keys": tuple(f"border-{k}-width" for k in directions),
+    # inset
+    "inset-keys": directions,
     # font-size
     "default_font_size": 16,
     "abs_font-size":{
@@ -63,6 +64,11 @@ g = {
     "rel_font_size" : {
         "smaller": -1,
         "larger": 1
+    },
+    # font_weight
+    "abs_kws" : {
+        "normal": 400,
+        "bold": 700,
     },
     # colors
     "sys_colors":{
@@ -111,7 +117,7 @@ g = {
         "dppx",
         "x",
     },
-    "abolute_length_units":{
+    "absolute_length_units":{
         "px":1,
         "cm":37.8,
         "mm":3.78,
@@ -121,7 +127,3 @@ g = {
         "pt":4/3,
     },
 }
-
-# idea
-# g = globals()
-# Then import g

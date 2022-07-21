@@ -22,22 +22,33 @@ def main():
     util.print_tree(tree)
     g["root"] = tree
 
+    tree.compute()
+    tree.layout() # the first element doesn't need any input
+
+    print(tree.select_one("body").box.content)
+
+    p = tree.select_one("p")
+    print(p.box.outer)
+    print(p.box.content)
+
+    time_sum = frames = 0
+    end = False
     while True:
         for event in pg.event.get():
             if event.type == pg.QUIT:
-                return
-            elif event.type == pg.MOUSEBUTTONDOWN:
-                return
+                end = True
+        if end: break
 
-        clock.tick(1)
+        time_sum += clock.tick(30)
+        frames += 1
 
-        tree.compute()
-        tree.layout() # the first element doesn't need any input
         screen.fill("white")
-        tree.draw(screen, (0,0)) # actually draws/paints to the screen
+        tree.draw(screen, (0,0))
         pg.display.flip()
-
-# main()
+    time_sum /= 1000 # seconds
+    mean_time = time_sum/frames
+    print(f"Mean time/frame: {mean_time}")
+    print(f"FPS: {1/mean_time}")
 
 def test():
     # setup code
@@ -47,30 +58,19 @@ def test():
             <p style="color: green">My example Text GgOT</p>
         </head>
         <body style="background-color: lightblue">
+            Text
             <p style="color: green; width: auto">My example Text GgOT</p>
             Text
             <p>now a paragraph</p>
-            and Text again  
+            and Text again
         </body>
     </html>""".strip()
     parsedTree = html5lib.parse(example_html)
-    util.print_parsed_tree(parsedTree, with_text=True)
     tree: Element = create_element(parsedTree, parent = None)
     print(tree.to_html())
-    # util.print_tree(tree)
-    # print(tree.to_html())
-    # g["root"] = tree
-    # # now compute and assert 
-    # tree.compute()
-    # assert len(tree.children) == 2 # head and body
-    # elem = tree.children[1]
-    # assert elem.tag == "body"
-    # assert len(elem.children) == 3 # two ps and one text elements
-    # elem = elem.children[0]
-    # assert elem.tag == "p"
-    # assert elem._style["width"] == "auto"
-    # assert elem.text == "My example Text GgOT"
-    # elem = tree.children[0]
-    # util.print_tree(elem)
+    g["root"] = tree
+    # now compute and assert 
+    tree.compute()
+    tree.layout()
 
-test()
+main()

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from numbers import Number
+from own_types import Number
 import pygame as pg
 import re
 from typing import Literal

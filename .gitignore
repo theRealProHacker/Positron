@@ -3,6 +3,7 @@ env
 concepts
 .pytest_cache
 .mypy_cache
+.vscode
 
 # testing
 test.*
