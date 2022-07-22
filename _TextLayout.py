@@ -1,8 +1,10 @@
-from dataclasses import dataclass
-from own_types import Number
-import pygame as pg
 import re
+from dataclasses import dataclass
 from typing import Literal
+
+import pygame as pg
+
+from own_types import Number
 
 font_split_regex = re.compile(r"\s*\,\s*")
 

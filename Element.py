@@ -4,7 +4,7 @@ from collections import ChainMap, defaultdict
 from contextlib import contextmanager, suppress
 from functools import cache
 from itertools import chain
-from typing import Any, Iterable, NamedTuple, Type
+from typing import Any, Callable, Iterable, NamedTuple, Type
 
 import pygame as pg
 from pygame import Vector2
@@ -12,7 +12,7 @@ from pygame import Vector2
 import own_css_parser as css
 from Box import Box, make_box
 from config import g
-from own_types import (Auto, Color, ComputeError, Dimension, FontStyle, Normal,
+from own_types import (Auto, Color, ComputeError, Dimension, FontStyle, MissingParentException, Normal,
                        Number, Percentage, Sentinel, StyleAttr, _XMLElement,
                        computed_value, style_computed, style_input)
 from style_cache import safe_style
@@ -63,7 +63,7 @@ style_keys: dict[str, StyleAttr] = {
 }
 
 """ The default style for a value (just like "unset") """
-absolute_default_style = {
+absolute_default_style: style_input = {
     **{k:"inherit" if v.isinherited else v.initial for k,v in style_keys.items()},
     # space to add exceptions
 }
@@ -84,7 +84,7 @@ element_styles: dict[str, dict[str, Any]] = defaultdict(dict,{
 })
 
 @cache
-def get_style(tag: str)->style_input:
+def get_style(tag: str):
     return ChainMap(absolute_default_style, element_styles[tag])
 
 def process_style(elem: 'Element', val: str, key: str, parent_style: style_computed)->computed_value:
@@ -192,7 +192,6 @@ def create_element(elem: _XMLElement, parent: Type["Element"]|None = None):
     new = Element(
         get_tag(elem),
         elem.attrib,
-        [], # we initialize children later
         parent
     )
     new.children = [create_element(e, new) for e in elem]
@@ -204,26 +203,27 @@ def create_element(elem: _XMLElement, parent: Type["Element"]|None = None):
 class Element:
     box: Box = Box.empty()
     display: str # the used display state. Is set before layout
+    tag: str
+    attrs: dict
+    style: style_input
+    _style: style_computed
 
     def __init__(
         self, 
         tag: str,
         attrs: dict,
-        children: list['Element'],
         parent: 'Element'
     ):
-        self._style: style_computed = {}
+        self.children = []
         self.parent = parent
 
         # copy stuff
-        self.tag: str = tag
+        self.tag = tag
         self.attrs = attrs
-        self.children = children
 
         # parse element style and update default
-        self.style: style_input = get_style(tag).new_child(css.parse(self.attrs.get("style",""))) # type: ignore
+        self.style = get_style(tag).new_child(css.parse(self.attrs.get("style","")))
         
-
     def is_block(self)->bool:
         """ 
         Returns whether an element is a block. 
@@ -470,13 +470,20 @@ class Element:
     def __repr__(self):
         return f"<{self.tag}>"
 
+    ############################## Helpers #####################################
+    def iter_parents(self):
+        yield self
+        if type(self) is HTMLElement:
+            raise MissingParentException
+        self = self.parent
+
+
 class HTMLElement(Element):
-    def __init__(self, tag: str, attrs: dict, children: list[Element], parent: Element = None):
+    def __init__(self, tag: str, attrs: dict, parent: Element = None):
         assert tag == "html"
         super().__init__(
             "html",
             attrs,
-            children,
             parent = self
         )
         self._style: style_computed = g["head_comp_style"]
@@ -581,6 +588,58 @@ class TextElement:
 
     def __repr__(self):
         return f"<{self.tag}>"
+
+############################## Selectors #################################################
+# A Selector is a function that gets an Element and returns whether it matches that selector
+
+Selector = Callable[[Element], bool]
+
+def tag_selector(tag: str)->Selector:
+    def inner(elem: Element):
+        return elem.tag == tag
+    return inner
+
+def id_selector(id_: str)->Selector:
+    def inner(elem: Element):
+        return elem.attrs.get("id") == id_
+    return inner
+
+def class_selector(cls: str)->Selector:
+    def inner(elem: Element):
+        return elem.attrs.get("class") == cls
+    return inner
+
+def direct_child_selector(*selectors):
+    assert len(selectors) > 1, "The direct child selector takes at least two selectors"
+    def inner(elem: Element):
+        try:
+            return all(f(e) for f,e in zip(selectors, elem.iter_parents()))
+        except MissingParentException:
+            return False
+    return inner
+
+
+# Example Usage:
+def test_selectors():
+    c: Selector = tag_selector("p")
+    p: Selector = tag_selector("body")
+    pp: Selector = tag_selector("html")
+    p_c: Selector = direct_child_selector(c,p)
+    pp_p = direct_child_selector(p,pp)
+    pp_p_c = direct_child_selector(c,p,pp)
+
+    _htmlelem = HTMLElement("html",{})
+    _bodyelem = Element("body",{},_htmlelem)
+    _pelem = Element("p",{},_bodyelem)
+    _htmlelem.children.append(_bodyelem)
+    _bodyelem.children.append(_pelem)
+
+    assert p_c(_pelem)
+    assert pp_p_c(_pelem)
+    assert pp_p(_bodyelem)
+    
+
+
 
 ################################### Rest is commentary in nature #########################################
 

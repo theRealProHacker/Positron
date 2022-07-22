@@ -1,11 +1,13 @@
 
 ################################################ types #################################################################
 from dataclasses import dataclass
-from typing import Any, Callable, Literal, Mapping, TypeVar
+from numbers import Number
+from typing import Any, Literal, Mapping
+from xml.etree.ElementTree import Element as _XMLElement
+
 import pygame as pg
 from pygame import Vector2
-from numbers import Number
-from xml.etree.ElementTree import Element as _XMLElement
+
 
 ############################ Some Classes ##############################
 @dataclass
@@ -32,7 +34,10 @@ class Color(pg.Color):
 
 ################## Sentinels ###############
 
-from enum import Enum, auto as _enum_auto
+from enum import Enum
+from enum import auto as _enum_auto
+
+
 class Sentinel(Enum):
     Auto = _enum_auto()
     Normal = _enum_auto()
@@ -54,6 +59,10 @@ NumTuple4 = tuple[Number, Number, Number, Number]
 
 class ComputeError(Exception): # TODO: add this to util when moving computation there
     pass
+
+
+class MissingParentException(Exception): pass
+
 
 @dataclass
 class StyleAttr:

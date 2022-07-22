@@ -2,7 +2,6 @@
 from collections import ChainMap
 from collections.abc import Iterable
 from contextlib import suppress
-from dataclasses import dataclass, field
 from functools import partial
 from itertools import chain
 from numbers import Number
@@ -12,8 +11,9 @@ import pygame as pg
 from pygame.rect import Rect
 
 from own_types import Auto, Dimension, Index, computed_value, style_computed
-from util import (Calculator, Dotted, bw_getter, draw_text, ensure_suffix,
-                  mrg_getter, noop, not_neg, pad_getter, rs_getter, MutableFloat)
+from util import (Calculator, Dotted, MutableFloat, bw_getter, draw_text,
+                  ensure_suffix, mrg_getter, noop, not_neg, pad_getter,
+                  rs_getter)
 
 l = [("border", "padding"),("margin",)]
 box_types = [

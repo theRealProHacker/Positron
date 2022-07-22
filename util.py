@@ -1,15 +1,17 @@
-from dataclasses import dataclass
-from numbers import Number
 import re
 from contextlib import contextmanager, redirect_stdout, suppress
+from dataclasses import dataclass
 from functools import cache, partial
-from typing import Iterable, Literal, TypeVar, Callable, Any
-from config import g
-from operator import itemgetter, attrgetter
-from own_types import _XMLElement, Auto, Sentinel, Percentage, Color, computed_value
+from numbers import Number
+from operator import attrgetter, itemgetter
+from typing import Any, Callable, Iterable, Literal, TypeVar
 
 import pygame as pg
 import pygame.freetype as freetype
+
+from config import g
+from own_types import (Auto, Color, Percentage, Sentinel, _XMLElement,
+                       computed_value)
 
 
 def noop(*args, **kws):

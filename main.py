@@ -1,8 +1,10 @@
-import pygame as pg
-import util
-from Element import Element, create_element
 import html5lib
+import pygame as pg
+
+import util
 from config import g
+from Element import Element, create_element
+
 # abstract
 
 pg.init()

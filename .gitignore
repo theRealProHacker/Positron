@@ -1,5 +1,5 @@
 __pycache__
-env
+venv
 concepts
 .pytest_cache
 .mypy_cache

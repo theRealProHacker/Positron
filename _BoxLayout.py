@@ -1,9 +1,11 @@
 from dataclasses import dataclass
-from own_types import Number
 from typing import Literal
-from pygame.rect import Rect
+
 from pygame import Vector2
+from pygame.rect import Rect
+
 from config import directions
+from own_types import Number
 
 # in this file we still use "auto"
 
