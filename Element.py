@@ -65,6 +65,7 @@ style_keys: dict[str, StyleAttr] = {
 """ The default style for a value (just like "unset") """
 absolute_default_style = {
     **{k:"inherit" if v.isinherited else v.initial for k,v in style_keys.items()},
+    # space to add exceptions
 }
 
 element_styles: dict[str, dict[str, Any]] = defaultdict(dict,{
@@ -220,11 +221,8 @@ class Element:
         self.children = children
 
         # parse element style and update default
-        self.style: style_input = ChainMap(
-            css.parse(self.attrs.get("style","")),
-            element_styles.get(self.tag,{}),
-            absolute_default_style
-        )
+        self.style: style_input = get_style(tag).new_child(css.parse(self.attrs.get("style",""))) # type: ignore
+        
 
     def is_block(self)->bool:
         """ 
@@ -247,11 +245,6 @@ class Element:
         else:
             return self.box.height
 
-    def set_pos(self, pos: Dimension):
-        x,y = pos
-        self.box.set_x(x)
-        self.box.set_y(y)
-    
     ##################################    Attribute calculation helpers ##########################
     def calc_color(self, color: str)->Color:
         # TODO: implement more color values
@@ -366,23 +359,6 @@ class Element:
         return chain(*rv)
 
     def compute(self):
-        """
-        https://developer.mozilla.org/en-US/docs/Web/CSS/computed_value
-        The computed value of a CSS property is the value that is transferred from parent to child during inheritance. 
-        It is calculated from the specified value by:
-
-        1. Handling the special values inherit, initial, revert, revert-layer, and unset.
-        2. Doing the computation needed to reach the value described in the "Computed value" line in the property's definition table.
-
-        The computation needed to reach a property's computed value typically involves converting relative values 
-        (such as those in em units or percentages) to absolute values. 
-        For example, if an element has specified values font-size: 16px and padding-top: 2em, then the computed value of padding-top is 32px (double the font size).
-
-        However, for some properties (those where percentages are relative to something that may require layout to determine, 
-        such as width, margin-right, text-indent, and top), percentage-specified values turn into percentage-computed values. 
-        Additionally, unitless numbers specified on the line-height property become the computed value, as specified. 
-        The relative values that remain in the computed value become absolute when the used value is determined.
-        """
         parent_style = self.parent._style
         style: style_computed = {}
 
@@ -440,7 +416,7 @@ class Element:
             top, bottom, left, right = inset_getter(self._style)
             inset: tuple[Number, Number] = (0,0) if child._style["position"] == "sticky" else (bottom-top, right-left)
             pos = Vector2(x_pos, y_cursor) + inset
-            child.set_pos(pos)
+            child.box.set_pos(pos)
             y_cursor += child.box.outer_box.height
         yield y_cursor
         for child in no_flow:
@@ -451,7 +427,7 @@ class Element:
                 self.get_height() - bottom if bottom is not Auto else 0
             x: Number = left if left is not Auto else \
                 inner.width - right if right is not Auto else 0
-            child.set_pos((x,y))
+            child.box.set_pos((x,y))
 
     def draw(self, screen: pg.surface.Surface, pos: Dimension):
         draw_box = copy(self.box)
@@ -557,9 +533,6 @@ class TextElement:
 
     def is_block(self):
         return False
-
-    def set_pos(self, pos):
-        pass
 
     def __init__(self, text: str, parent: Element):
         self.text = text

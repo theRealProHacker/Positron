@@ -88,3 +88,21 @@ These specify the attributes with their types and constraints. Every computed ty
 
 box: Box
 display: str
+
+compute:
+    https://developer.mozilla.org/en-US/docs/Web/CSS/computed_value
+    The computed value of a CSS property is the value that is transferred from parent to child during inheritance. 
+    It is calculated from the specified value by:
+
+    1. Handling the special values inherit, initial, revert, revert-layer, and unset.
+    2. Doing the computation needed to reach the value described in the "Computed value" line in the property's definition table.
+
+    The computation needed to reach a property's computed value typically involves converting relative values 
+    (such as those in em units or percentages) to absolute values. 
+    For example, if an element has specified values font-size: 16px and padding-top: 2em, 
+    then the computed value of padding-top is 32px (double the font size).
+
+    However, for some properties (those where percentages are relative to something that may require layout to determine, 
+    such as width, margin-right, text-indent, and top), percentage-specified values turn into percentage-computed values. 
+    Additionally, unitless numbers specified on the line-height property become the computed value, as specified. 
+    The relative values that remain in the computed value become absolute when the used value is determined.
