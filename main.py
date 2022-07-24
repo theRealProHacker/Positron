@@ -3,15 +3,16 @@ import pygame as pg
 
 import util
 from config import g
+from own_types import Vector2, Surface
 from Element import Element, create_element
 
 # abstract
 
 pg.init()
-W,H = DIM = pg.Vector2((g["W"],g["H"]))
+W,H = DIM = Vector2((g["W"],g["H"]))
 screen = pg.display.set_mode(DIM)
 
-def show_image(surf: pg.Surface):
+def show_image(surf: Surface):
     rect = surf.get_rect(center = DIM/2)
     screen.blit(surf, rect)
 

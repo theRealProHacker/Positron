@@ -1,22 +1,21 @@
 from copy import copy
+from dataclasses import dataclass
 import re
-from collections import ChainMap, defaultdict
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from functools import cache
 from itertools import chain
-from typing import Any, Callable, Iterable, NamedTuple, Type
+from typing import Callable, Iterable
 
 import pygame as pg
-from pygame import Vector2
+from StyleComputing import get_style, style_attrs, abs_default_style
 
 import own_css_parser as css
 from Box import Box, make_box
 from config import g
-from own_types import (Auto, Color, ComputeError, Dimension, FontStyle, MissingParentException, Normal,
-                       Number, Percentage, Sentinel, StyleAttr, _XMLElement,
-                       computed_value, style_computed, style_input)
+from own_types import (Auto, AutoNP4Tuple, Dimension, Float4Tuple, FontStyle, MissingParentException, _XMLElement,
+                       computed_value, style_computed, style_input, Vector2, Font)
 from style_cache import safe_style
-from util import get_tag, inset_getter, log_error, rect_lines, split_units
+from util import Calculator, get_tag, inset_getter, log_error, rect_lines
 
 """ More useful links for further development
 https://developer.mozilla.org/en-US/docs/Web/CSS/image
@@ -26,7 +25,7 @@ https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Box_Model/Mastering_margin_
 
 ################################# shared methods (could also be classmethods in theory) ##################
 @cache
-def get_font(family: list[str], size: Number, style: FontStyle, weight: int)->pg.font.Font:
+def get_font(family: list[str], size: float, style: FontStyle, weight: int)->Font:
     font = pg.font.match_font(
         name = family,
         italic = style.value == "italic", 
@@ -34,171 +33,38 @@ def get_font(family: list[str], size: Number, style: FontStyle, weight: int)->pg
     )
     if font is None:
         log_error("Failed to find font", family, style, weight)
-    font = pg.font.Font(font, int(size))
+    font: Font = Font(font, int(size))
     if style.value == "oblique": # TODO: we don't support oblique with an angle, we just fake the italic
         font.italic = True
     return font
 
-################################## Style Data ################################
-# To add a new style key, document it, add it here and then implement it in the draw or layout methods
-
-style_keys: dict[str, StyleAttr] = {
-    "color":StyleAttr("canvastext"), 
-    "font-weight": StyleAttr("normal"),
-    "font-family":StyleAttr("Arial"),
-    "font-size":StyleAttr("medium"), 
-    "font-style":StyleAttr("normal"),
-    "line-height": StyleAttr("normal", False),
-    "word-spacing": StyleAttr("normal", False),
-    "display":StyleAttr("inline"),
-    "background-color": StyleAttr("transparent"),
-    "width":StyleAttr("auto", isinherited = False),
-    "height":StyleAttr("auto", isinherited = False),
-    "position": StyleAttr("static", isinherited = False),
-    "box-sizing": StyleAttr("content-box", isinherited = False),
-    **dict.fromkeys(g["inset-keys"],StyleAttr("0", False)),
-    **dict.fromkeys(g["margin-keys"], StyleAttr("0", False)),
-    **dict.fromkeys(g["padding-keys"], StyleAttr("0", False)),
-    **dict.fromkeys(g["border-width-keys"], StyleAttr("medium", False)),
-}
-
-""" The default style for a value (just like "unset") """
-absolute_default_style: style_input = {
-    **{k:"inherit" if v.isinherited else v.initial for k,v in style_keys.items()},
-    # space to add exceptions
-}
-
-element_styles: dict[str, dict[str, Any]] = defaultdict(dict,{
-    "html": g["global_stylesheet"],
-    "head": {
-        "display": "none",
-    },
-    "h1": {
-        "font-size":"30px"
-    },
-    "p":{
-        "display": "block",
-        "margin-top": "1em",
-        "margin-bottom": "1em",
-    }
-})
-
-@cache
-def get_style(tag: str):
-    return ChainMap(absolute_default_style, element_styles[tag])
-
-def process_style(elem: 'Element', val: str, key: str, parent_style: style_computed)->computed_value:
-    def redirect(new_val):
-        return process_style(elem, new_val, key, parent_style)
-    attr = style_keys[key]
+def process_style(elem: 'Element', val: str, key: str, p_style: style_computed)->computed_value:
+    def redirect(new_val: str):
+        return process_style(elem, new_val, key, p_style)
+    attr = style_attrs[key]
     ######################################## global style attributes ####################################################
     # Best and most concise explanation I could find: https://css-tricks.com/inherit-initial-unset-revert/ (probably the same at mdn)
     if "inherit" == val: #----------------------------- inherit ----------------------------------------------------
-        return parent_style[key]
+        return p_style[key]
     elif "initial" == val: #--------------------------- initial ---------------------------------------------------------------------------------
         return redirect(attr.initial)
     elif "unset" == val: #----------------------------- unset ---------------------------------------------------------------------------------
-        return redirect(absolute_default_style[key])
+        return redirect(abs_default_style[key])
     elif "revert" == val: #---------------------------- revert -------------------------------------------------------------------------------
-        if attr.isinherited:
+        if attr.inherits:
             return redirect("inherit")
         else:
             return redirect(get_style(elem.tag)[key])
-    ############### length_percentage_keyword helper ####################
-    def length_percentage(*kws: Sentinel)->Sentinel|Percentage|Number:
-        _kws: dict[str, Sentinel] = {value.name.lower():value for value in kws}
-        if (sentinel:=_kws.get(val)) is not None:
-            return sentinel
-        with suppress(ValueError): # percentage or unit
-            num, unit = split_units(val)
-            if unit == "%":
-                return Percentage(num)
-            else:
-                return elem.calc_length((num, unit))
-        raise ComputeError
-    try:
-        match key:
-            case "font-weight": #----------------------------- font-weight -------------------------------------------------------------------------------
-                return elem.calc_fontweight(val)
-            case "font-family": #----------------------------- font-family -------------------------------------------------------------------------------
-                return val
-            case "font-size": #----------------------------- font-size -------------------------------------------------------------------------------
-                abs_kws = g["abs_font_size"]
-                rel_kws = g["rel_font_size"]
-                if val in abs_kws:
-                    return g["default_font_size"] * 1.2 ** abs_kws[val]
-                elif val in rel_kws:
-                    return parent_style[key] * 1.2 ** rel_kws[val]
-                else:
-                    with suppress(ValueError): # percentage or unit
-                        num, unit = split_units(val)
-                        if unit == '%':
-                            return parent_style[key] * 0.01 * num
-                        else:
-                            return elem.calc_length((num, unit))
-            case "font-style": #----------------------------- font-style -------------------------------------------------------------------------------
-                with suppress(ValueError, AssertionError, TypeError):
-                    return FontStyle(*val.split()) # the FontStyle __init__ does the most for us by raising an Error if the input is wrong
-            case "color": #---------------------------------- color -------------------------------------------------------------------------------
-                with suppress(ValueError):
-                    return elem.calc_color(val)
-            case "display": #----------------------------- display -------------------------------------------------------------------------------
-                if val in ("none", "inline", "block"):
-                    return val
-            case "background-color": #----------------------------- background-color -------------------------------------------------------------------------------
-                with suppress(ValueError):
-                    return elem.calc_color(val)
-            case "width": #----------------------------- width -------------------------------------------------------------------------------
-                return length_percentage(Auto)
-            case "height": #----------------------------- height -------------------------------------------------------------------------------
-                return length_percentage(Auto)
-            case "position":
-                if val in ("static","rel","abs","fix","sticky"):
-                    return val
-            case orient if orient in ("left", "right", "top", "bottom"):
-                return length_percentage(Auto)
-            case "box-sizing":
-                if val in ("content-box", "border-box"):
-                    return val
-            case margin if margin in {f"margin-{k}"for k in css.directions}:
-                return length_percentage(Auto)
-            case padding if padding in {f"padding-{k}"for k in css.directions}:
-                return length_percentage(Auto)
-            case border_width if border_width in {f"border-{k}-width" for k in css.directions}:
-                abs_kws = g["abs_border_width"]
-                if val in abs_kws:
-                    return abs_kws[val]
-                return length_percentage()
-            case "line-height":
-                return length_percentage(Normal)
-            case "word-spacing":
-                return length_percentage(Normal)
-    except ComputeError:
-        pass
-    # unset the value if not returned yet
-    return redirect("unset")
+    ###################################### Non global ###################################
+    
+    return valid if (valid:=attr.convert(val, p_style)) else redirect("unset")
 
 ########################## Element ########################################
-def create_element(elem: _XMLElement, parent: Type["Element"]|None = None):
-    """ Create an element """
-    tag = get_tag(elem)
-    if tag == "html":
-        new = HTMLElement(tag, elem.attrib, [])
-        new.children = [create_element(e, new) for e in elem]
-        if elem.text is not None and elem.text.strip():
-            new.children.insert(0, TextElement(elem.text.strip(), new))
-        return new
-    assert parent is not None
-    new = Element(
-        get_tag(elem),
-        elem.attrib,
-        parent
-    )
-    new.children = [create_element(e, new) for e in elem]
-    # insert Text Element at the top
-    if elem.text is not None and elem.text.strip():
-        new.children.insert(0, TextElement(elem.text.strip(), new))
-    return new
+calculator = Calculator(None)
+
+def calc_inset(inset: AutoNP4Tuple, width: float, height: float)->Float4Tuple:
+    return calculator.multi2(inset[:2], 0, height) \
+        + calculator.multi2(inset[2:], 0, width)
 
 class Element:
     box: Box = Box.empty()
@@ -207,6 +73,7 @@ class Element:
     attrs: dict
     style: style_input
     _style: style_computed
+    children: list['Element']
 
     def __init__(
         self, 
@@ -229,7 +96,7 @@ class Element:
         Returns whether an element is a block. 
         Includes side effects (as a feature) that automatically adjusts false inline elements to block layout 
         """
-        self.display = self._style["display"]
+        self.display = self._style["display"] # type: ignore
         if self.display != "none":
             any_child_block = any([child.is_block() for child in self.children])
             if any_child_block: # set all children to blocked
@@ -238,113 +105,14 @@ class Element:
                 self.display = "block"
         return self.display == "block"
 
-    def get_height(self)->Number:
+    def get_height(self)->float:
         if self.box.height == -1: # sentinel: height not set yet
             assert self.parent != self, self
             return self.parent.get_height()
         else:
             return self.box.height
 
-    ##################################    Attribute calculation helpers ##########################
-    def calc_color(self, color: str)->Color:
-        # TODO: implement more color values
-        if color in g["sys_colors"]:
-            return g["sys_colors"][color]
-        if color == "transparent":
-            return Color(0,0,0,0)
-        return Color(color)
-
-    def calc_length(self, dimension: tuple[Number, str])->Number:
-        """ 
-        Gets a dimension (a tuple of a number and any unit)
-        and returns a pixel value as a Number
-        Raises ValueError or TypeError if something is wrong with the input.
-
-        See: https://developer.mozilla.org/en-US/docs/Web/CSS/length
-        """
-        num,s = dimension # Raises ValueError if dimension has not exactly 2 entries
-        if num == 0: 
-            return 0 # we don't even have to look at the unit. Especially because the unit might be the empty string
-        if not isinstance(num, Number):
-            num = float(dimension[0]) # cast possible strings
-        abs_length = g["absolute_length_units"]
-        match num,s:
-            # source:
-            # https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Values_and_units
-            # absolute values first--------------------------------------
-            case x, key if key in abs_length:
-                rv = x * abs_length[key]
-            # now relative values --------------------------------------
-            case x, "em":
-                rv = self.parent._style["font-size"]*x
-            case x, "rem":
-                rv = g["root"]._style["font-size"]*x
-            # view-port-relative values --------------------------------------
-            case x, "vw":
-                rv = x*0.01*g["W"]
-            case x, "vh":
-                rv = x*0.01*g["H"]
-            case x, "vmin":
-                rv = x*0.01*min(g["W"], g["H"])
-            case x, "vmax":
-                rv = x*0.01*max(g["W"], g["H"])
-            # TODO: ex, ic, ch, ((lh, rlh, cap)), (vb, vi, sv*, lv*, dv*)
-            # See: https://developer.mozilla.org/en-US/docs/Web/CSS/length#relative_length_units_based_on_viewport
-            case x,s if isinstance(x, Number) and isinstance(s, str):
-                raise ValueError(f"{s} is not an accepted unit")
-            case _:
-                raise TypeError()
-        return rv
-
-    def calc_fontweight(self, fw: str)->Number:
-        """ 
-        Gets any fontweight value and calculates the computed value or raises an ComputeError
-        https://drafts.csswg.org/css-fonts/#relative-weights
-        """
-        if (val:=g["abs_kws"][fw]) is not None:
-            return val
-        elif fw == "lighter":
-            p_size = self.parent._style["font-size"]
-            if p_size < 100:
-                return p_size
-            elif  p_size < 550:
-                return 100
-            elif p_size < 700:
-                return 400
-            elif p_size <= 1000:
-                return 700
-            else:
-                raise ValueError
-        elif fw == "bolder":
-            p_size = self.parent._style["font-size"]
-            if p_size < 350:
-                return 400
-            elif p_size < 550:
-                return 700
-            elif p_size < 900:
-                return 900
-            else:
-                return p_size
-        else:
-            try:
-                n = float(fw)
-            except ValueError:
-                n = -1
-            if not 0 < n <= 1000:
-                return g["abs_kws"]["normal"]
-            return n
-
     ####################################  Main functions ######################################################
-    
-    def select_one(self, tag: str)->'Element':
-        if self.tag == tag:
-            return self
-        for c in self.children:
-            select = c.select_one(tag)
-            if select:
-                return select
-        return False
-
     def collide(self, pos: Dimension)->Iterable['Element']:
         """
         The idea of this function is to get which elements were hit for focus, hover and mouse events
@@ -354,14 +122,13 @@ class Element:
         if self.children:
             rv = [c.collide(pos) for c in reversed(self.children)]
         # check if we were hit and add us if so
-        if self.rect.collidepoint(pos):
+        if self.box.border_box.collidepoint(pos):
             rv.append([self])
         return chain(*rv)
 
     def compute(self):
         parent_style = self.parent._style
         style: style_computed = {}
-
         for key,val in self.style.items():
             if key not in style:
                 style[key] = process_style(self, val, key, parent_style)
@@ -370,7 +137,7 @@ class Element:
         for child in self.children:
             child.compute()
 
-    def layout(self, width: Number)->None: # !
+    def layout(self, width: float)->None: # !
         """
         Gets the width it has available
         The input width is the width the child should take if its width is Auto
@@ -404,7 +171,7 @@ class Element:
             set_height(0)
 
     @contextmanager
-    def layout_children(self)->Number:
+    def layout_children(self):
         inner: pg.Rect = self.box.content_box
         x_pos = inner.x
         y_cursor = inner.y
@@ -414,20 +181,20 @@ class Element:
             child.layout(inner.width)
             # calculate the position
             top, bottom, left, right = inset_getter(self._style)
-            inset: tuple[Number, Number] = (0,0) if child._style["position"] == "sticky" else (bottom-top, right-left)
-            pos = Vector2(x_pos, y_cursor) + inset
-            child.box.set_pos(pos)
+            inset: tuple[float, float] = (0,0) if child._style["position"] == "sticky" else (bottom-top, right-left)
+            cx,cy = Vector2(x_pos, y_cursor) + inset
+            child.box.set_pos((cx,cy))
             y_cursor += child.box.outer_box.height
         yield y_cursor
         for child in no_flow:
             child.layout(inner.width)
             # calculate position
-            top, bottom, left, right = inset_getter(self._style)
-            y: Number = top if top is not Auto else \
+            top, bottom, left, right = calc_inset(inset_getter(self._style), self.box.width, self.box.height)
+            cy: float = top if top is not Auto else \
                 self.get_height() - bottom if bottom is not Auto else 0
-            x: Number = left if left is not Auto else \
+            cx: float = left if left is not Auto else \
                 inner.width - right if right is not Auto else 0
-            child.box.set_pos((x,y))
+            child.box.set_pos((cx,cy))
 
     def draw(self, screen: pg.surface.Surface, pos: Dimension):
         draw_box = copy(self.box)
@@ -438,9 +205,10 @@ class Element:
         style = self._style
         #draw background:
         border_box: pg.Rect = draw_box.border_box
-        pg.draw.rect(screen, style["background-color"], border_box)
+        pg.draw.rect(screen, style["background-color"], border_box) # type: ignore[arg-type] # we know that background-color is a Color
         for line, width in zip(rect_lines(border_box), draw_box.border):
-            pg.draw.line(screen, "black", *line, width = width) # TODO: implement border-color
+            # TODO: implement border-color
+            pg.draw.line(screen, "black", *line, width = int(width)) # type: ignore # TODO: kill mypy for not letting me use * and **
         # draw children
         for c in self.children:
             if not isinstance(c, TextElement):
@@ -476,7 +244,6 @@ class Element:
         if type(self) is HTMLElement:
             raise MissingParentException
         self = self.parent
-
 
 class HTMLElement(Element):
     def __init__(self, tag: str, attrs: dict, parent: Element = None):
@@ -524,8 +291,11 @@ class IMGElement(Element):
     def layout(self, width):
         pass
 
-class TextDrawItem(NamedTuple("TextDrawItem", text=str, pos=Dimension)):
-    __slots__ = ()
+@dataclass(slots=True)
+class TextDrawItem:
+    text:str
+    pos: Dimension
+    
 
 font_split_regex = re.compile(r"\s*\,\s*")
 
@@ -537,6 +307,10 @@ class TextElement:
     font: pg.font.Font
     tag = "Text"
     display = "inline"
+    
+    # Used internally
+    _draw_items: list[TextDrawItem]
+
 
     def is_block(self):
         return False
@@ -552,42 +326,71 @@ class TextElement:
         pass
 
     def layout(self, width: float)->None:
-        style = self.parent.style
-        families = font_split_regex.split(style["font-family"]) # this algorithm should be updated
-        families = [f.removeprefix('"').removesuffix('"') for f in families]
-        font = get_font(
-            families, 
-            style["font-size"], 
-            style["font-style"], 
-            style["font-weight"]
-        )
-        self.font = font
-        if word_spacing == "normal":
-            word_spacing = font.size(" ")[0] # the width of the space character in the font
-        if line_height == "normal":
-            line_height = 1.2 * style["font-size"]
-        xcursor = ycursor = 0.0
-        self.draw_items.clear()
-        l = self.text.split()
-        for word in l:
-            word_width, _ = font.size(word)
-            if xcursor + word_width > width: #overflow
-                xcursor = 0
-                ycursor += line_height
-            self.draw_items.append(TextDrawItem(word,(xcursor, ycursor)))
-            xcursor += word_width + word_spacing
-        # should set a box
-        self.x, self.y = xcursor, ycursor
+        pass
+        # style = self.parent.style
+        # families = font_split_regex.split(style["font-family"]) # this algorithm should be updated
+        # families = [f.removeprefix('"').removesuffix('"') for f in families]
+        # font = get_font(
+        #     families, 
+        #     style["font-size"], 
+        #     style["font-style"], 
+        #     style["font-weight"]
+        # )
+        # self.font = font
+        # if word_spacing == "normal":
+        #     word_spacing = font.size(" ")[0] # the width of the space character in the font
+        # if line_height == "normal":
+        #     line_height = 1.2 * style["font-size"]
+        # xcursor = ycursor = 0.0
+        # self._draw_items.clear()
+        # l = self.text.split()
+        # for word in l:
+        #     word_width, _ = font.size(word)
+        #     if xcursor + word_width > width: #overflow
+        #         xcursor = 0
+        #         ycursor += line_height
+        #     self._draw_items.append(TextDrawItem(word,(xcursor, ycursor)))
+        #     xcursor += word_width + word_spacing
+        # # should set a box
+        # self.x, self.y = xcursor, ycursor
 
     def draw(self, surface: pg.surface.Surface):
-        for item in self.draw_items:
-            word, pos = item
+        for item in self._draw_items:
+            match item:
+                case word, pos:
+                    ...
+                case _:
+                    raise Exception(item)
 
     def to_html(self, indent=0):
         return " "*indent+self.text
 
     def __repr__(self):
         return f"<{self.tag}>"
+
+
+def create_element(elem: _XMLElement, parent: Element|None = None):
+    """ Create an element """
+    tag = get_tag(elem)
+    new: Element
+    if tag == "html":
+        assert parent is None
+        new = HTMLElement(tag, elem.attrib)
+        new.children = [create_element(e, new) for e in elem]
+        if elem.text is not None and elem.text.strip():
+            new.children.insert(0, TextElement(elem.text.strip(), new)) # type: ignore[arg-type]
+        return new
+    new = Element(
+        get_tag(elem),
+        elem.attrib,
+        parent # type: ignore[arg-type]
+    )
+    new.children = [create_element(e, new) for e in elem]
+    # insert Text Element at the top
+    if elem.text is not None and elem.text.strip():
+        new.children.insert(0, TextElement(elem.text.strip(), new)) # type: ignore[arg-type]
+    return new
+
 
 ############################## Selectors #################################################
 # A Selector is a function that gets an Element and returns whether it matches that selector
@@ -637,7 +440,6 @@ def test_selectors():
     assert p_c(_pelem)
     assert pp_p_c(_pelem)
     assert pp_p(_bodyelem)
-    
 
 
 

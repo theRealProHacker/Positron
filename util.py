@@ -1,76 +1,154 @@
 import re
 from contextlib import contextmanager, redirect_stdout, suppress
 from dataclasses import dataclass
-from functools import cache, partial
-from numbers import Number
+from functools import cache, partial, total_ordering
 from operator import attrgetter, itemgetter
-from typing import Any, Callable, Iterable, Literal, TypeVar
+from typing import Any, Callable, Iterable, TypeVar
 
 import pygame as pg
 import pygame.freetype as freetype
 
 from config import g
-from own_types import (Auto, Color, Percentage, Sentinel, _XMLElement,
-                       computed_value)
+from own_types import (SNP, Auto, AutoNP, AutoNP4Tuple, Color, Dimension, Number, Rect, Color, Surface, Vector2, Percentage, _XMLElement, Float4Tuple, SNP4Tuple, style_computed)
 
 
 def noop(*args, **kws):
     return None
 
-# This should work for most use cases like __add__, __iadd__ and compare operations
+@total_ordering
+@dataclass
 class MutableFloat:
     value: float
     def __init__(self, value):
         self.set(value)
     def set(self, value):
         self.value = float(value)
-    forbidden = {
-        "__new__", "__init__", "__getattribute__", "__getattr__", "__setattr__", "__delattr__",
-        "__dir__", "__class__", "__init_subclass__", "__subclasshook__"
-    }
-    for name in float().__dir__():
-        if name in forbidden or not name.startswith("__"): continue
-        func = getattr(float, name)
-        if not callable(func): continue
-        change = "if type(x) is float: self.value=x" if name.startswith("__i") else ""
-        s = f"""
-def {name}(self, *args, **kwargs):
-    args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
-    x = float.{name}(self.value, *args, **kwargs)
-    {change}
-    return x
-        """.strip()
-        exec(s)
-
-################## Acceptor #################################
-
-# An acceptor is just a function that gets a string and either returns False or a computed_value
-AcceptorType = TypeVar("AcceptorType", bound = computed_value)
-Acceptor = Callable[[str], Literal[False]|computed_value]
-def acc_frm_dict(d: dict[str, AcceptorType])->Callable[[str], (Literal[False]|AcceptorType)]:
-    def inner(val: str):
-        if val in d:
-            return d[val]
-        return False
-    return inner
-
-def length(val: str):
-    if val[-2:] == "px":
-        return float(val[:-2])
-    return False
+    def __lt__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__lt__(self.value, *args, **kwargs)
+        return x
+    def __eq__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__eq__(self.value, *args, **kwargs)
+        return x
+    def __add__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__add__(self.value, *args, **kwargs)
+        return x
+    def __radd__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__radd__(self.value, *args, **kwargs)
+        return x
+    def __sub__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__sub__(self.value, *args, **kwargs)
+        return x
+    def __rsub__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__rsub__(self.value, *args, **kwargs)
+        return x
+    def __mul__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__mul__(self.value, *args, **kwargs)
+        return x
+    def __rmul__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__rmul__(self.value, *args, **kwargs)
+        return x
+    def __mod__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__mod__(self.value, *args, **kwargs)
+        return x
+    def __rmod__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__rmod__(self.value, *args, **kwargs)
+        return x
+    def __divmod__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__divmod__(self.value, *args, **kwargs)
+        return x
+    def __rdivmod__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__rdivmod__(self.value, *args, **kwargs)
+        return x
+    def __pow__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__pow__(self.value, *args, **kwargs)
+        return x
+    def __rpow__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__rpow__(self.value, *args, **kwargs)
+        return x
+    def __neg__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__neg__(self.value, *args, **kwargs)
+        return x
+    def __pos__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__pos__(self.value, *args, **kwargs)
+        return x
+    def __abs__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__abs__(self.value, *args, **kwargs)
+        return x
+    def __bool__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__bool__(self.value, *args, **kwargs)
+        return x
+    def __int__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__int__(self.value, *args, **kwargs)
+        if type(x) is float: self.value=x        
+        return x
+    def __float__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__float__(self.value, *args, **kwargs)
+        return x
+    def __floordiv__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__floordiv__(self.value, *args, **kwargs)
+        return x
+    def __rfloordiv__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__rfloordiv__(self.value, *args, **kwargs)
+        return x
+    def __truediv__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__truediv__(self.value, *args, **kwargs)
+        return x
+    def __rtruediv__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__rtruediv__(self.value, *args, **kwargs)
+        return x
+    def __trunc__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__trunc__(self.value, *args, **kwargs)
+        return x
+    def __floor__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__floor__(self.value, *args, **kwargs)
+        return x
+    def __ceil__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__ceil__(self.value, *args, **kwargs)
+        return x
+    def __round__(self, *args, **kwargs):
+        args = [arg.value if type(arg) is MutableFloat else arg for arg in args]
+        x = float.__round__(self.value, *args, **kwargs)
+        return x
 
 
 ################## Element Calculation ######################
-snp = Sentinel|Number|Percentage
+# This calculates values that have to be calculated after being computed
 @dataclass
 class Calculator:
-    default_perc_val: Number
+    default_perc_val: float|None
     def __call__(
         self,
-        value: snp,
-        auto_val: Number|None = None,
-        perc_val: Number|None = None
-    )->Number:
+        value: AutoNP,
+        auto_val: float|None = None,
+        perc_val: float|None = None
+    )->float:
         """
         This helper function takes a value, an auto_val
         and the perc_value and returns a Number
@@ -86,11 +164,19 @@ class Calculator:
         elif isinstance(value, Number):
             return not_neg(value)
         elif isinstance(value, Percentage):
+            assert perc_val is not None, f"perc_val must be set"
             return not_neg(perc_val * value) # raises ValueError if perc_val is None
         raise TypeError
 
-    def multi(self, values: Iterable[snp], *args)->tuple[Number,...]:
+    # sometimes this is called with 2-tuples
+    def _multi(self, values: Iterable[AutoNP], *args)->tuple[float,...]:
         return tuple(self(val, *args) for val in values)
+
+    def multi2(self, values: tuple[AutoNP, AutoNP], *args)->tuple[float,float]:
+        return self._multi(values, *args) # type: ignore
+
+    def multi4(self, values: AutoNP4Tuple, *args)->Float4Tuple:
+        return self._multi(values, *args) # type: ignore
 
 ################## Value Correction #########################
 
@@ -101,7 +187,7 @@ def make_default(value: Var|None, default: Var)->Var:
     """
     return default if value is None else value
 
-def in_bounds(x: Number, lower: Number, upper: Number)->Number:
+def in_bounds(x: float, lower: float, upper: float)->float:
     x = max(lower, x)
     x = min(upper, x)
     return x
@@ -120,11 +206,12 @@ def ensure_suffix(s: str, suf: str)->str:
 
 ##################### Itemgetters ##########################
 # https://stackoverflow.com/questions/54785148/destructuring-dicts-and-objects-in-python
-inset_getter: Callable[[dict], tuple[Number, ...]]    = itemgetter(*g["inset-keys"]) # type: ignore[misc]
-pad_getter: Callable[[dict], tuple[Number, ...]]      = itemgetter(*g["padding-keys"]) # type: ignore[misc]
-bw_getter: Callable[[dict], tuple[Number, ...]]       = itemgetter(*g["border-width-keys"]) # type: ignore[misc]
-mrg_getter: Callable[[dict], tuple[Number, ...]]      = itemgetter(*g["margin-keys"]) # type: ignore[misc]
-rs_getter: Callable[[pg.Rect], tuple[Number, ...]]    = attrgetter(*g["side-keys"]) # type: ignore[misc]
+Getter = Callable[[style_computed], AutoNP4Tuple]
+inset_getter: Getter = itemgetter(*g["inset-keys"]) # type: ignore[assignment]
+pad_getter: Getter = itemgetter(*g["padding-keys"]) # type: ignore[assignment]
+bw_getter: Getter = itemgetter(*g["border-width-keys"]) # type: ignore[assignment]
+mrg_getter: Getter = itemgetter(*g["margin-keys"]) # type: ignore[assignment]
+rs_getter: Callable[[Rect], Float4Tuple]    = attrgetter(*g["side-keys"]) # type: ignore[assignment]
 
 ####################### I/O #################################
 
@@ -177,15 +264,7 @@ def replace_all(s: str, olds: list[str], new: str)->str:
 
 int_re = r"[+-]?\d*"
 dec_re = fr"(?:{int_re})?(?:\.\d+)?(?:e{int_re})?"
-units_re = re_join(*g["all_units"])  # type: ignore[misc]
-
-split_units_pattern = re.compile(fr"({dec_re})(\w*)")
-def split_units(attr: str)->tuple[float, str]:
-    """ Split a dimension or percentage into a tuple of number and the "unit" """
-    match = split_units_pattern.fullmatch(attr.strip())
-    # -> Raises ValueError if the string can't be splitted
-    num, unit = match.groups()  # type: ignore[union-attr]
-    return float(num), unit
+units_re = re_join(*g["all_units"])
 
 regexes: dict[str, re.Pattern] = {k:re.compile(x) for k,x in {
         "integer": int_re,
@@ -207,12 +286,6 @@ for key, value in regexes.items():
 
 ########################## Test ####################################
 def test():
-    assert split_units("3px") == (3, "px")
-    assert split_units("0") == (0, "")
-    with suppress(ValueError): # anything that should return a ValueError in here
-        split_units("blue")
-        print("Split units test failed")
-
     tests = {
         # https://developer.mozilla.org/en-US/docs/Web/CSS/integer#examples
         "integer": {
@@ -244,7 +317,7 @@ def test():
 
 pg.init()
 
-def rect_lines(rect: pg.Rect):
+def rect_lines(rect: Rect):
     """
     Makes bounding lines from the rect.
     First top then bottom, left, right
@@ -258,7 +331,7 @@ def rect_lines(rect: pg.Rect):
     )
 
 def draw_text(
-    surf: pg.surface.Surface,
+    surf: Surface,
     text:str,
     fontname:str|None,
     size:int,
@@ -267,7 +340,7 @@ def draw_text(
 ):
     font: Any = freetype.SysFont(fontname, size) # type: ignore[arg-type]
     color = Color(color)
-    dest: pg.Rect = font.get_rect(str(text)) 
+    dest: Rect = font.get_rect(str(text)) 
     for k,val in kwargs.items():
         with suppress(AttributeError):
             setattr(dest, k, val)
@@ -280,20 +353,20 @@ class Dotted:
         color,
         dash_size: int = 10,
         dash_width: int = 2,
-        start_pos = (0,0)
+        start_pos: Dimension = (0,0)
     ):
-        self.dim = pg.Vector2(dim)
+        self.dim = Vector2(dim)
         self.color = Color(color)
         self.dash_size = dash_size
         self.dash_width = dash_width
-        self.start_pos = pg.Vector2(start_pos)
+        self.start_pos = Vector2(start_pos)
     
     @classmethod
-    def from_rect(cls, rect: pg.rect.Rect, **kwargs):
+    def from_rect(cls, rect: Rect, **kwargs):
         return cls(rect.size, **kwargs, start_pos = rect.topleft)
 
-    def draw_at(self, surf: pg.surface.Surface, pos):
-        pos = pg.Vector2(pos)
+    def draw_at(self, surf: Surface, pos):
+        pos = Vector2(pos)
         vec = self.dim.normalize()*self.dash_size
         for i in range(int(self.dim.length()//self.dash_size//2)):
             _pos = pos + vec*i*2
@@ -305,22 +378,22 @@ class Dotted:
                 self.dash_width
             )
 
-    def draw(self, surf: pg.Surface):
+    def draw(self, surf: Surface):
         return self.draw_at(surf, self.start_pos)
 
-    def draw_rect(self, surf: pg.Surface):
-        rect = pg.Rect(*self.start_pos, *self.dim)
+    def draw_rect(self, surf: Surface):
+        rect = Rect(*self.start_pos, *self.dim)
         for line in rect_lines(rect):
-            pos = pg.Vector2(line[0])
+            pos = Vector2(line[0])
             dim = line[1] - pos
             Dotted(
                 dim, self.color, self.dash_size, self.dash_width, pos
             ).draw(surf)
 
-def draw_lines(surf: pg.surface.Surface, points, *args, **kwargs):
-    points = [pg.Vector2(point) for point in points]
+def draw_lines(surf: Surface, points, *args, **kwargs):
+    points = [Vector2(point) for point in points]
     dlines = [
-        Dotted(points[i+1]-points[i], *args, **kwargs|{"start_pos": points[i]})
+        Dotted(points[i+1]-points[i], *args, **kwargs, start_pos = points[i]) # type: ignore
         for i in range(len(points)-1)
     ]
     for dline in dlines:

@@ -1,8 +1,26 @@
 """ Any global variables are stored here"""
+from dataclasses import dataclass
+from typing import Any
 from own_types import FontStyle, Auto, Normal, Color
 directions = ("top", "bottom", "left", "right")
 
-g: dict[str, int|None|dict|tuple|set] = {
+# This problem is proof that typing in python doesn't work
+# For typing GlobalDict needs access to Element (a Protocol doesn't make sense, because the Protocol would just be 
+# a copy of the Element class. So you would have two copies of the same class just for typing)
+# But Element itself needs access to config and to util, which needs access to config
+# The only solution would be to import everything into one file
+# But even then Box would also need to be in that file because it depends on util and Element depends on Box
+# So we would end up in one big file where every change had to be noted in different places all over a 1000s of lines long file
+# My advice to anyone trying to use typing in python: shoot yourself before its too late
+# The solution to 
+@dataclass
+class _GClass:
+    W: int = 900
+
+_g = _GClass()
+ 
+
+g: Any = {
     "W":900,
     "H":600,
     "root":None, # this is set in main.py and is the html element
@@ -66,13 +84,9 @@ g: dict[str, int|None|dict|tuple|set] = {
         "larger": 1
     },
     # font_weight
-    "abs_kws" : {
+    "abs_fw_kws" : {
         "normal": 400,
         "bold": 700,
-    },
-    # colors
-    "sys_colors":{
-        "canvas-text":"black"
     },
     # border-width
     "abs_border_width": {
@@ -117,7 +131,7 @@ g: dict[str, int|None|dict|tuple|set] = {
         "dppx",
         "x",
     },
-    "absolute_length_units":{
+    "abs_length_units":{
         "px":1,
         "cm":37.8,
         "mm":3.78,
@@ -127,3 +141,6 @@ g: dict[str, int|None|dict|tuple|set] = {
         "pt":4/3,
     },
 }
+
+
+# reveal_type(_g.W) # -> int

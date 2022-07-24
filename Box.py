@@ -4,13 +4,13 @@ from collections.abc import Iterable
 from contextlib import suppress
 from functools import partial
 from itertools import chain
-from numbers import Number
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 import pygame as pg
 from pygame.rect import Rect
 
-from own_types import Auto, Dimension, Index, computed_value, style_computed
+from own_types import AutoNP, Float4Tuple, Auto, Dimension, Index, style_computed, Number
+import own_types as _o
 from util import (Calculator, Dotted, MutableFloat, bw_getter, draw_text,
                   ensure_suffix, mrg_getter, noop, not_neg, pad_getter,
                   rs_getter)
@@ -49,7 +49,7 @@ guess_slicing: dict[str, Index] = {
     ]
 }
 
-def _sum(*args: Number)->Number:
+def _sum(*args: float)->float:
     """ This function can take a single value or an iterable and returns a single Number"""
     if len(args) == 1:
         x = args[0]
@@ -61,7 +61,7 @@ def _sum(*args: Number)->Number:
         return sum(args)
     raise TypeError
 
-def _convert(box: 'Box', frm: str, to: str, part: Index)->Number:
+def _convert(box: 'Box', frm: str, to: str, part: Index)->float:
     if frm == to:
         return 0
     _frm = box_types.index(frm)
@@ -73,7 +73,7 @@ def _convert(box: 'Box', frm: str, to: str, part: Index)->Number:
         _sum(getattr(box, name)[part]) for name in lookup_chain
     )
 
-def convert(box: 'Box', attr: str, frm: str|None = None, to: str|None = None, value: Number|None = None)->Number:
+def convert(box: 'Box', attr: str, frm: str|None = None, to: str|None = None, value: float|None = None)->float:
     value = getattr(box, attr) if value is None else value
     part = guess_slicing[attr]
     _frm = box.t if frm is None else frm
@@ -94,11 +94,11 @@ class Box:
     def __init__(
         self,
         t: str,
-        margin: tuple[Number,...] = (0,)*4,
-        border: tuple[Number,...] = (0,)*4,
-        padding: tuple[Number,...] = (0,)*4,
-        width: Number = 0,
-        height: Number = 0,
+        margin: tuple[float,...] = (0,)*4,
+        border: tuple[float,...] = (0,)*4,
+        padding: tuple[float,...] = (0,)*4,
+        width: float = 0,
+        height: float = 0,
         pos: Dimension = (0,0),
         outer_width: bool = False
     ):
@@ -121,7 +121,7 @@ class Box:
     def pos(self):
         return self.x, self.y
 
-    def set_pos(self, pos: tuple[Number, Number], t: str = "outer-box"):
+    def set_pos(self, pos: tuple[float, float], t: str = "outer-box"):
         _t = box_sizing(t)
         for attr, val in zip(("x","y"), pos):
             self._set(attr, val, _t)
@@ -188,39 +188,13 @@ class Box:
         else:
             return super().__setattr__(name, value)
 
-    ########################### Visualisation ###################################
-    def show(self, size)->pg.surface.Surface:
-        # TODO: actually finish this
-        size = pg.Vector2(size)
-        totw, toth = size
-        surf = pg.Surface(size)
-        # margin
-        rect = pg.rect.Rect(0,0,*size)
-        pg.draw.rect(
-            surf,
-            "lightyellow",
-            rect
-        )
-        Dotted.from_rect(
-            rect, color = "lightgrey"
-        ).draw_rect(surf)
-        # margin_nums
-        rect = pg.rect.Rect(0,0,*size*0.8)
-        rect.center = size/2
-        for point, margin in zip(rs_getter(rect), mrg_getter(self._style)):
-            draw_text(
-                surf, str(margin), "MonoLisa",
-                12, "grey", center = point
-            )
-        return surf
-    
 
 def make_box(
-    given_width: Number,
+    given_width: float,
     style: style_computed,
-    parent_width: Number,
-    parent_height: Number
-)->tuple[Box, Callable[[Number],None]]:
+    parent_width: float,
+    parent_height: float
+)->tuple[Box, Callable[[float],None]]:
     """
     Makes a box from input. 
     If height is Auto it leaves the boxes height by setting it to a sentinel (-1).
@@ -230,52 +204,64 @@ def make_box(
     calc = Calculator(parent_width)
 
     # the auto keyword has a special meaning with horizontal margins
-    def merge_horizontal_margin(mrg_h: tuple[computed_value, computed_value], avail: Number)->Dimension:
-        _avail = MutableFloat(avail)
-        to_do = MutableFloat(0)
-        def helper(val: computed_value)->Number|None:
-            if val is not Auto:
-                value = calc(val)
-                _avail.set(_avail - value)
-                return value
-            to_do.set(to_do + 1)
-        rv = [helper(x) for x in mrg_h]
-        if to_do:
-            split = not_neg(_avail)/to_do
-            rv = [split if x is None else x for x in rv]
-        return rv
+    # def merge_horizontal_margin(mrg_h: tuple[AutoNP, AutoNP], avail: float)->tuple[float, float]:
+    #     _avail = MutableFloat(avail)
+    #     to_do = MutableFloat(0)
+    #     def helper(val: AutoNP)->float|None: # type: ignore [return]
+    #         if val is not Auto:
+    #             value = calc(val)
+    #             _avail.set(_avail - value)
+    #             return value
+    #         to_do.set(to_do + 1)
+    #     rv = tuple(helper(x) for x in mrg_h)
+    #     if to_do:
+    #         split = not_neg(_avail)/to_do
+    #         _rv = (split if x is None else x for x in rv)
+    #     return _rv # type: ignore
 
-    box_attrs = {}
-    box_sizing: str = style["box-sizing"]
+    def merge_horizontal_margin(mrg_h: tuple[AutoNP, AutoNP], avail: float)->tuple[float, float]:
+        match mrg_h:
+            case _o.Auto, _o.Auto:
+                return (avail/2,)*2
+            case _o.Auto, x:
+                y = calc(x)
+                return (avail-y,y)
+            case x, _o.Auto:
+                y = calc(x)
+                return (y, avail-y)
+            case default:
+                return calc.multi2(default)
 
-    padding = calc.multi(pad_getter(style), 0)
-    border = calc.multi(bw_getter(style))
+    box_sizing: str = style["box-sizing"] # type: ignore
+
+    margin: Float4Tuple
+    padding = calc.multi4(pad_getter(style), 0)
+    border = calc.multi4(bw_getter(style))
+    outer_width = False
     if style["width"] is Auto:
-        margin = calc.multi(mrg_getter(style), 0)
+        margin = calc.multi4(mrg_getter(style), 0)
         width = not_neg(given_width - _sum(*margin[2:], *border[2:], *padding[2:]))
-        box_attrs["outer_width"] = True
+        outer_width = True
     else:
         # width is a resolvable value. So margin: auto resolves to all of the remaining space
-        width = calc(style["width"]) # no auto
-        margin = mrg_getter(style)
-        margin = tuple((
-            *calc.multi(margin[:2], 0), # vertical
-            *merge_horizontal_margin(margin[2:], avail = given_width - _sum(width, *border[2:], *padding[2:])) # horizontal
-        ))
+        width = calc(style["width"]) # type: ignore[arg-type]
+        _margin = mrg_getter(style)
+        margin =  calc.multi2(_margin[:2], 0) \
+            + merge_horizontal_margin(_margin[2:], avail = given_width - _sum(width, *border[2:], *padding[2:]))
 
     # -1 is a sentinel value to say that the height hasn't yet been specified (height auto)
-    height = calc(style["height"], auto_val=-1, perc_val = parent_height)
+    height = calc(style["height"], auto_val=-1, perc_val = parent_height) # type: ignore[arg-type]
 
-    box: Box = Box(
+    box = Box(
         box_sizing,
         margin,
         border,
         padding,
         width,
         height,
-        **box_attrs
+        outer_width = outer_width
     )
-    set_height = box.set_height if height == -1 else noop
+    set_height: Callable[[float],None] = box.set_height if height == -1 else noop 
     return box, set_height # set_height is the function that should be called when the height is ready to be set
 
 def test():
