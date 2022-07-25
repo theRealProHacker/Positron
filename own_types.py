@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Generator, Literal, Mapping, TypeVar, Union
 from xml.etree.ElementTree import Element as _XMLElement
+from enum import Enum as _Enum, auto as enum_auto
 
 import pygame as pg
 from pygame.font import Font
@@ -12,6 +13,12 @@ from pygame.rect import Rect
 from pygame.surface import Surface
 
 ############################ Some Classes ##############################
+
+class Enum(_Enum):
+    def __repr__(self):
+        return f"{self.__class__.__name__}.{self.name}"
+
+
 Dimension = Union[tuple[float, float],'Vector2']
 
 class Vector2(_Vector2):
@@ -49,7 +56,7 @@ class FontStyle:
         self.angle = 14 if oblique_angle is None else float(oblique_angle)
 
     def __hash__(self):
-        return hash(f"{self.value} {self.oblique_angle}")
+        return hash(f"{self.value} {self.angle}")
 
 class Color(pg.Color):
     def __setattr__(self, __name: str, __value: Any) -> None:
@@ -58,22 +65,17 @@ class Color(pg.Color):
         return hash(int(self))
 
 ################## Sentinels ###############
-
-from enum import Enum
-from enum import auto as _enum_auto
-
-
 class Sentinel(Enum):
-    Auto = _enum_auto()
-    Normal = _enum_auto()
+    Auto = enum_auto()
+    Normal = enum_auto()
 
 Auto = Sentinel.Auto
 Normal = Sentinel.Normal
 
+# Type Aliases
 AutoType = Literal[Sentinel.Auto]
 NormalType = Literal[Sentinel.Normal]
 
-# Type Aliases
 Index = int|slice
 style_input = Mapping[str, str]
 computed_value = float | Percentage | Sentinel| FontStyle | Color | str
@@ -93,9 +95,6 @@ SNP4Tuple = tuple[SNP, SNP, SNP, SNP]
 Float4Tuple = tuple[float, float, float, float]
 
 
-###################### Rare classes #################################
-
-class MissingParentException(Exception): pass
 
 if __name__ == '__main__':
     # test sentinels

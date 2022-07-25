@@ -4,16 +4,16 @@ from collections.abc import Iterable
 from contextlib import suppress
 from functools import partial
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Callable, Mapping
+from typing import Any, Callable, Mapping
 
 import pygame as pg
 from pygame.rect import Rect
 
-from own_types import AutoNP, Float4Tuple, Auto, Dimension, Index, style_computed, Number
-import own_types as _o
-from util import (Calculator, Dotted, MutableFloat, bw_getter, draw_text,
-                  ensure_suffix, mrg_getter, noop, not_neg, pad_getter,
-                  rs_getter)
+import own_types as _o # Just for dotted access to Auto
+from own_types import (Auto, AutoNP, Dimension, Float4Tuple, Index, Number,
+                       style_computed)
+from util import (Calculator, bw_getter, ensure_suffix, mrg_getter, noop,
+                  not_neg, pad_getter)
 
 l = [("border", "padding"),("margin",)]
 box_types = [
@@ -202,22 +202,6 @@ def make_box(
     Raises KeyError if box_sizing is invalid, or any attributes are missing in style
     """
     calc = Calculator(parent_width)
-
-    # the auto keyword has a special meaning with horizontal margins
-    # def merge_horizontal_margin(mrg_h: tuple[AutoNP, AutoNP], avail: float)->tuple[float, float]:
-    #     _avail = MutableFloat(avail)
-    #     to_do = MutableFloat(0)
-    #     def helper(val: AutoNP)->float|None: # type: ignore [return]
-    #         if val is not Auto:
-    #             value = calc(val)
-    #             _avail.set(_avail - value)
-    #             return value
-    #         to_do.set(to_do + 1)
-    #     rv = tuple(helper(x) for x in mrg_h)
-    #     if to_do:
-    #         split = not_neg(_avail)/to_do
-    #         _rv = (split if x is None else x for x in rv)
-    #     return _rv # type: ignore
 
     def merge_horizontal_margin(mrg_h: tuple[AutoNP, AutoNP], avail: float)->tuple[float, float]:
         match mrg_h:

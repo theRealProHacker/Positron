@@ -3,8 +3,8 @@ import pygame as pg
 
 import util
 from config import g
-from own_types import Vector2, Surface
 from Element import Element, create_element
+from own_types import Surface, Vector2
 
 # abstract
 
@@ -28,11 +28,11 @@ def main():
     tree.compute()
     tree.layout() # the first element doesn't need any input
 
-    print(tree.select_one("body").box.content)
+    # print(tree.find_elem(tag_selector("body")).box.content)
 
-    p = tree.select_one("p")
-    print(p.box.outer)
-    print(p.box.content)
+    # p = tree.find_elem(tag_selector("p"))
+    # print(p.box.outer)
+    # print(p.box.content)
 
     time_sum = frames = 0
     end = False

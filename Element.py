@@ -4,7 +4,7 @@ import re
 from contextlib import contextmanager
 from functools import cache
 from itertools import chain
-from typing import Callable, Iterable
+from typing import Iterable, Iterator
 
 import pygame as pg
 from StyleComputing import get_style, style_attrs, abs_default_style
@@ -12,7 +12,7 @@ from StyleComputing import get_style, style_attrs, abs_default_style
 import own_css_parser as css
 from Box import Box, make_box
 from config import g
-from own_types import (Auto, AutoNP4Tuple, Dimension, Float4Tuple, FontStyle, MissingParentException, _XMLElement,
+from own_types import (Auto, AutoNP4Tuple, Dimension, Float4Tuple, FontStyle, _XMLElement,
                        computed_value, style_computed, style_input, Vector2, Font)
 from style_cache import safe_style
 from util import Calculator, get_tag, inset_getter, log_error, rect_lines
@@ -57,7 +57,7 @@ def process_style(elem: 'Element', val: str, key: str, p_style: style_computed)-
             return redirect(get_style(elem.tag)[key])
     ###################################### Non global ###################################
     
-    return valid if (valid:=attr.convert(val, p_style)) else redirect("unset")
+    return valid if (valid:=attr.convert(val, p_style)) is not None else redirect("unset")
 
 ########################## Element ########################################
 calculator = Calculator(None)
@@ -113,6 +113,7 @@ class Element:
             return self.box.height
 
     ####################################  Main functions ######################################################
+    
     def collide(self, pos: Dimension)->Iterable['Element']:
         """
         The idea of this function is to get which elements were hit for focus, hover and mouse events
@@ -239,11 +240,16 @@ class Element:
         return f"<{self.tag}>"
 
     ############################## Helpers #####################################
-    def iter_parents(self):
-        yield self
-        if type(self) is HTMLElement:
-            raise MissingParentException
-        self = self.parent
+    def iter_parents(self)->Iterator['Element']:
+        while True:
+            yield self
+            if type(self) is HTMLElement:
+                break
+            self = self.parent
+
+    def iter_children(self)->Iterable['Element']:
+        for x in chain([self],*(c.iter_children() for c in self.children if not isinstance(c, TextElement))):
+            yield x
 
 class HTMLElement(Element):
     def __init__(self, tag: str, attrs: dict, parent: Element = None):
@@ -295,7 +301,6 @@ class IMGElement(Element):
 class TextDrawItem:
     text:str
     pos: Dimension
-    
 
 font_split_regex = re.compile(r"\s*\,\s*")
 
@@ -368,7 +373,6 @@ class TextElement:
     def __repr__(self):
         return f"<{self.tag}>"
 
-
 def create_element(elem: _XMLElement, parent: Element|None = None):
     """ Create an element """
     tag = get_tag(elem)
@@ -392,56 +396,8 @@ def create_element(elem: _XMLElement, parent: Element|None = None):
     return new
 
 
-############################## Selectors #################################################
-# A Selector is a function that gets an Element and returns whether it matches that selector
-
-Selector = Callable[[Element], bool]
-
-def tag_selector(tag: str)->Selector:
-    def inner(elem: Element):
-        return elem.tag == tag
-    return inner
-
-def id_selector(id_: str)->Selector:
-    def inner(elem: Element):
-        return elem.attrs.get("id") == id_
-    return inner
-
-def class_selector(cls: str)->Selector:
-    def inner(elem: Element):
-        return elem.attrs.get("class") == cls
-    return inner
-
-def direct_child_selector(*selectors):
-    assert len(selectors) > 1, "The direct child selector takes at least two selectors"
-    def inner(elem: Element):
-        try:
-            return all(f(e) for f,e in zip(selectors, elem.iter_parents()))
-        except MissingParentException:
-            return False
-    return inner
-
-
-# Example Usage:
-def test_selectors():
-    c: Selector = tag_selector("p")
-    p: Selector = tag_selector("body")
-    pp: Selector = tag_selector("html")
-    p_c: Selector = direct_child_selector(c,p)
-    pp_p = direct_child_selector(p,pp)
-    pp_p_c = direct_child_selector(c,p,pp)
-
-    _htmlelem = HTMLElement("html",{})
-    _bodyelem = Element("body",{},_htmlelem)
-    _pelem = Element("p",{},_bodyelem)
-    _htmlelem.children.append(_bodyelem)
-    _bodyelem.children.append(_pelem)
-
-    assert p_c(_pelem)
-    assert pp_p_c(_pelem)
-    assert pp_p(_bodyelem)
-
-
+EmptyElement = Element("empty", {}, HTMLElement("html", {}, None))
+EmptyElement.parent = None # type: ignore
 
 ################################### Rest is commentary in nature #########################################
 

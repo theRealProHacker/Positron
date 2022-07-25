@@ -1,9 +1,10 @@
+from itertools import chain
 import re
 from collections import ChainMap, defaultdict
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import cache
-from typing import Generic, Protocol, TypedDict
+from typing import Generic, Protocol, TypeVar, TypedDict
 
 from config import g
 from own_types import (Auto, AutoType, Color, ComputedValue_T, ComputedValue_T1, FontStyle, Normal, NormalType, NumPerc,
@@ -18,18 +19,11 @@ def split_units(attr: str)->tuple[float, str]:
     num, unit = match.groups() # type: ignore
     return float(num), unit
 
-
 ################## Acceptor #################################
 
 class Acceptor(Protocol[ComputedValue_T]):
     def __call__(self,value: str, p_style: style_computed)->None|ComputedValue_T:
         ...
-
-def set2dict(s):
-    return {
-        x if isinstance(x, str) else x.name.lower():x 
-        for x in s
-    }
 
 def _length(dimension: tuple[float, str], p_style):
     """ 
@@ -142,6 +136,8 @@ def length_percentage(value: str, p_style, mult: float|None = None):
 ################################## Style Data ################################
 # To add a new style key, document it, add it here and then implement it in the draw or layout methods
 
+# KeywordKey_T = TypeVar("KeywordKey_T", str, Sentinel, covariant=True)
+StrSent = str|Sentinel
 @dataclass # repr, no hash, eq, asdict 
 class StyleAttr(Generic[ComputedValue_T, ComputedValue_T1]):
     initial: str
@@ -151,16 +147,12 @@ class StyleAttr(Generic[ComputedValue_T, ComputedValue_T1]):
     def __init__(
         self, 
         initial: str, 
-        kws: set[ComputedValue_T] | dict[str, ComputedValue_T] = {}, 
+        kws: set[StrSent] | dict[str, ComputedValue_T] = {}, 
         acc: Acceptor[ComputedValue_T1] = noop, 
         inherits: bool = None
     ):
         self.initial = initial
-        if isinstance(kws, set):
-            kws: dict[str, ComputedValue_T] = set2dict(kws) # type: ignore[no-redef] # mypy bug: mypy.ini says allow-redefinition = True
-            inherits = False # display, box-sizing
-        assert isinstance(kws, dict)
-        self.kws = kws
+        self.kws = self.set2dict(kws) if isinstance(kws, set) else kws
         self.accept = acc
         if inherits is None:
             if acc is length_percentage:
@@ -169,64 +161,57 @@ class StyleAttr(Generic[ComputedValue_T, ComputedValue_T1]):
                 inherits == True
         self.inherits = inherits if inherits is not None else acc is not length_percentage
 
+    def set2dict(self, s: set)->dict[str,ComputedValue_T]:
+        return {
+            x if isinstance(x, str) else x.name.lower():x 
+            for x in s
+        }
+
     def convert(self, value: str, p_style: style_computed)->ComputedValue_T|ComputedValue_T1|None:
         kw = self.kws.get(value)
         return kw if kw is not None else self.accept(value, p_style)
 
-class _ColorStyle(TypedDict):
-    kws: dict[str, Color]
-    acc: Acceptor
-
-_color_style: _ColorStyle = {
-    # TODO: implement more color values
-    "kws": {
+####### Helpers ########
+_color_style = (
+    {
         "canvas-text":Color("black"),
         "transparent":Color(0,0,0,0)
     },
-    "acc": color
-}
+    color
+)
 
 # we don't want copies of these + better readibility
 auto = {"auto":Auto}
 normal = {"normal":Normal}
 
+alp: tuple[dict[str, Sentinel], Acceptor[NumPerc]] = (auto, length_percentage)
+aalp: tuple[str, dict[str, Sentinel], Acceptor[NumPerc]] = ("auto", auto, length_percentage)
+AALP = StyleAttr(*aalp)
+BorderAttr: StyleAttr[str, NumPerc] = StyleAttr("medium", g["abs_border_width"], length_percentage)
+
 def no_change(value: str, p_style)->str:
     return value
 
 Types = StyleAttr[Color,Color]|StyleAttr[float,float]|StyleAttr[ComputedValue_T,str]\
-    |StyleAttr[AutoType, NumPerc]|StyleAttr[NormalType, NumPerc]|StyleAttr[str, str]
+    |StyleAttr[Sentinel, NumPerc]|StyleAttr[NormalType, NumPerc]|StyleAttr[str, str]
 
 style_attrs: dict[str, Types] = {
-    "color" : StyleAttr("canvastext", **_color_style),
-    "font_weight": StyleAttr("normal", g["abs_fw_kws"], font_weight),
-    "font_family": StyleAttr("Arial", acc = no_change),
-    "font_size": StyleAttr("medium", acc = font_size),
-    "font_style": StyleAttr("normal", acc = font_style), 
-    "line_height": StyleAttr("normal", normal, length_percentage, True),
-    "word_spacing": StyleAttr("normal",normal, length_percentage, True),
+    "color" : StyleAttr("canvastext", *_color_style),
+    "font-weight": StyleAttr("normal", g["abs_fw_kws"], font_weight),
+    "font-family": StyleAttr("Arial", acc = no_change),
+    "font-size": StyleAttr("medium", acc = font_size),
+    "font-style": StyleAttr("normal", acc = font_style), 
+    "line-height": StyleAttr("normal", normal, length_percentage, True),
+    "word-spacing": StyleAttr("normal",normal, length_percentage, True),
     "display": StyleAttr("inline", {"inline", "block", "none"}),
-    "background_color": StyleAttr("transparent", **_color_style),
+    "background-color": StyleAttr("transparent", *_color_style),
     
-    "width":  StyleAttr("auto", auto, length_percentage),
-    "height":  StyleAttr("auto", auto, length_percentage),
-    "box_sizing": StyleAttr("content-box", {"content-box", "border-box"}),
-    # code for generating this in trash.py
-    "top":  StyleAttr("auto", auto, length_percentage),
-    "bottom": StyleAttr("auto", auto, length_percentage),
-    "left": StyleAttr("auto", auto, length_percentage),
-    "right": StyleAttr("auto", auto, length_percentage),
-    "margin_top": StyleAttr("auto", auto, length_percentage),
-    "margin_bottom": StyleAttr("auto", auto, length_percentage),
-    "margin_left": StyleAttr("auto", auto, length_percentage),
-    "margin_right": StyleAttr("auto", auto, length_percentage),
-    "margin_top": StyleAttr("auto", auto, length_percentage),
-    "margin_bottom": StyleAttr("auto", auto, length_percentage),
-    "margin_left": StyleAttr("auto", auto, length_percentage),
-    "margin_right":  StyleAttr("auto", auto, length_percentage),
-    "border_top_width":  StyleAttr("medium", auto, length_percentage),
-    "border_bottom_width":  StyleAttr("medium", auto, length_percentage),
-    "border_left_width":  StyleAttr("medium", auto, length_percentage),
-    "border_right_width": StyleAttr("medium", auto, length_percentage), 
+    "width":  AALP,
+    "height": AALP,
+    "position": StyleAttr("static", {"static", "relative", "absolute", "sticky", "fixed"}, acc = noop),
+    "box-sizing": StyleAttr("content-box", {"content-box", "border-box"}),
+    **{key: AALP for key in chain(g["inset-keys"],g["padding-keys"],g["margin-keys"])},
+    **{key: BorderAttr for key in g["border-width-keys"]}
 }
 
 abs_default_style = {k:"inherit" if v.inherits else v.initial for k,v in style_attrs.items()}
