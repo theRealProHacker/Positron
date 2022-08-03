@@ -2,15 +2,18 @@ from config import g
 from Element import Element
 from Selectors import Parser, Selector
 
-def find_in(elem: Element, selector: Selector):
-    if selector(elem):
-        return elem
+def find_in(elem: Element, selector: Selector)->Element|None:
+    found: Element|None
     for c in elem.iter_children():
-        if selector(c):
-            return c
+        if elem is c:
+            found = c if selector(c) else None
+        else:
+            found = find_in(c, selector)            
+        if found:
+            return found
     return None
 
-# J is inspired by $ (jQuery) and is basically an ElementProxy
+# J is inspired by $ from jQuery and is basically an ElementProxy
 class J:
     _elem: Element
     def __new__(cls, query: str|Element):
@@ -23,6 +26,7 @@ class J:
             else:
                 self = super().__new__(cls)
                 self._elem = elem
+                return self
         else:
             self._elem = query
 

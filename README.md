@@ -2,6 +2,7 @@
 
 # Sources (MVPs)
 - MDN
+- [The official HTML specifications](html.spec.whatwg.org)
 - [How Browsers work](https://web.dev/howbrowserswork/)
 - [Web Browser Engineering](https://browser.engineering/)
 ## Single sources
@@ -9,6 +10,10 @@
 - https://runebook.dev/en/docs/css/css_flow_layout/block_and_inline_layout_in_normal_flow
 - https://www.rexegg.com/regex-boundaries.html
 - https://hacks.mozilla.org/2017/08/inside-a-super-fast-css-engine-quantum-css-aka-stylo/
+
+# Sites to save
+- [Parsing](https://html.spec.whatwg.org/multipage/parsing.html#tokenization)
+- [Firefox Source Structure](https://firefox-source-docs.mozilla.org/contributing/directory_structure.html)
 
 # Thoughts
 
@@ -63,7 +68,7 @@ These specify the attributes with their types and constraints. Every computed ty
 - font-style: FontStyle
 - color: 
     - From: name, rgb, rgba, hex and more
-    - To: pg.Color
+    - To: Color
 - display: string (inline, block, none)
 - background-color: Color
 - width: 
@@ -81,6 +86,7 @@ These specify the attributes with their types and constraints. Every computed ty
 - margin(tbrl): float or Auto or percentage
 - padding(tbrl): float or Auto or percentage
 - border-width(tbrl): float or Auto
+- border-color(tbrl): Color
 - line-height: float or percentage or Normal
 - word-spacing: float or percentage or Normal
 

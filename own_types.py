@@ -1,16 +1,20 @@
 from __future__ import annotations
-
-################################################ types #################################################################
 from dataclasses import dataclass
-from typing import Any, Generator, Literal, Mapping, TypeVar, Union
+from typing import Any, Generator, Literal, Mapping, TypeVar, Union, Protocol
 from xml.etree.ElementTree import Element as _XMLElement
 from enum import Enum as _Enum, auto as enum_auto
 
 import pygame as pg
-from pygame.font import Font
 from pygame.math import Vector2 as _Vector2
-from pygame.rect import Rect
 from pygame.surface import Surface
+from pygame.font import Font
+from pygame.rect import Rect
+from pygame.event import Event
+
+# Abstract Protocols
+def Screen(Protocol):
+    def blit(self, __surf: Surface):
+        ...
 
 ############################ Some Classes ##############################
 
@@ -27,19 +31,28 @@ class Vector2(_Vector2):
         yield self.y
 
     def __add__(self, other: Dimension|_Vector2)->'Vector2':
-        ...
+        other: Vector2 = Vector2(other)
+        return Vector2(
+            self.x + other.x,
+            self.y + other.y
+        )
     
     def __sub__(self, other: Dimension|_Vector2)->'Vector2':
-        ...
+        other: Vector2 = Vector2(other)
+        return Vector2(
+            self.x - other.x,
+            self.y - other.y
+        )
 
     def __mul__(self, other: float)->'Vector2': # type: ignore [override]
-        ...
-
-
+        return Vector2(
+            self.x*other,
+            self.y*other
+        )
 
 x,y = Vector2(0,0)
 
-@dataclass
+@dataclass(frozen=True)
 class Percentage:
     value: float
     def __mul__(self, other: float)->float:
@@ -50,13 +63,13 @@ class Percentage:
 class FontStyle:
     value: Literal["normal", "italic", "oblique"]
     angle: float
-    def __init__(self, value: Literal["normal", "italic", "oblique"], oblique_angle: str|None = None):
+    def __init__(self, value: Literal["normal", "italic", "oblique"], angle: str|None = None):
         assert value in ("normal", "italic", "oblique")
         self.value = value
-        self.angle = 14 if oblique_angle is None else float(oblique_angle)
+        self.angle = 14 if angle is None else float(angle)
 
     def __hash__(self):
-        return hash(f"{self.value} {self.angle}")
+        return hash(f"{self.value}@{self.angle}")
 
 class Color(pg.Color):
     def __setattr__(self, __name: str, __value: Any) -> None:
@@ -64,23 +77,22 @@ class Color(pg.Color):
     def __hash__(self):
         return hash(int(self))
 
-################## Sentinels ###############
+################## Sentinels ###################
 class Sentinel(Enum):
     Auto = enum_auto()
     Normal = enum_auto()
-
-Auto = Sentinel.Auto
-Normal = Sentinel.Normal
 
 # Type Aliases
 AutoType = Literal[Sentinel.Auto]
 NormalType = Literal[Sentinel.Normal]
 
+Auto: AutoType = Sentinel.Auto
+Normal: NormalType = Sentinel.Normal
+
+
 Index = int|slice
-style_input = Mapping[str, str]
+style_input = dict[str, str]
 computed_value = float | Percentage | Sentinel| FontStyle | Color | str
-ComputedValue_T = TypeVar("ComputedValue_T", bound = computed_value, covariant=True)
-ComputedValue_T1 = TypeVar("ComputedValue_T1", bound = computed_value, covariant=True)
 style_computed = Mapping[str, computed_value]
 
 Number = int, float
@@ -93,8 +105,6 @@ SNP_T = TypeVar("SNP_T",bound = SNP, covariant=True)
 
 SNP4Tuple = tuple[SNP, SNP, SNP, SNP]
 Float4Tuple = tuple[float, float, float, float]
-
-
 
 if __name__ == '__main__':
     # test sentinels

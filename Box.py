@@ -9,7 +9,7 @@ from typing import Any, Callable, Mapping
 import pygame as pg
 from pygame.rect import Rect
 
-import own_types as _o # Just for dotted access to Auto
+import own_types as _o # Just for dotted access to Auto in match
 from own_types import (Auto, AutoNP, Dimension, Float4Tuple, Index, Number,
                        style_computed)
 from util import (Calculator, bw_getter, ensure_suffix, mrg_getter, noop,
@@ -90,24 +90,26 @@ def mutate_tuple(tup: tuple, val, slicing: Index):
     return tuple(l)
 
 class Box:
-    __slots__ = ['t', 'x', 'y', 'width', 'height', 'margin', 'border', 'padding']
+    __slots__ = [
+        't', 'x', 'y', 'width', 'height', 'margin', 'border', 'padding'
+    ]
     def __init__(
         self,
         t: str,
-        margin: tuple[float,...] = (0,)*4,
-        border: tuple[float,...] = (0,)*4,
-        padding: tuple[float,...] = (0,)*4,
+        margin: Float4Tuple = (0,)*4,
+        border: Float4Tuple = (0,)*4,
+        padding: Float4Tuple = (0,)*4,
         width: float = 0,
         height: float = 0,
         pos: Dimension = (0,0),
-        outer_width: bool = False
+        content_width: bool = False
     ):
         self.t = box_sizing(t)
         self.margin = margin 
         self.border = border
         self.padding = padding
         self.x, self.y = pos
-        self.width = width if not outer_width else convert(self, "width", "outer-box", value = width)
+        self.width = width if not content_width else convert(self, "width", "content-box", value = width)
         self.height = height
 
     @staticmethod
@@ -126,31 +128,24 @@ class Box:
         for attr, val in zip(("x","y"), pos):
             self._set(attr, val, _t)
 
-    def __eq__(self, other):
-        assert isinstance(other, Box), other
-        return self.outer_box == other.outer_box
+    @property
+    def outer_box(self):
+        return self.box("outer")
 
-    def __copy__(self):
-        return Box(
-            self.t,
-            self.margin,
-            self.border,
-            self.padding,
-            self.width, self.height,
-            self.pos
-        )
+    @property
+    def border_box(self):
+        return self.box("border")
 
-    def __repr__(self):
-        if self.is_empty():
-            return "<EmptyBox>"
-        else:
-            return f"<Box {tuple(self.outer_box)}>"
+    @property
+    def content_box(self):
+        return self.box("content")
 
-    def _set(self, attr: str, value: Any, t: str = "outer"):
+    
+    def _set(self, attr: str, value: Any, t: str = "outer_box"):
         _t = box_sizing(t)
         setattr(self, attr, convert(self, attr, frm = _t, value = value))
 
-    def _box(self, t: str)->Rect:
+    def box(self, t: str)->Rect:
         _t = box_sizing(t)
         return Rect(
             convert(self, "x", to = _t),
@@ -159,16 +154,38 @@ class Box:
             convert(self, "height", to = _t)
         )
 
+    def _props(self):
+        return (
+            self.t,
+            self.margin,
+            self.border,
+            self.padding,
+            self.width, self.height,
+            self.pos
+        )
+
+    def __eq__(self, other):
+        assert isinstance(other, Box), other
+        return  self._props() == other._props()
+
+    def __copy__(self):
+        return Box(*self._props())
+
+    def __str__(self):
+        if self.is_empty():
+            return "<EmptyBox>"
+        else:
+            return f"<Box {tuple(self.outer_box)}>"
+
+    def __repr__(self):
+        return f"<Box{self._props()}>"
+
     def __getattr__(self, name: str):
         """
         Enables special member access, like padding_top, or margin_vertical
         """
         with suppress(AssertionError):
             match name.split("_"):
-                case [prop]:
-                    return self._box(prop)
-                case prop, part if part == "box":
-                    return self._box(prop)
                 case prop, part if prop == "set":
                     return partial(self._set, part)
                 case prop, part if part in part_slices:
@@ -221,11 +238,9 @@ def make_box(
     margin: Float4Tuple
     padding = calc.multi4(pad_getter(style), 0)
     border = calc.multi4(bw_getter(style))
-    outer_width = False
     if style["width"] is Auto:
         margin = calc.multi4(mrg_getter(style), 0)
         width = not_neg(given_width - _sum(*margin[2:], *border[2:], *padding[2:]))
-        outer_width = True
     else:
         # width is a resolvable value. So margin: auto resolves to all of the remaining space
         width = calc(style["width"]) # type: ignore[arg-type]
@@ -243,7 +258,7 @@ def make_box(
         padding,
         width,
         height,
-        outer_width = outer_width
+        content_width = style["width"] is Auto
     )
     set_height: Callable[[float],None] = box.set_height if height == -1 else noop 
     return box, set_height # set_height is the function that should be called when the height is ready to be set
@@ -255,7 +270,7 @@ def test():
         border = (3,)*4,
         width = 500,
         height = 150,
-        outer_width=True # as if the width was the parents inner width
+        content_width=True # as if the width was the parents inner width
     )
     assert box.width == 500 - 6, box.width
     assert box.height == 150
