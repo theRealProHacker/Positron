@@ -23,27 +23,6 @@ from Element import Element, HTMLElement, apply_rules, create_element
 from own_types import Event, Surface, Vector2
 
 
-class OwnHandler(FileSystemEventHandler):
-    def __init__(self, file: str):
-        self.file = abspath(file)
-        self.last_hit = time.monotonic() # this doesn't need to be accurate
-        dir = dirname(self.file)
-        # the handler creates its own observer, which might seem weird, but its perfect
-        ob = Observer()
-        ob.schedule(self, dir)
-        ob.start()
-
-    def on_modified(self, event: FileModifiedEvent|DirModifiedEvent):
-        if event.src_path == self.file and (t:=time.monotonic())-self.last_hit > 2:
-            global reload
-            reload = True
-            pg.event.post(Event(pg.QUIT))
-            self.last_hit = t
-
-def show_image(surf: Surface):
-    rect = surf.get_rect(center = DIM/2)
-    SCREEN.blit(surf, rect)
-
 pg.init()
 W,H = DIM = Vector2((g["W"],g["H"]))
 SCREEN = pg.display.set_mode(DIM, pg.RESIZABLE)
@@ -56,7 +35,6 @@ reload = False
 
 def run(file: str):
     global reload
-    OwnHandler(file)
     logging.info("Starting")
     try:
         main(file)
@@ -72,16 +50,17 @@ def main(file: str):
     if running: raise RuntimeError("Already running")
     running = True
     reset_config()
+    g["handler"] = OwnHandler([file])
 
-    html = util.readf(file)
+    html = util.fetch_src(file)
     parsed = html5lib.parse(html)
     tree: HTMLElement = create_element(parsed)
-    logging.debug(tree.to_html())
     pg.display.set_caption(g["title"])
     g["root"] = tree
 
     tree.compute()
     tree.layout()
+    logging.info(tree.to_html())
 
     end = False
     recompute = False
@@ -97,6 +76,7 @@ def main(file: str):
         if end: break
         if g["css_rules_dirty"]:
             apply_rules(tree, g["css_rules"])
+            recompute = True
         if recompute:
             tree.compute()
             tree.layout()
@@ -131,4 +111,40 @@ def test():
     tree.compute()
     tree.layout()
 
-run("example.html")
+
+class OwnHandler(FileSystemEventHandler):
+    files: set["str"]
+    dirs: set["str"]
+    def __init__(self, files: list[str]):
+        self.last_hit = time.monotonic() # this doesn't need to be accurate
+        self.files = set()
+        self.dirs = set()
+        self.add_files(files)
+
+    def add_files(self, files: list[str]):
+        files = {abspath(file) for file in files}
+        self.files |= files
+        new_dirs = {dirname(file) for file in files}
+        self.dirs, new_dirs = self.dirs|new_dirs, self.dirs^new_dirs
+        for dir in new_dirs:
+            ob = Observer()
+            ob.schedule(self, dir)
+            ob.start()
+        
+
+    def on_modified(self, event: FileModifiedEvent|DirModifiedEvent):
+        if event.src_path in self.files and (t:=time.monotonic())-self.last_hit > 0.2:
+            global reload
+            reload = True
+            pg.event.post(Event(pg.QUIT))
+            self.last_hit = t
+
+def show_image(surf: Surface):
+    rect = surf.get_rect(center = DIM/2)
+    SCREEN.blit(surf, rect)
+
+
+
+if __name__ == "__main__":
+    run("example.html")
+

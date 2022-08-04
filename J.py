@@ -1,6 +1,5 @@
 from config import g
-from Element import Element
-from Selectors import Parser, Selector
+from Element import Element, Parser, Selector
 
 def find_in(elem: Element, selector: Selector)->Element|None:
     found: Element|None

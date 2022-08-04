@@ -3,7 +3,6 @@ A simple inline css parser
 """
 
 from own_types import style_input
-# from Selectors import Parser
 
 directions = ["top", "right", "bottom", "left"]
 
@@ -68,21 +67,6 @@ def postprocess(d: style_input):
 
 def inline(input: str)->style_input:
     return postprocess(parse_single(input))
-
-# def handle_rule(rule: cssutils.css.CSSStyleRule):
-#     parser = Parser(rule.selectorText)
-#     return (
-#         parser.run(),
-#         parse_single(rule.style),
-#         parser.specificity
-#     )
-
-# def parse(s: str):
-#     parsed: cssutils.css.CSSStyleSheet = cssutils.parseString(s)
-#     return [
-#         handle_rule(rule)
-#         for rule in parsed.cssRules
-#     ]
 
 
 if __name__ == "__main__":

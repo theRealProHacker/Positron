@@ -16,6 +16,7 @@ g: Any = {
     "W": 900,       # int
     "H": 600,       # int
     "root": None,   # the html element
+    "handler": None, # the handler
     "screen": None, # pg.Surface
     "default_font_size": 16 # float
 }
@@ -27,7 +28,7 @@ def reset_config():
         "title": "",  # str # this is set in Element.py by the title element
         "cstyles": Cache(), # Cache[computed_style] # the style cache
         "css_rules": Cache(), # Cache[Rule] # a list of external css rules
-        "css_rules_dirty": False, # bool 
+        "css_rules_dirty": False, # bool
     })
 # main must reset
 

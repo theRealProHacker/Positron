@@ -5,7 +5,7 @@ concepts
 .mypy_cache
 .vscode
 
-# testing
+error.log
 test.*
 example.*
 trash.*

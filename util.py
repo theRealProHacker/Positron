@@ -12,7 +12,7 @@ from typing import Any, Iterable, Protocol, TypeVar
 import pygame as pg
 import pygame.freetype as freetype
 
-from config import all_units
+from config import all_units, g
 from own_types import (
     Auto,
     AutoNP,
@@ -32,6 +32,10 @@ from own_types import (
 
 def noop(*args, **kws):
     return None
+
+################## g Manipulations ##########################
+def watch_file(*files: str):
+    g["handler"].add_files(files)
 
 
 ################## Element Calculation ######################
@@ -81,10 +85,7 @@ class Calculator:
 
 
 ################## Value Correction #########################
-
 Var = TypeVar("Var")
-
-
 def make_default(value: Var | None, default: Var) -> Var:
     """
     If the `value` is None this returns `default` else it returns `value`
@@ -119,8 +120,9 @@ def all_equal(l):
     x, *rest = l
     return all(x == r for r in rest)
 
+####################################################################
 
-##################### Itemgetters ##########################
+########################## Itemgetters #############################
 
 directions = ("top", "bottom", "left", "right")
 
@@ -166,7 +168,9 @@ mrg_getter: ANPGetter = itemgetter(*marg_keys)  # type: ignore[assignment]
 
 bc_getter: T4Getter[Color] = itemgetter(*bc_keys)  # type: ignore[assignment]
 
-####################### I/O #################################
+####################################################################
+
+############################## I/O #################################
 
 
 def fetch_src(src: str):
@@ -217,6 +221,7 @@ def print_parsed_tree(tree, indent=0, with_text=False):
             print_parsed_tree(child, indent + 2)
     print(" " * indent, f"</{tag}>")
 
+####################################################################
 
 ####################### Regexes ##################################
 def compile(patterns: Iterable[str | re.Pattern]):
@@ -263,6 +268,8 @@ def check_regex(name: str, to_check: str):
 
 for key, value in regexes.items():
     globals()[f"is_{key}"] = partial(check_regex, key)
+
+####################################################################
 
 ########################## Test ####################################
 def test():

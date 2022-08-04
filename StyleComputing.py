@@ -1,5 +1,5 @@
 import re
-from collections import ChainMap, defaultdict
+from collections import defaultdict
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import cache
@@ -24,6 +24,7 @@ from own_types import (
     Number,
     NumPerc,
     Percentage,
+    ReadChain,
     Sentinel,
     style_computed,
     computed_value
@@ -263,7 +264,7 @@ abs_default_style = {
 }
 """ The default style for a value (just like "unset") """
 
-element_styles: dict[str, dict[str, str]] = defaultdict(
+element_styles = defaultdict(
     dict,
     {
         "html": {
@@ -287,7 +288,7 @@ element_styles: dict[str, dict[str, str]] = defaultdict(
 
 @cache
 def get_style(tag: str):
-    return ChainMap(element_styles[tag], abs_default_style)
+    return ReadChain(element_styles[tag], abs_default_style)
 
 
 def test():

@@ -1,17 +1,15 @@
 
-from collections import ChainMap
-from collections.abc import Iterable
 from contextlib import suppress
 from functools import partial
 from itertools import chain
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Iterable
 
 import pygame as pg
 from pygame.rect import Rect
 
 import own_types as _o # Just for dotted access to Auto in match
 from own_types import (Auto, AutoNP, Dimension, Float4Tuple, Index, Number,
-                       style_computed)
+                       style_computed, ReadChain)
 from util import (Calculator, bw_getter, ensure_suffix, mrg_getter, noop,
                   not_neg, pad_getter)
 
@@ -35,7 +33,7 @@ _indices: dict[str, Index] = {
     "right": 3,
 }
 
-part_slices: Mapping[str, Index] = ChainMap(_indices,{ 
+part_slices: Mapping[str, Index] = ReadChain(_indices,{ 
     "horizontal": slice(2, None),
     "vertical": slice(None, 2)
 })
@@ -141,7 +139,7 @@ class Box:
         return self.box("content")
 
     
-    def _set(self, attr: str, value: Any, t: str = "outer_box"):
+    def _set(self, attr: str, value: Any, t: str = "outer-box"):
         _t = box_sizing(t)
         setattr(self, attr, convert(self, attr, frm = _t, value = value))
 
@@ -168,8 +166,10 @@ class Box:
         assert isinstance(other, Box), other
         return  self._props() == other._props()
 
-    def __copy__(self):
+    def copy(self):
         return Box(*self._props())
+
+    __copy__ = copy
 
     def __str__(self):
         if self.is_empty():
