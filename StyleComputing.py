@@ -1,8 +1,9 @@
+from operator import or_
 import re
 from collections import defaultdict
 from contextlib import suppress
 from dataclasses import dataclass
-from functools import cache
+from functools import cache, reduce
 from itertools import chain
 from typing import Generic, Mapping, Protocol, TypeVar
 
@@ -27,14 +28,27 @@ from own_types import (
     ReadChain,
     Sentinel,
     style_computed,
-    computed_value
+    style_input,
+    computed_value,
 )
-from util import bc_keys, bw_keys, dec_re, inset_keys, int_re, marg_keys, noop, pad_keys
+from util import (
+    bc_keys,
+    bs_keys,
+    bw_keys,
+    check_regex,
+    dec_re,
+    inset_keys,
+    int_re,
+    marg_keys,
+    noop,
+    pad_keys,
+)
 
 ################## Acceptor #################################
 
 
-ComputedValue_T = TypeVar("ComputedValue_T", bound = computed_value, covariant=True)
+ComputedValue_T = TypeVar("ComputedValue_T", bound=computed_value, covariant=True)
+
 
 class Acceptor(Protocol[ComputedValue_T]):
     def __call__(self, value: str, p_style: style_computed) -> None | ComputedValue_T:
@@ -180,6 +194,7 @@ def length_percentage(value: str, p_style, mult: float | None = None):
 
 StrSent = str | Sentinel
 
+
 @dataclass
 class StyleAttr(Generic[ComputedValue_T]):
     initial: str
@@ -208,9 +223,7 @@ class StyleAttr(Generic[ComputedValue_T]):
     def set2dict(self, s: set) -> Mapping[str, ComputedValue_T]:
         return {x if isinstance(x, str) else x.name.lower(): x for x in s}
 
-    def convert(
-        self, value: str, p_style: style_computed
-    ) -> ComputedValue_T | None:
+    def convert(self, value: str, p_style: style_computed) -> ComputedValue_T | None:
         kw = self.kws.get(value)
         return kw if kw is not None else self.accept(value, p_style)
 
@@ -218,7 +231,7 @@ class StyleAttr(Generic[ComputedValue_T]):
 ####### Helpers ########
 _color_style = ({"canvastext": Color("black"), "transparent": Color(0, 0, 0, 0)}, color)
 
-# we don't want copies of these + better readibility
+# we don't want copies of these (memory) + better readibility
 auto: dict[str, AutoType] = {"auto": Auto}
 normal: dict[str, NormalType] = {"normal": Normal}
 
@@ -229,14 +242,42 @@ aalp: tuple[str, dict[str, AutoType], Acceptor[NumPerc]] = (
     length_percentage,
 )
 AALP = StyleAttr(*aalp)
-BorderAttr: StyleAttr[NumPerc] = StyleAttr(
+BorderWidthAttr: StyleAttr[NumPerc] = StyleAttr(
     "medium", abs_border_width, length_percentage
+)
+BorderStyleAttr: StyleAttr[str] = StyleAttr(
+    "none",
+    {
+        "none",  # implemented
+        "hidden", # partially implemented
+        "dotted",
+        "dashed",
+        "solid",  # partially implemented
+        "double",
+        "groove",
+        "ridge",
+        "inset",
+        "outset",
+    },
+    inherits=False,
 )
 
 def no_change(value: str, p_style) -> str:
     return value
 
 Types = StyleAttr[computed_value]
+
+def join_rules(maps): # simple join # later add !important
+    return reduce(or_, reversed(maps), {})
+
+priority_keys = ("color", "font-size")
+def priority(m: Mapping):
+    d = dict(m)
+    prio = {
+        k:value for k in priority_keys if (value:=d.pop(k, None)) is not None # pop the key
+    }
+    return prio|d
+
 
 style_attrs: dict[str, Types] = {
     "color": StyleAttr("canvastext", *_color_style),
@@ -251,12 +292,29 @@ style_attrs: dict[str, Types] = {
     "width": AALP,
     "height": AALP,
     "position": StyleAttr(
-        "static", {"static", "relative", "absolute", "sticky", "fixed"}, acc=noop
+        "static", {"static", "relative", "absolute", "sticky", "fixed"}
     ),
     "box-sizing": StyleAttr("content-box", {"content-box", "border-box"}),
     **{key: AALP for key in chain(inset_keys, pad_keys, marg_keys)},
-    **{key: BorderAttr for key in bw_keys},
-    **{key: StyleAttr("black", *_color_style) for key in bc_keys},
+    **{key: BorderWidthAttr for key in bw_keys},
+    **{key: StyleAttr("currentcolor", *_color_style) for key in bc_keys},
+    **{key: BorderStyleAttr for key in bs_keys},
+}
+from pygame.colordict import THECOLORS
+
+colors = ReadChain(
+    {
+        "currentcolor": True,
+    },
+    _color_style[0],
+    THECOLORS,
+)
+
+guessing = {
+    "border-width": lambda value: value in BorderStyleAttr.kws,
+    "border-color": lambda value: value in colors,
+    "border-style": lambda value: value in BorderWidthAttr.kws
+    or check_regex("dimension", value),
 }
 
 abs_default_style = {
@@ -290,23 +348,89 @@ element_styles = defaultdict(
 def get_style(tag: str):
     return ReadChain(element_styles[tag], abs_default_style)
 
+###########################  Postprocessing #########################
+directions = ("top", "right", "bottom", "left")
+global_values = frozenset({"inherit", "initial", "unset", "revert"})
 
-def test():
-    import pytest
+dir_fallbacks = {"right": "top", "bottom": "top", "left": "right"}
+dir_shorthands = dict(
+    [
+        ("margin", "margin-{}"),
+        ("padding", "padding-{}"),
+        ("border-width", "border-{}-width"),
+        ("border-color", "border-{}-color"),
+        ("border-style", "border-{}-style"),
+        ("inset", "{}"),
+    ]
+)
 
-    assert split_units("3px") == (3, "px")
-    assert split_units("0") == (0, "")
-    assert split_units("70%") == (70, "%")
 
-    assert color("rgb(120,120,120)", {}) == Color(*(120,) * 3)
-    assert color("rgba(120,120,120,120)", {}) == Color(*(120,) * 4)
-    assert color("currentcolor", {"color": Color("blue")}) == Color("blue")
-    with pytest.raises(ValueError):
-        split_units("blue")
+def is_valid(key, value):
+    if key in global_values:
+        return True
+    elif (validator := guessing.get(key)) is not None:
+        return validator(color)
+    elif (attr := style_attrs.get(key) is not None):
+        if key in attr.kws:
+            return True
+        with suppress(KeyError):
+            if attr.accept(value, {}) is None:
+                return False
+        return True
+    return False
 
 
-if __name__ == "__main__":
-    # print StyleAttrs
-    for key, attr in style_attrs.items():
-        if attr.inherits:
-            print(attr)
+def postprocess(d: style_input):
+    """
+    Unpacks shorthands
+    """
+    # TODO: font
+    # TODO: border-radii
+
+    smart_shorthands = {  # smart shorthands are when the split depends on the values
+        "border": {"border-width", "border-style", "border-color"},
+        **{
+            f"border-{k}": {
+                f"border-{k}-width",
+                f"border-{k}-style",
+                f"border-{k}-color",
+            }
+            for k in directions
+        },
+    }
+    done = {}
+    todo = d.copy()
+    for key in d:
+        # we are basically scrolling through the css
+        # try:
+        value = todo.pop(key)
+        if key == "all":
+            # assert key in global_values
+            done = {k: value for k in style_attrs}
+        elif key in dir_shorthands:
+            fstring = dir_shorthands[key]
+            arr = value.split()
+            # assert len(arr) <= len(directions), f"Too many values: {len(arr)}, max {len(directions)}"
+            _res = dict(zip(directions, arr))
+            for k in directions[len(_res) :]:
+                _res[k] = _res[dir_fallbacks[k]]
+            done.update({fstring.format(k): v for k, v in _res.items()})
+        elif (shorthand := smart_shorthands.get(key)) is not None:
+            arr = value.split()
+            # assert len(arr) <= len(shorthand), f"Too many values: {len(arr)}, max {len(shorthand)}"
+            result = {
+                k: v
+                for v in arr
+                for k in shorthand
+                # is only removed if is_valid 
+                if is_valid(k, v) and not shorthand.remove(k) # type: ignore[func-returns-value]
+            }
+            # assert not shorthand, f"Invalid value(s): {', '.join(shorthand)}"
+            done.update(result)
+        else:
+            # assert key in style_attrs, f"Unknown Property: {key}"
+            # assert is_valid(key, value), f"Invalid Value: {value}"
+            done[key] = value
+        # except AssertionError as e:
+        #     log_error(f"CSS: {e.args[0]} ({key}: {value})")
+    return done

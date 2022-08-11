@@ -3,21 +3,22 @@ from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass
 from functools import cache, reduce
-from itertools import chain
-from typing import Any, Callable, Iterable, Iterator, Mapping, Protocol
+from itertools import chain, takewhile
+from tokenize import single_quoted
+from typing import Any, Callable, Iterable, Iterator, Mapping, Protocol, Type, cast
 
 import cssutils
+import tinycss
 import pygame as pg
 
-import own_css_parser as css
 from Box import Box, make_box
 from config import g
-from own_types import (Auto, AutoNP4Tuple, Dimension, Float4Tuple, Font,
+from own_types import (Auto, AutoNP4Tuple, BugError, Color, Dimension, Float4Tuple, Font,
                        FontStyle, ReadChain, Rect, Surface, Vector2, _XMLElement,
                        computed_value, style_computed, style_input)
-from StyleComputing import abs_default_style, get_style, style_attrs
+from StyleComputing import abs_default_style, get_style, priority, style_attrs, postprocess
 from util import (Calculator, bc_getter, fetch_src, get_tag, inset_getter,
-                  log_error, rect_lines, watch_file)
+                  log_error, rect_lines, watch_file, bs_getter, directions, bw_getter, bw_setter)
 
 """ More useful links for further development
 https://developer.mozilla.org/en-US/docs/Web/CSS/image
@@ -106,7 +107,7 @@ class Element:
     tag: str
     attrs: dict
     istyle: style_input  # inline style
-    estyle: Any  # external style
+    estyle: style_input  # external style
     cstyle: style_computed  # computed_style
     children: list["Element"]
     focus: bool = False
@@ -117,7 +118,7 @@ class Element:
         self.tag = tag
         self.attrs = attrs
         # parse element style and update default
-        self.istyle = css.inline(attrs.get("style", ""))
+        self.istyle = postprocess(dict(cssutils.parseStyle(attrs.get("style", ""))))
         self.estyle = {}
 
     def is_block(self) -> bool:
@@ -164,16 +165,27 @@ class Element:
         Assembles the input style and then converts it into the Elements computed style.
         It then computes all the childrens styles
         """
+        input_style = ReadChain(self.estyle, self.istyle, get_style(self.tag))
+        prioritates = priority(input_style)
         parent_style = self.parent.cstyle
         style: style_computed = {}
-        input_style = ReadChain(self.estyle, self.istyle, get_style(self.tag))
         for key in input_style & style_attrs.keys():
             val = input_style[key]
-            if key not in style:
-                style[key] = process_style(self, val, key, parent_style)
-                assert (
-                    style[key] is not None
-                ), f"Style {key} was set to None. Which should never happen."
+            new_val = process_style(self, val, key, parent_style)
+            assert (
+                new_val is not None
+            ), f"Style {key} was set to None. Which should never happen."
+            style[key] = new_val
+            if key in ("color","fontsize"):
+                parent_style[key] = new_val
+        # corrections
+        bw_setter(style, tuple(
+            0 if _style in ("none", "hidden") else width
+            for _style, width in zip(bs_getter(style), bw_getter(style))
+        ))
+        for key, value in zip(directions, bs_getter(style)):
+            if value in ("none", "hidden"):
+                style[key] = 0
         self.cstyle = g["cstyles"].safe(style)
         for child in self.children:
             child.compute()
@@ -279,6 +291,7 @@ class Element:
         # TODO
         # 3. draw border
         if any(draw_box.border):
+            assert any(b=="solid" for b in bs_getter(style))
             if (
                 (bw := draw_box.border[0])
                 and all(w == bw for w in draw_box.border)
@@ -296,6 +309,9 @@ class Element:
             c.draw(screen, draw_box.content_box.topleft)
         # 5. draw outline
         # TODO
+        pass
+
+    def delete(self):
         pass
 
     ###############################  I/O for Elements  ##################################################################
@@ -344,7 +360,7 @@ class Element:
 
     @property
     def real_children(self):
-        return [c for c in self.children if c.display != "none" and not isinstance(c, TextElement)]
+        return [c for c in self.children if not isinstance(c, (TextElement, MetaElement))]
 
 class HTMLElement(Element):
     def __init__(self, tag: str, attrs: dict[str, str], parent: Element = None):
@@ -356,9 +372,9 @@ class HTMLElement(Element):
         super().__init__("html", attrs, parent=self)
         if "lang" in self.attrs:
             g["lang"] = self.attrs["lang"]
+        self.cstyle = {}
 
     def compute(self):
-        self.cstyle = {} # parent style
         super().compute()
 
     def layout(self):
@@ -423,14 +439,14 @@ class StyleElement(MetaElement):
 
     def reg_rules(self, src: str):
         """Register a set of new rules from the given string"""
-        sheet = cssutils.parseString(src)
-        rules: list[Rule] = [
-            dict(rule.style)|{"selector": Parser(rule.selectorText).run()}
-            for rule in sheet.cssRules
+        rules: cssutils.css.CSSRuleList = cssutils.parseString(src).cssRules
+        newRules: list[Rule] = [
+            postprocess(dict(rule.style))|{"selector": parse_selector(rule.selectorText)}
+            for rule in rules
         ]
-        g["css_rules_dirty"] |= bool(rules)
+        g["css_rules_dirty"] |= bool(newRules)
         self.rules.extend(
-            [g["css_rules"].safe(rule) for rule in rules]
+            [g["css_rules"].safe(rule) for rule in newRules]
         )
 
     def delete(self):
@@ -566,7 +582,7 @@ def create_element(elem: _XMLElement, parent: Element | None = None):
 def apply_rules(elem: "Element", rules: list[Rule]):
     l = [rule for rule in rules if rule["selector"](elem)]
     l.sort(key=lambda rule: rule["selector"].spec, reverse=True) # highest selector first
-    elem.estyle = ReadChain(*(rule_style(rule) for rule in l))
+    elem.estyle = dict(ReadChain(*(rule_style(rule) for rule in l)))
     for c in elem.real_children:
         apply_rules(c, rules)
 
@@ -592,7 +608,7 @@ from own_types import Enum, enum_auto
 from util import get_groups
 
 class Selector(Protocol):
-    spec: Spec
+    spec: Spec|cached_property[Spec]
     def __call__(self: Any, elem: Element)->bool:
         ...
     def __hash__(self) -> int:
@@ -628,7 +644,8 @@ class HasAttrSelector:
 
 # the validator takes the soll value and the is value
 def make_attr_selector(sign: str, validator):
-    regex = re.compile(fr'\[(\w+){sign}="(\w+)"\]')
+    sign = re.escape(sign)
+    regex = re.compile(fr'\[{s}(\w+){s}{sign}={s}"(\w+)"{s}\]|\[{s}(\w+){s}{sign}={s}(\w+){s}\]')
     @dataclass(frozen=True, slots=True)
     class AttributeSelector:
         name: str
@@ -646,6 +663,13 @@ class AnySelector:
     def __call__(self, elem: Element): return True
     __str__ = lambda self: "*"
 
+@dataclass(frozen=True, slots=True)
+class NeverSelector:
+    spec: Spec
+    s: str
+    def __call__(self, elem: Element): return False
+    def __str__(self): return self.s
+
 ################################## Composite Selectors ###############################
 class CompositeSelector(Selector):
     selectors: Sequence[Selector]
@@ -657,6 +681,13 @@ class AndSelector:
     spec = cached_property(joined_specs)
     __call__ = lambda self, elem: all(elem.matches(sel) for sel in self.selectors)
     __str__ = lambda self: ''.join(str(s) for s in self.selectors) #type: ignore[attr-defined]
+
+@dataclass(frozen=True, slots=True)
+class OrSelector:
+    selectors: tuple[Selector,...]
+    spec = cached_property(joined_specs)
+    __call__ = lambda self, elem: any(elem.matches(sel) for sel in self.selectors)
+    __str__ = lambda self: ', '.join(str(s) for s in self.selectors) #type: ignore[attr-defined]
 
 @dataclass(frozen=True, slots=True)
 class DirectChildSelector:
@@ -679,83 +710,11 @@ class ChildSelector:
     __str__ = lambda self: " ".join(str(s) for s in self.selectors) #type: ignore[attr-defined]
 
 ########################################## Parser #######################################################
+s = r'\s*'
+sngl_p = re.compile(r"((?:\*|(?:#\w+)|(?:\.\w+)|(?:\[\s*\w+\s*\])|(?:\[\s*\w+\s*[~|^$*]?=\s*\w+\s*\])|(?:\w+)))$")
+rel_p = re.compile(r"\s*([> +~])\s*$") # pretty simple
 
-# maybe tag, maybe id, any number of class selectors or alternatively just a *
-sngl_p = re.compile(
-    fr'''
-(\w+)?
-(#\w+)?
-(\.\w+)*
-(\[\w+\])*
-(\[\w+[~|^$*]?="\w+"\])*$
-|\*$'''.replace("\n",""))
-rel_p = re.compile(r"\s*([> ])\s*$")
-
-class RT(Enum):
-    """The ResultType. Either a single element or a relationship between elements"""
-    Single = enum_auto
-    Rel = enum_auto
-ResultItem = tuple[RT, list[str]]
-Result = list[ResultItem]
-class Parser:
-    """
-    `run`ning the Parser generates a `Selector`
-    """
-    def __repr__(self):
-        return f"{self.__class__.__name__}(s={self.s}, result={self.result})"
-    def __init__(self, s: str):
-        self.s = s.strip()
-    def run(self)->Selector:
-        start = self.s
-        self.result: Result = []
-        try:
-            self.rule()
-            assert not self.s # nothing should be left of the input
-            self.result.reverse() # we parsed from behind but appended to the list
-            return process(self.result)
-        except (AssertionError, ValueError):
-            log_error(f"Couldn't parse {start}")
-            raise ValueError(f"Couldn't parse {start}")
-
-    def rule(self):
-        r"""
-        rule = [single_rule] | [rule][rel_rule][single_rule]
-        """
-        self.single_rule()
-        if not self.s: return self
-        with suppress(AssertionError, ValueError):
-            self.rel_rule()
-            self.rule()
-        return self
-    def matches(self, pattern: re.Pattern, as_: RT):
-        match = pattern.search(self.s)
-        assert match and (length := match.end() - match.start())
-        groups = [g for g in match.groups() if g]
-        self.result.append((as_, groups))
-        self.s = self.s[:-length]
-    def single_rule(self):
-        self.matches(sngl_p, RT.Single)
-    def rel_rule(self):
-        self.matches(rel_p, RT.Rel)
-    
-def process(p: Result):
-    """Converts the Result into a Selector"""
-    match p:
-        case [*rest, (RT.Rel, rel), (RT.Single, single)]:
-            op = rel[0]
-            assert op in (" ",">"),f"Invalid rel found {rel}"
-            if " " == op:
-                return ChildSelector((process(rest),proc_singles(single)))
-            elif ">" == op:
-                return DirectChildSelector((process(rest),proc_singles(single)))
-        case [(RT.Single, single),]:
-            return proc_singles(single)
-    raise RuntimeError("Process failed")
-def proc_singles(groups: list[str]):
-    if len(groups) == 1: return proc_single(groups[0])
-    return AndSelector(tuple(proc_single(s) for s in groups))
-
-attr_sel_data = [
+attr_sel_data= [
     ("", lambda soll,_is: soll==_is),
     ("~", lambda soll,_is: soll in _is.split()),
     ("|", lambda soll,_is: soll==_is or _is.startswith(soll+"-")),
@@ -763,12 +722,70 @@ attr_sel_data = [
     ("$", lambda soll,_is: _is.endswith(soll)),
     ("*", lambda soll,_is: soll in _is),
 ]
-attrmatches = [
+attr_patterns: list[tuple[re.Pattern, Type[Selector]]] = [
     (re.compile(r'\[(\w+)\]'),HasAttrSelector),
     *(make_attr_selector(sign, validator) for sign,validator in attr_sel_data)
 ]
 
-def proc_single(s: str):
+def matches(s: str, pattern: re.Pattern):
+    match = pattern.search(s)
+    if not (match and (length := match.end() - match.start())):
+        return None
+    groups: list[str] = [stripped for g in match.groups()
+        if isinstance(g, str) and (stripped:=g.strip())]
+    if not groups: return None
+    return (s[:-length], groups[0])
+
+InvalidSelector = ValueError("Invalid Selector")
+def parse_selector(s: str) -> Selector:
+    s = s.strip()
+    if not s: raise BugError("Empty selector")
+    if "," in s:
+        return cast(Selector,
+            OrSelector(tuple(parse_selector(x) for x in s.split(",")))
+        )
+    else:
+        singles: list[str] = []
+        # do-while-loop
+        while True:
+            if (match:=matches(s, sngl_p)):
+                s, subsel = match
+                singles.insert(0,subsel)
+                if not s: # recursive anker
+                    return proc_singles(singles)
+            elif (match:=matches(s, rel_p)):
+                s, subsel = match
+                if not s:
+                    raise InvalidSelector
+                return get_rel(subsel)(
+                    (
+                        parse_selector(s),
+                        proc_singles(singles)
+                    )
+                )
+            else:
+                raise InvalidSelector
+
+def get_rel(rel: str)->Type[Selector]:
+    """ Get the relative selector class of a character"""
+    match rel:
+        case " ":
+            return ChildSelector
+        case ">":
+            return DirectChildSelector
+        case "+":
+            raise NotImplementedError("+ is not implemented yet")
+        case "~":
+            raise NotImplementedError("~ is not implemented yet")
+        case "_":
+            raise BugError("Invalid relative selector")
+    raise BugError("Invalid relative selector")
+
+def proc_singles(groups: list[str])->Selector:
+    if len(groups) == 1: return proc_single(groups[0])
+    return AndSelector(tuple(proc_single(s) for s in groups))
+
+def proc_single(s: str)->Selector:
     if s == "*":
         return AnySelector()
     elif s[0] == "#":
@@ -776,55 +793,11 @@ def proc_single(s: str):
     elif s[0] == ".":
         return ClassSelector(s[1:])
     elif s[0] == "[":
-        for pattern, selector in attrmatches:
+        for pattern, selector in attr_patterns:
             if (groups:=get_groups(s, pattern)) is not None:
                 return selector(*groups)
+        raise BugError(f"Invalid attribute selector: {s}")
     elif s[0] == ":": # pseudoclass
-        raise RuntimeError("Pseudoclasses not supported yet")
+        raise RuntimeError("Pseudoclasses are not supported yet")
     else:
         return TagSelector(s)
-
-def test_selectors():
-    for x in (
-        "#id",
-        ".class",
-        "a#hello.dark[target]"
-    ):
-        assert sngl_p.match(x)
-    parser = Parser("a#hello.dark[target]")
-    selector = parser.run()
-    assert parser.result == [
-        (RT.Single, ["a","#hello",".dark","[target]"]),
-    ]
-    assert selector == AndSelector( # this wasn't possible when Selectors were just functions
-        [
-            TagSelector("a"),
-            IdSelector("hello"),
-            ClassSelector("dark"),
-            HasAttrSelector("target")
-        ]
-    )
-    parser = Parser("div>a#hello.dark[target]")
-    selector = parser.run()
-    assert parser.result == [
-        (RT.Single, ["div"]),
-        (RT.Rel, [">"]),
-        (RT.Single, ["a","#hello",".dark","[target]"]),
-    ]
-    assert selector == DirectChildSelector(
-        [
-            TagSelector("div"),
-            AndSelector(
-                [
-                    TagSelector("a"),
-                    IdSelector("hello"),
-                    ClassSelector("dark"),
-                    HasAttrSelector("target")
-                ]
-            )
-        ]
-    )
-
-if __name__ == "__main__":
-    # for vscode debugger
-    test_selectors()

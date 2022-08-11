@@ -87,6 +87,7 @@ These specify the attributes with their types and constraints. Every computed ty
 - padding(tbrl): float or Auto or percentage
 - border-width(tbrl): float or Auto
 - border-color(tbrl): Color
+- border-style(tbrl): str
 - line-height: float or percentage or Normal
 - word-spacing: float or percentage or Normal
 

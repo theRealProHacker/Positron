@@ -55,12 +55,12 @@ def main(file: str):
     html = util.fetch_src(file)
     parsed = html5lib.parse(html)
     tree: HTMLElement = create_element(parsed)
+    logging.debug(tree.to_html())
     pg.display.set_caption(g["title"])
     g["root"] = tree
 
     tree.compute()
     tree.layout()
-    logging.info(tree.to_html())
 
     end = False
     recompute = False

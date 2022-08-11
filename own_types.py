@@ -13,6 +13,9 @@ from pygame.font import Font
 from pygame.rect import Rect
 from pygame.event import Event
 
+class BugError(RuntimeError):
+    """ A type of error that should never occur. If it occurs it needs to be fixed."""
+
 # Abstract Protocols
 def Screen(Protocol):
     def blit(self, __surf: Surface):
@@ -33,10 +36,10 @@ class ReadChain(Mapping[K_T,V_T]):
     def __init__(self, *maps: Mapping[K_T,V_T]):
         self.maps = maps # immutable maps
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: K_T):
         for mapping in self.maps:
             try:
-                return mapping[key]             # can't use 'key in mapping' with defaultdict
+                return mapping[key]     # can't use 'key in mapping' with defaultdict
             except KeyError:
                 pass
         raise KeyError(key)
@@ -48,9 +51,9 @@ class ReadChain(Mapping[K_T,V_T]):
         return len(self.dict())
     def __iter__(self):
         return iter(self.dict())
-    def __or__(self, other):
+    def __or__(self, other: Mapping[K_T,V_T]):
         return self.dict() | other
-    def __ror__(self, other):
+    def __ror__(self, other: Mapping[K_T,V_T]):
         return self.dict() | other
 
     def __contains__(self, key):

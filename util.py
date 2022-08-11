@@ -7,7 +7,7 @@ from contextlib import contextmanager, redirect_stdout, suppress
 from dataclasses import dataclass
 from functools import cache, partial
 from operator import attrgetter, itemgetter
-from typing import Any, Iterable, Protocol, TypeVar
+from typing import Any, Generic, Iterable, Protocol, TypeVar
 
 import pygame as pg
 import pygame.freetype as freetype
@@ -27,6 +27,7 @@ from own_types import (
     Vector2,
     _XMLElement,
     style_computed,
+    style_input
 )
 
 
@@ -35,6 +36,7 @@ def noop(*args, **kws):
 
 ################## g Manipulations ##########################
 def watch_file(*files: str):
+    """Add the file to the watched files"""
     g["handler"].add_files(files)
 
 
@@ -122,7 +124,7 @@ def all_equal(l):
 
 ####################################################################
 
-########################## Itemgetters #############################
+#################### Itemgetters/setters ###########################
 
 directions = ("top", "bottom", "left", "right")
 
@@ -131,6 +133,7 @@ side_keys = tuple(f"mid{k}" for k in directions)
 # style
 pad_keys = tuple(f"padding-{k}" for k in directions)
 marg_keys = tuple(f"margin-{k}" for k in directions)
+bs_keys = tuple(f"border-{k}-style" for k in directions)
 bw_keys = tuple(f"border-{k}-width" for k in directions)
 bc_keys = tuple(f"border-{k}-color" for k in directions)
 inset_keys = directions
@@ -149,12 +152,19 @@ class Getter(Protocol[Output_T]):
     def __call__(self, input: style_computed) -> Output_T:
         ...
 
-
 class T4Getter(Protocol[Output_T]):
     def __call__(
         self, input: style_computed
     ) -> tuple[Output_T, Output_T, Output_T, Output_T]:
         ...
+
+_T = TypeVar("_T")
+class itemsetter(Generic[_T]):
+    def __init__(self, keys: tuple[str,...]):
+        self.keys = keys
+    def __call__(self, map: Any, values: tuple[_T,...]) -> None:
+        for key, value in zip(self.keys, values):
+            map[key] = value
 
 
 FGetter = GeneralGetter[Rect, Float4Tuple]
@@ -164,9 +174,11 @@ ANPGetter = T4Getter[AutoNP]
 inset_getter: ANPGetter = itemgetter(*inset_keys)  # type: ignore[assignment]
 pad_getter: ANPGetter = itemgetter(*pad_keys)  # type: ignore[assignment]
 bw_getter: ANPGetter = itemgetter(*bw_keys)  # type: ignore[assignment]
+bw_setter = itemsetter[str](bw_keys)
 mrg_getter: ANPGetter = itemgetter(*marg_keys)  # type: ignore[assignment]
 
 bc_getter: T4Getter[Color] = itemgetter(*bc_keys)  # type: ignore[assignment]
+bs_getter: T4Getter[str] = itemgetter(*bs_keys)  # type: ignore[assignment]
 
 ####################################################################
 
@@ -223,7 +235,7 @@ def print_parsed_tree(tree, indent=0, with_text=False):
 
 ####################################################################
 
-####################### Regexes ##################################
+######################### Regexes ##################################
 def compile(patterns: Iterable[str | re.Pattern]):
     return [re.compile(p) for p in patterns]
 
@@ -244,7 +256,9 @@ def replace_all(s: str, olds: list[str], new: str) -> str:
 
 # https://docs.python.org/3/library/re.html#simulating-scanf
 int_re = r"[+-]?\d+"
+pos_int_re = r"+?\d+"
 dec_re = rf"(?:{int_re})?(?:\.\d+)?(?:e{int_re})?"
+pos_dec_re = rf"(?:{pos_int_re})?(?:\.\d+)?(?:e{int_re})?"
 units_re = re_join(*all_units)
 
 regexes: dict[str, re.Pattern] = {

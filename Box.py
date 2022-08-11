@@ -262,29 +262,3 @@ def make_box(
     )
     set_height: Callable[[float],None] = box.set_height if height == -1 else noop 
     return box, set_height # set_height is the function that should be called when the height is ready to be set
-
-def test():
-    assert Box.empty().is_empty()
-    box = Box(
-        "content-box",
-        border = (3,)*4,
-        width = 500,
-        height = 150,
-        content_width=True # as if the width was the parents inner width
-    )
-    assert box.width == 500 - 6, box.width
-    assert box.height == 150
-    assert box.content_box == pg.Rect(
-        0,0, 500-6, 150
-    ), box.content_box
-
-    box.set_pos((0,0))
-    assert box.content_box == pg.Rect(
-        3,3, 500-6, 150
-    ), box.content_box
-    assert box.outer_box == pg.Rect(
-        0,0, 500, 150+6
-    ), box.outer_box
-
-if __name__ == "__main__":
-    test()

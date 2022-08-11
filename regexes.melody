@@ -1,0 +1,43 @@
+//Element.
+capture {
+either {
+  // any selector
+  "*";
+  // id selector
+  match {
+    "#";
+    some of <word>;
+  }
+  // class selector
+  match {
+    "."; 
+    some of <word>;
+  }
+  // has attr selector
+  match {
+    "[";
+    any of <whitespace>;
+    some of <word>;
+    any of <whitespace>;
+    "]";
+  }
+  // attribute selectors
+  match {
+    "[";
+    any of <whitespace>;
+    some of <word>;
+    any of <whitespace>;
+    option of `[~|^$*]`;
+    "=";
+    any of <whitespace>;
+    some of <word>;
+    any of <whitespace>;
+    "]";
+  }
+  // tag selector
+  match {
+    some of <word>;
+  }
+}
+}
+<end>;
