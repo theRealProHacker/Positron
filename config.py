@@ -17,7 +17,6 @@ g: dict[str, Any] = {
     # User settable
     "W": 900,       # int
     "H": 600,       # int
-    "window_bg": Color((0,0,0)),   # Color
     "resizable": True,      # bool
     "frameless": False,     # bool
     "allow_screen_saver": True,
