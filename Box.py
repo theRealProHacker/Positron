@@ -9,7 +9,7 @@ from pygame.rect import Rect
 
 import own_types as _o # Just for dotted access to Auto in match
 from own_types import (Auto, AutoNP, Dimension, Float4Tuple, Index, Number,
-                       style_computed, ReadChain)
+                       StyleComputed, ReadChain)
 from util import (Calculator, bw_getter, ensure_suffix, mrg_getter, noop,
                   not_neg, pad_getter)
 
@@ -208,7 +208,7 @@ class Box:
 
 def make_box(
     given_width: float,
-    style: style_computed,
+    style: StyleComputed,
     parent_width: float,
     parent_height: float
 )->tuple[Box, Callable[[float],None]]:

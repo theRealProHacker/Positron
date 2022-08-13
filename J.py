@@ -1,5 +1,5 @@
 from config import g
-from Element import Element, Parser, Selector
+from Element import Element, parse_selector, Selector
 
 def find_in(elem: Element, selector: Selector)->Element|None:
     found: Element|None
@@ -17,7 +17,7 @@ class J:
     _elem: Element
     def __new__(cls, query: str|Element):
         if isinstance(query,str):
-            selector = Parser(query).run()
+            selector = parse_selector(query)
             root: Element = g["root"]
             elem = find_in(root, selector)
             if elem is None:
@@ -28,8 +28,3 @@ class J:
                 return self
         else:
             self._elem = query
-
-def test():
-    from pytest import raises
-    with raises(AttributeError): # should raise because g["root"] is None
-        J("something")

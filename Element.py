@@ -2,23 +2,61 @@ import re
 from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass
-from functools import cache, reduce
-from itertools import chain, takewhile
-from tokenize import single_quoted
-from typing import Any, Callable, Iterable, Iterator, Mapping, Protocol, Type, cast
+from functools import cache, cached_property, reduce
+from itertools import chain, islice
+from typing import Any, Callable, Iterable, Iterator, Protocol, Type, Union
 
-import cssutils
-import tinycss
 import pygame as pg
 
+from Style import (
+    SourceSheet,
+    Style,
+    StyleRule,
+    abs_default_style,
+    get_style,
+    group_imp,
+    is_imp,
+    parse_file,
+    parse_sheet,
+    parse_style,
+    prio_keys,
+    remove_important,
+    style_attrs,
+)
+from config import add_sheet, g
 from Box import Box, make_box
-from config import g
-from own_types import (Auto, AutoNP4Tuple, BugError, Color, Dimension, Float4Tuple, Font,
-                       FontStyle, ReadChain, Rect, Surface, Vector2, _XMLElement,
-                       computed_value, style_computed, style_input)
-from StyleComputing import abs_default_style, get_style, priority, style_attrs, postprocess
-from util import (Calculator, bc_getter, fetch_src, get_tag, inset_getter,
-                  log_error, rect_lines, watch_file, bs_getter, directions, bw_getter, bw_setter)
+from own_types import (
+    Auto,
+    AutoNP4Tuple,
+    BugError,
+    CompValue,
+    Dimension,
+    Float4Tuple,
+    Font,
+    FontStyle,
+    ReadChain,
+    Rect,
+    StyleComputed,
+    StyleInput,
+    Surface,
+    Vector2,
+    _XMLElement,
+)
+from util import (
+    Calculator,
+    bc_getter,
+    bs_getter,
+    bw_getter,
+    bw_setter,
+    directions,
+    get_groups,
+    get_tag,
+    group_by_bool,
+    inset_getter,
+    log_error,
+    rect_lines,
+    watch_file,
+)
 
 """ More useful links for further development
 https://developer.mozilla.org/en-US/docs/Web/CSS/image
@@ -26,22 +64,19 @@ https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Box_Model/Mastering_margin_
 """
 
 ########################## Specificity and Rules #############################
-# class Rule(TypedDict):
-#     selector: 'Selector'
-Rule = Mapping[str, Any] # A Rule is just a dict with a selector key joined with a style_input dict
-def rule_style(rule):
-    return {k:v for k,v in rule.items() if k != 'selector'}
-
 Spec = tuple[int, int, int]
 
-def add_specs(t1: Spec, t2: Spec) -> Spec:
-    id1,cls1,tag1 = t1
-    id2,cls2,tag2 = t2
-    return id1+id2, cls1+cls2, tag1+tag2
 
-sum_specs: Callable[[Iterable[Spec]],Spec] = lambda specs: reduce(add_specs, specs)
+def add_specs(t1: Spec, t2: Spec) -> Spec:
+    id1, cls1, tag1 = t1
+    id2, cls2, tag2 = t2
+    return (id1 + id2, cls1 + cls2, tag1 + tag2)
+
+
+sum_specs: Callable[[Iterable[Spec]], Spec] = lambda specs: reduce(add_specs, specs)
 
 ################################# Globals ###################################
+
 
 @cache
 def get_font(family: list[str], size: float, style: FontStyle, weight: int) -> Font:
@@ -61,13 +96,11 @@ def get_font(family: list[str], size: float, style: FontStyle, weight: int) -> F
 
 
 def process_style(
-    elem: "Element", val: str, key: str, p_style: style_computed = None
-) -> computed_value:
-    p_style = p_style if p_style is not None else elem.cstyle
-
+    elem: "Element", val: str, key: str, p_style: StyleComputed
+) -> CompValue:
     def redirect(new_val: str):
         return process_style(elem, new_val, key, p_style)
-
+    assert isinstance(val, str), val
     attr = style_attrs[key]
     ######################################## global style attributes ####################################################
     # Best and most concise explanation I could find: https://css-tricks.com/inherit-initial-unset-revert/
@@ -90,6 +123,7 @@ def process_style(
         else redirect("unset")
     )
 
+
 calculator = Calculator(None)
 
 
@@ -101,14 +135,15 @@ def calc_inset(inset: AutoNP4Tuple, width: float, height: float) -> Float4Tuple:
 
 ########################## Element ########################################
 
+
 class Element:
     box: Box = Box.empty()
     display: str  # the used display state. Is set before layout
     tag: str
     attrs: dict
-    istyle: style_input  # inline style
-    estyle: style_input  # external style
-    cstyle: style_computed  # computed_style
+    inline_style: StyleInput  # inline style
+    estyle: StyleInput  # external style
+    cstyle: StyleComputed  # computed_style
     children: list["Element"]
     focus: bool = False
 
@@ -118,7 +153,7 @@ class Element:
         self.tag = tag
         self.attrs = attrs
         # parse element style and update default
-        self.istyle = postprocess(dict(cssutils.parseStyle(attrs.get("style", ""))))
+        self.inline_style = parse_style(attrs.get("style", ""))
         self.estyle = {}
 
     def is_block(self) -> bool:
@@ -144,7 +179,7 @@ class Element:
 
     ####################################  Main functions ######################################################
     @cache
-    def matches(self, selector: 'Selector'):
+    def matches(self, selector: "Selector"):
         return selector(self)
 
     def collide(self, pos: Dimension) -> Iterable["Element"]:
@@ -161,32 +196,37 @@ class Element:
         return chain(*rv)
 
     def compute(self):
-        """ 
+        """
         Assembles the input style and then converts it into the Elements computed style.
         It then computes all the childrens styles
         """
-        input_style = ReadChain(self.estyle, self.istyle, get_style(self.tag))
-        prioritates = priority(input_style)
-        parent_style = self.parent.cstyle
-        style: style_computed = {}
-        for key in input_style & style_attrs.keys():
+        input_style = ReadChain(self.estyle, self.inline_style, get_style(self.tag))
+        high_prio, low_prio = group_by_bool(
+            input_style.keys(), lambda key: key in prio_keys
+        )
+        parent_style = dict(self.parent.cstyle)
+        style: StyleComputed = {}
+        for key in high_prio + low_prio:
             val = input_style[key]
             new_val = process_style(self, val, key, parent_style)
             assert (
                 new_val is not None
             ), f"Style {key} was set to None. Which should never happen."
             style[key] = new_val
-            if key in ("color","fontsize"):
+            if key in prio_keys:
                 parent_style[key] = new_val
         # corrections
-        bw_setter(style, tuple(
-            0 if _style in ("none", "hidden") else width
-            for _style, width in zip(bs_getter(style), bw_getter(style))
-        ))
+        bw_setter(
+            style,
+            tuple(
+                0 if _style in ("none", "hidden") else width
+                for _style, width in zip(bs_getter(style), bw_getter(style))
+            ),
+        )
         for key, value in zip(directions, bs_getter(style)):
             if value in ("none", "hidden"):
                 style[key] = 0
-        self.cstyle = g["cstyles"].safe(style)
+        self.cstyle = g["cstyles"].add(style)
         for child in self.children:
             child.compute()
 
@@ -291,7 +331,7 @@ class Element:
         # TODO
         # 3. draw border
         if any(draw_box.border):
-            assert any(b=="solid" for b in bs_getter(style))
+            assert any(b == "solid" for b in bs_getter(style))
             if (
                 (bw := draw_box.border[0])
                 and all(w == bw for w in draw_box.border)
@@ -360,7 +400,10 @@ class Element:
 
     @property
     def real_children(self):
-        return [c for c in self.children if not isinstance(c, (TextElement, MetaElement))]
+        return [
+            c for c in self.children if not isinstance(c, (TextElement, MetaElement))
+        ]
+
 
 class HTMLElement(Element):
     def __init__(self, tag: str, attrs: dict[str, str], parent: Element = None):
@@ -394,7 +437,7 @@ class MetaElement(Element):
     """
     A MetaElement is an Element that's sole purpose is conveying information
     to the runtime and is not for display or interaction.
-    It has no style, the display is "none" 
+    It has no style, the display is "none"
     """
 
     tag: str
@@ -405,11 +448,10 @@ class MetaElement(Element):
         self.parent = parent
         self.attrs = attrs
         # parse element style and update default
-        self.istyle = {}
+        self.inline_style = {}
 
     def is_block(self):
         return False
-
 
     def collide(self):
         return []
@@ -426,32 +468,20 @@ class MetaElement(Element):
 
 class StyleElement(MetaElement):
     tag = "style"
+    inline_sheet: SourceSheet | None = None
+    src_sheet: SourceSheet | None = None
 
     def __init__(self, attrs: dict[str, str], txt: str, parent: "Element"):
         super().__init__(attrs, txt, parent)
-        self.rules: list[Rule] = []
         self.src = attrs.get("src")
         if self.src is not None:
-            self.reg_rules(fetch_src(attrs["src"]))
-            watch_file(self.src)
+            self.src_sheet = parse_file(self.src)
+            add_sheet(self.src_sheet)
+            self.src = watch_file(self.src)
         if txt:
-            self.reg_rules(txt)
+            self.inline_sheet = parse_sheet(txt)
+            add_sheet(self.inline_sheet)
 
-    def reg_rules(self, src: str):
-        """Register a set of new rules from the given string"""
-        rules: cssutils.css.CSSRuleList = cssutils.parseString(src).cssRules
-        newRules: list[Rule] = [
-            postprocess(dict(rule.style))|{"selector": parse_selector(rule.selectorText)}
-            for rule in rules
-        ]
-        g["css_rules_dirty"] |= bool(newRules)
-        self.rules.extend(
-            [g["css_rules"].safe(rule) for rule in newRules]
-        )
-
-    def delete(self):
-        if self.src is not None:
-            pass # TODO: remove the file from watched files
 
 class TitleElement(MetaElement):
     tag = "title"
@@ -464,7 +494,7 @@ class TitleElement(MetaElement):
 class CommentElement(MetaElement):
     tag = "!comment"
 
-    def to_html(self, indent = 0):
+    def to_html(self, indent=0):
         return f"{' '*indent}<!--{self.text}-->"
 
     def __repr__(self):
@@ -494,7 +524,7 @@ class TextElement:
 
     text: str
     parent: Element
-    style: style_computed
+    style: StyleComputed
     font: pg.font.Font
     tag = "Text"
     display = "inline"
@@ -548,8 +578,10 @@ class TextElement:
                     ...
                 case _:
                     raise Exception(item)
+
     def to_html(self, indent=0):
         return " " * indent + self.text
+
     def __repr__(self):
         return f"<{self.tag}>"
 
@@ -579,10 +611,30 @@ def create_element(elem: _XMLElement, parent: Element | None = None):
     return new
 
 
-def apply_rules(elem: "Element", rules: list[Rule]):
-    l = [rule for rule in rules if rule["selector"](elem)]
-    l.sort(key=lambda rule: rule["selector"].spec, reverse=True) # highest selector first
-    elem.estyle = dict(ReadChain(*(rule_style(rule) for rule in l)))
+def reveal_rule(rule: StyleRule):
+    selector, style = rule
+    return parse_selector(selector), style
+
+
+def apply_rules(elem: Element, rules: list[StyleRule]):
+    # filter not matching selectors and sort by specificity
+    l = sorted(
+        (x for rule in rules if elem.matches((x := reveal_rule(rule))[0])),
+        key = lambda rule: rule[0].spec
+    )
+    # sort by importance
+    unpacked = sorted(
+        [(sel,value[1],name,value[0])
+            for sel,style in l
+                for name,value in style.items()],
+        key=lambda t: t[1]
+    )
+    elem.estyle = {
+        name:value for _,_,name,value in unpacked
+    }
+    # dict(
+    #     zip(*islice(zip(*unpacked),2,4))
+    # )
     for c in elem.real_children:
         apply_rules(c, rules)
 
@@ -596,196 +648,246 @@ EmptyElement.parent = None  # type: ignore
 class InlineElement(Element):
     """This is the interface of an element with display = "inline" """
 
+
 ################################# Selectors #######################################
+# https://www.w3.org/TR/selectors-3/
 """
 Handles everything revolving Selectors. 
-Includes a Parser (text->Selector)
+Includes parsing (text->Selector)
 """
-from typing import Sequence
-from contextlib import suppress 
-from functools import cached_property
-from own_types import Enum, enum_auto
-from util import get_groups
 
-class Selector(Protocol):
-    spec: Spec|cached_property[Spec]
-    def __call__(self: Any, elem: Element)->bool:
+Selector = Union["SingleSelector", "CompositeSelector"]
+
+
+class SingleSelector(Protocol):
+    spec: Spec
+
+    def __call__(self: Any, elem: Element) -> bool:
         ...
+
     def __hash__(self) -> int:
         return super().__hash__()
+
 
 @dataclass(frozen=True, slots=True)
 class TagSelector:
     tag: str
-    spec = 0,0,1
+    spec = 0, 0, 1
     __call__ = lambda self, elem: elem.tag == self.tag
-    __str__ = lambda self: self.tag #type: ignore[attr-defined]
+    __str__ = lambda self: self.tag  # type: ignore[attr-defined]
+
 
 @dataclass(frozen=True, slots=True)
 class IdSelector:
     id: str
-    spec = 1,0,0
+    spec = 1, 0, 0
     __call__ = lambda self, elem: elem.attrs.get("id") == self.id
-    __str__ = lambda self: "#"+self.id #type: ignore[attr-defined]
+    __str__ = lambda self: "#" + self.id  # type: ignore[attr-defined]
+
 
 @dataclass(frozen=True, slots=True)
 class ClassSelector:
     cls: str
-    spec = 0,1,0
+    spec = 0, 1, 0
     __call__ = lambda self, elem: elem.attrs.get("class") == self.cls
-    __str__ = lambda self: "."+self.cls #type: ignore[attr-defined]
+    __str__ = lambda self: "." + self.cls  # type: ignore[attr-defined]
+
 
 @dataclass(frozen=True, slots=True)
 class HasAttrSelector:
     name: str
-    spec = 0,1,0
+    spec = 0, 1, 0
     __call__ = lambda self, elem: self.name in elem.attrs
-    __str__ = lambda self: f'[{self.name}]' #type: ignore[attr-defined]
+    __str__ = lambda self: f"[{self.name}]"  # type: ignore[attr-defined]
+
 
 # the validator takes the soll value and the is value
 def make_attr_selector(sign: str, validator):
     sign = re.escape(sign)
-    regex = re.compile(fr'\[{s}(\w+){s}{sign}={s}"(\w+)"{s}\]|\[{s}(\w+){s}{sign}={s}(\w+){s}\]')
+    regex = re.compile(
+        rf'\[{s}(\w+){s}{sign}={s}"(\w+)"{s}\]|\[{s}(\w+){s}{sign}={s}(\w+){s}\]'
+    )
+
     @dataclass(frozen=True, slots=True)
     class AttributeSelector:
         name: str
         value: str
-        spec = 0,1,0
+        spec = 0, 1, 0
+
         def __call__(self, elem: Element):
-            return (value:=elem.attrs.get(self.name)) is not None and validator(self.value, value)
+            return (value := elem.attrs.get(self.name)) is not None and validator(
+                self.value, value
+            )
+
         def __str__(self):
             return f'[{self.name}{sign}="{self.value}"]'
+
     return regex, AttributeSelector
+
 
 @dataclass(frozen=True, slots=True)
 class AnySelector:
-    spec = 0,0,0
-    def __call__(self, elem: Element): return True
-    __str__ = lambda self: "*"
+    spec = 0, 0, 0
+
+    def __call__(self, elem: Element):
+        return True
+
+    def __str__(self):
+        return "*"
+
 
 @dataclass(frozen=True, slots=True)
 class NeverSelector:
     spec: Spec
     s: str
-    def __call__(self, elem: Element): return False
-    def __str__(self): return self.s
+
+    def __call__(self, elem: Element):
+        return False
+
+    def __str__(self):
+        return self.s
+
 
 ################################## Composite Selectors ###############################
-class CompositeSelector(Selector):
-    selectors: Sequence[Selector]
+class CompositeSelector:
+    selectors: tuple[Selector, ...]
+    spec: cached_property[Spec]
+
+    def __call__(self: Any, elem: Element) -> bool:
+        ...
+
+    def __hash__(self) -> int:
+        return super().__hash__()
+
 
 joined_specs = lambda self: sum_specs(f.spec for f in self.selectors)
-@dataclass(frozen=True, slots=True)
-class AndSelector:
-    selectors: tuple[Selector,...]
-    spec = cached_property(joined_specs)
-    __call__ = lambda self, elem: all(elem.matches(sel) for sel in self.selectors)
-    __str__ = lambda self: ''.join(str(s) for s in self.selectors) #type: ignore[attr-defined]
+
 
 @dataclass(frozen=True, slots=True)
-class OrSelector:
-    selectors: tuple[Selector,...]
-    spec = cached_property(joined_specs)
-    __call__ = lambda self, elem: any(elem.matches(sel) for sel in self.selectors)
-    __str__ = lambda self: ', '.join(str(s) for s in self.selectors) #type: ignore[attr-defined]
-
-@dataclass(frozen=True, slots=True)
-class DirectChildSelector:
+class AndSelector(CompositeSelector):
     selectors: tuple[Selector, ...]
     spec = cached_property(joined_specs)
-    def __call__(self, elem: Element):
-        chain = [elem,*elem.iter_parents()]
-        if len(chain) != len(self.selectors): return False
-        return all(parent.matches(sel) for parent, sel in zip(chain, self.selectors))
-    __str__ = lambda self: " > ".join(str(s) for s in self.selectors) #type: ignore[attr-defined]
+    __call__ = lambda self, elem: all(elem.matches(sel) for sel in self.selectors)
+    __str__ = lambda self: "".join(str(s) for s in self.selectors)  # type: ignore[attr-defined]
+
 
 @dataclass(frozen=True, slots=True)
-class ChildSelector:
+class OrSelector(CompositeSelector):
+    selectors: tuple[Selector, ...]
+    spec = cached_property(joined_specs)
+    __call__ = lambda self, elem: any(elem.matches(sel) for sel in self.selectors)
+    __str__ = lambda self: ", ".join(str(s) for s in self.selectors)  # type: ignore[attr-defined]
+
+
+@dataclass(frozen=True, slots=True)
+class DirectChildSelector(CompositeSelector):
+    selectors: tuple[Selector, ...]
+    spec = cached_property(joined_specs)
+
+    def __call__(self, elem: Element):
+        chain = [elem, *elem.iter_parents()]
+        if len(chain) != len(self.selectors):
+            return False
+        return all(parent.matches(sel) for parent, sel in zip(chain, self.selectors))
+
+    __str__ = lambda self: " > ".join(str(s) for s in self.selectors)  # type: ignore[attr-defined]
+
+
+@dataclass(frozen=True, slots=True)
+class ChildSelector(CompositeSelector):
     selectors: tuple[Selector, Selector]
     spec = cached_property(joined_specs)
-    def __call__(self,elem: Element):
+
+    def __call__(self, elem: Element):
         own_sel, p_sel = self.selectors
-        if not own_sel(elem): return False
+        if not own_sel(elem):
+            return False
         return any(p.matches(p_sel) for p in elem.iter_parents())
-    __str__ = lambda self: " ".join(str(s) for s in self.selectors) #type: ignore[attr-defined]
+
+    __str__ = lambda self: " ".join(str(s) for s in self.selectors)  # type: ignore[attr-defined]
+
 
 ########################################## Parser #######################################################
-s = r'\s*'
-sngl_p = re.compile(r"((?:\*|(?:#\w+)|(?:\.\w+)|(?:\[\s*\w+\s*\])|(?:\[\s*\w+\s*[~|^$*]?=\s*\w+\s*\])|(?:\w+)))$")
-rel_p = re.compile(r"\s*([> +~])\s*$") # pretty simple
+s = r"\s*"
+sngl_p = re.compile(
+    r"((?:\*|(?:#\w+)|(?:\.\w+)|(?:\[\s*\w+\s*\])|(?:\[\s*\w+\s*[~|^$*]?=\s*\w+\s*\])|(?:\w+)))$"
+)
+rel_p = re.compile(r"\s*([>+~ ])\s*$")  # pretty simple
 
-attr_sel_data= [
-    ("", lambda soll,_is: soll==_is),
-    ("~", lambda soll,_is: soll in _is.split()),
-    ("|", lambda soll,_is: soll==_is or _is.startswith(soll+"-")),
-    ("^", lambda soll,_is: _is.startswith(soll)),
-    ("$", lambda soll,_is: _is.endswith(soll)),
-    ("*", lambda soll,_is: soll in _is),
+attr_sel_data = [
+    ("", lambda soll, _is: soll == _is),
+    ("~", lambda soll, _is: soll in _is.split()),
+    ("|", lambda soll, _is: soll == _is or _is.startswith(soll + "-")),
+    ("^", lambda soll, _is: _is.startswith(soll)),
+    ("$", lambda soll, _is: _is.endswith(soll)),
+    ("*", lambda soll, _is: soll in _is),
 ]
 attr_patterns: list[tuple[re.Pattern, Type[Selector]]] = [
-    (re.compile(r'\[(\w+)\]'),HasAttrSelector),
-    *(make_attr_selector(sign, validator) for sign,validator in attr_sel_data)
+    (re.compile(r"\[(\w+)\]"), HasAttrSelector),
+    *(make_attr_selector(sign, validator) for sign, validator in attr_sel_data),
 ]
 
+
 def matches(s: str, pattern: re.Pattern):
-    match = pattern.search(s)
-    if not (match and (length := match.end() - match.start())):
+    """
+    Takes a string and a pattern and returns the reststring and the capture
+    """
+    if not ((match := pattern.search(s)) and (length := len(match.group()))):
         return None
-    groups: list[str] = [stripped for g in match.groups()
-        if isinstance(g, str) and (stripped:=g.strip())]
-    if not groups: return None
+    if not (groups := [g for g in match.groups() if g]):
+        return None
     return (s[:-length], groups[0])
 
-InvalidSelector = ValueError("Invalid Selector")
+
+class InvalidSelector(ValueError):
+    pass
+
+
+@cache
 def parse_selector(s: str) -> Selector:
-    s = s.strip()
-    if not s: raise BugError("Empty selector")
+    s = start = s.strip()
+    if not s:
+        raise BugError("Empty selector")
     if "," in s:
-        return cast(Selector,
-            OrSelector(tuple(parse_selector(x) for x in s.split(",")))
-        )
+        return OrSelector(tuple(parse_selector(x) for x in s.split(",")))
     else:
         singles: list[str] = []
         # do-while-loop
         while True:
-            if (match:=matches(s, sngl_p)):
+            if match := matches(s, sngl_p):
                 s, subsel = match
-                singles.insert(0,subsel)
-                if not s: # recursive anker
+                singles.insert(0, subsel)
+                if not s:  # recursive anker
                     return proc_singles(singles)
-            elif (match:=matches(s, rel_p)):
-                s, subsel = match
-                if not s:
-                    raise InvalidSelector
-                return get_rel(subsel)(
-                    (
-                        parse_selector(s),
-                        proc_singles(singles)
+            elif match := matches(s, rel_p):
+                s, rel = match
+                if not s or not singles:
+                    raise InvalidSelector(
+                        f"Relative selectors are not padded by single selectors: ({rel},{start})"
                     )
-                )
+                sngl_selector = proc_singles(singles)
+                match rel:
+                    case " ":
+                        return ChildSelector((parse_selector(s), sngl_selector))
+                    case ">":
+                        return DirectChildSelector((parse_selector(s), sngl_selector))
+                    case "+":
+                        raise NotImplementedError("+ is not implemented yet")
+                    case "~":
+                        raise NotImplementedError("~ is not implemented yet")
+                    case _:
+                        raise BugError(f"Invalid relative selector ({rel})")
             else:
-                raise InvalidSelector
+                raise InvalidSelector(f"Couldn't match '{s}'")
 
-def get_rel(rel: str)->Type[Selector]:
-    """ Get the relative selector class of a character"""
-    match rel:
-        case " ":
-            return ChildSelector
-        case ">":
-            return DirectChildSelector
-        case "+":
-            raise NotImplementedError("+ is not implemented yet")
-        case "~":
-            raise NotImplementedError("~ is not implemented yet")
-        case "_":
-            raise BugError("Invalid relative selector")
-    raise BugError("Invalid relative selector")
 
-def proc_singles(groups: list[str])->Selector:
-    if len(groups) == 1: return proc_single(groups[0])
+def proc_singles(groups: list[str]) -> Selector:
+    if len(groups) == 1:
+        return proc_single(groups[0])
     return AndSelector(tuple(proc_single(s) for s in groups))
 
-def proc_single(s: str)->Selector:
+
+def proc_single(s: str) -> Selector:
     if s == "*":
         return AnySelector()
     elif s[0] == "#":
@@ -794,10 +896,10 @@ def proc_single(s: str)->Selector:
         return ClassSelector(s[1:])
     elif s[0] == "[":
         for pattern, selector in attr_patterns:
-            if (groups:=get_groups(s, pattern)) is not None:
+            if (groups := get_groups(s, pattern)) is not None:
                 return selector(*groups)
         raise BugError(f"Invalid attribute selector: {s}")
-    elif s[0] == ":": # pseudoclass
+    elif s[0] == ":":  # pseudoclass
         raise RuntimeError("Pseudoclasses are not supported yet")
     else:
         return TagSelector(s)

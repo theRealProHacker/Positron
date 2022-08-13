@@ -1,4 +1,4 @@
-//Element.
+//Element.sngl_p
 capture {
 either {
   // any selector
@@ -41,3 +41,5 @@ either {
 }
 }
 <end>;
+
+// Could be selector

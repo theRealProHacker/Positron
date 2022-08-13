@@ -7,7 +7,7 @@ from contextlib import contextmanager, redirect_stdout, suppress
 from dataclasses import dataclass
 from functools import cache, partial
 from operator import attrgetter, itemgetter
-from typing import Any, Generic, Iterable, Protocol, TypeVar
+from typing import Any, Callable, Generic, Iterable, Protocol, TypeVar
 
 import pygame as pg
 import pygame.freetype as freetype
@@ -26,19 +26,21 @@ from own_types import (
     Surface,
     Vector2,
     _XMLElement,
-    style_computed,
-    style_input
+    StyleComputed,
 )
 
 
 def noop(*args, **kws):
     return None
 
-################## g Manipulations ##########################
-def watch_file(*files: str):
-    """Add the file to the watched files"""
-    g["handler"].add_files(files)
 
+################## g Manipulations ##########################
+def watch_file(file: str)->str:
+    """Add the file to the watched files"""
+    return g["file_watcher"].add_file(file)
+
+
+####################################################################
 
 ################## Element Calculation ######################
 # This calculates values that have to be calculated after being computed
@@ -86,8 +88,12 @@ class Calculator:
         return self._multi(values, *args)  # type: ignore
 
 
-################## Value Correction #########################
+####################################################################
+
+########################## Misc #########################
 Var = TypeVar("Var")
+
+
 def make_default(value: Var | None, default: Var) -> Var:
     """
     If the `value` is None this returns `default` else it returns `value`
@@ -122,6 +128,29 @@ def all_equal(l):
     x, *rest = l
     return all(x == r for r in rest)
 
+
+def group_by(l: Iterable[Var], key: Callable[[Var], Any]):
+    pass
+
+
+def group_by_bool(
+    l: Iterable[Var], key: Callable[[Var], bool]
+) -> tuple[list[Var], list[Var]]:
+    true = []
+    false = []
+    for x in l:
+        if key(x):
+            true.append(x)
+        else:
+            false.append(x)
+    return true, false
+
+def find(__iterable: Iterable[Var], key: Callable[[Var],bool]):
+    for x in __iterable:
+        if key(x):
+            return x
+
+
 ####################################################################
 
 #################### Itemgetters/setters ###########################
@@ -149,20 +178,25 @@ class GeneralGetter(Protocol[Input_T, Output_T]):
 
 
 class Getter(Protocol[Output_T]):
-    def __call__(self, input: style_computed) -> Output_T:
+    def __call__(self, input: StyleComputed) -> Output_T:
         ...
+
 
 class T4Getter(Protocol[Output_T]):
     def __call__(
-        self, input: style_computed
+        self, input: StyleComputed
     ) -> tuple[Output_T, Output_T, Output_T, Output_T]:
         ...
 
+
 _T = TypeVar("_T")
+
+
 class itemsetter(Generic[_T]):
-    def __init__(self, keys: tuple[str,...]):
+    def __init__(self, keys: tuple[str, ...]):
         self.keys = keys
-    def __call__(self, map: Any, values: tuple[_T,...]) -> None:
+
+    def __call__(self, map: Any, values: tuple[_T, ...]) -> None:
         for key, value in zip(self.keys, values):
             map[key] = value
 
@@ -233,6 +267,7 @@ def print_parsed_tree(tree, indent=0, with_text=False):
             print_parsed_tree(child, indent + 2)
     print(" " * indent, f"</{tag}>")
 
+
 ####################################################################
 
 ######################### Regexes ##################################
@@ -240,9 +275,10 @@ def compile(patterns: Iterable[str | re.Pattern]):
     return [re.compile(p) for p in patterns]
 
 
-def get_groups(s: str, p: re.Pattern):
-    if match := p.search(s):
-        return [group for group in match.groups() if group and isinstance(group, str)]
+def get_groups(s: str, p: re.Pattern) -> list[str] | None:
+    if (match := p.search(s)) and (groups := [g for g in match.groups() if g]):
+        return groups
+    return None
 
 
 def re_join(*args: str) -> str:
@@ -284,44 +320,6 @@ for key, value in regexes.items():
     globals()[f"is_{key}"] = partial(check_regex, key)
 
 ####################################################################
-
-########################## Test ####################################
-def test():
-    tests = {
-        # https://developer.mozilla.org/en-US/docs/Web/CSS/integer#examples
-        "integer": {
-            "true": ["12", "+123", "-456", "0", "+0", "-0", "00"],
-            "false": ["12.0", "12.", "+---12", "ten", "_5", r"\35", "\4E94", "3e4"],
-        },
-        # https://developer.mozilla.org/en-US/docs/Web/CSS/number#examples
-        "number": {
-            "true": [
-                "12",
-                "4.01",
-                "-456.8",
-                "0.0",
-                "+0.0",
-                "-0.0",
-                ".60",
-                "10e3",
-                "-3.4e-2",
-            ],
-            "false": ["12.", "+-12.2", "12.1.1"],
-        },
-        # https://developer.mozilla.org/en-US/docs/Web/CSS/dimension
-        "dimension": {
-            "true": ["12px", "1rem", "1.2pt", "2200ms", "5s", "200hz"],
-            "false": ["12 px", '12"px"'],  # ,"3sec"]
-        },
-    }
-    glob = globals()
-    for k, val in tests.items():
-        func = glob["is_" + k]
-        for true in val["true"]:
-            assert func(true)
-        for false in val["false"]:
-            assert not func(false)
-
 
 ############################# Pygame related #############################
 

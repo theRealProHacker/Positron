@@ -1,6 +1,6 @@
 """ Any global variables are stored here"""
 from typing import Any
-from WeakCache import Cache
+from WeakCache import Cache, FrozenDCache
 
 # This problem is proof that typing in python doesn't work
 # For typing GlobalDict needs access to Element (a Protocol doesn't make sense, because the Protocol would just be
@@ -12,11 +12,11 @@ from WeakCache import Cache
 # My advice to anyone trying to use typing in python: shoot yourself before it's too late
 
 
-g: Any = {
+g: dict[str, Any] = {
     "W": 900,       # int
     "H": 600,       # int
     "root": None,   # the html element
-    "handler": None, # the handler
+    "file_watcher": None, # the file watcher
     "screen": None, # pg.Surface
     "default_font_size": 16 # float
 }
@@ -24,16 +24,24 @@ g: Any = {
 def reset_config():
     global g
     g.update({
-        "lang": "",  # str # this is set in Element.py by the HTMLElement
-        "title": "",  # str # this is set in Element.py by the title element
-        "cstyles": Cache(), # Cache[computed_style] # the style cache
-        "css_rules": Cache(), # Cache[Rule] # a list of external css rules
-        "css_rules_dirty": False, # bool
+        "lang": "",     # str # this is set in Element.py by the HTMLElement
+        "title": "",    # str # this is set in Element.py by the title element
+        # TODO: split cstyles into two styles. inherited and not inherited
+        "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache
+        "css_sheets": Cache(),  # Cache[SourceSheet] # a list of external css SourceSheets
+        "css_dirty": False,   # bool
+        "css_sheet_len": 0
     })
+    g["global_sheet"].clear()
 # main must reset
 
+def add_sheet(sheet: Any):
+    g["css_sheets"].add(sheet)
+    g["global_sheet"] += sheet
+    g["css_dirty"] = True
+    g["css_sheet_len"] = len(g["css_sheets"])
 
-# constant data
+################################ constant data ########################
 
 # font-size
 abs_font_size = {

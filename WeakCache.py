@@ -1,42 +1,40 @@
-from copy import copy
-from weakref import WeakSet
-from frozendict import FrozenOrderedDict as _frozendict
+from typing import Generic, Iterable
+from own_types import K_T, frozendict
+from weakref import WeakValueDictionary
 
-
-class frozendict(_frozendict):  # to make the weakref work
+class weakstr(str):
     pass
 
-
-class Cache(WeakSet[frozendict]):
-    def safe(self, d: dict) -> frozendict:
-        frz = frozendict(copy(d))  # we need to hold this reference until we return
-        self.add(frz)
-        return frz
+redirect: dict[type,type] = {
+    str: weakstr
+}
 
 
-def test():
-    test_cache = Cache()
-    style1 = {
-        "display": "block",
-        "margin-top": "1em",
-        "margin-bottom": "1em",
-    }
-    style2 = {
-        "margin-bottom": "1em",
-        "margin-top": "1em",
-        "display": "block",
-    }
-    # 1. Insert dict works
-    style3 = test_cache.safe(style1)
-    assert len(test_cache) == 1
+class Cache(Generic[K_T]): # The Cache is a set like structure but it uses a dict underneath
+    def __init__(self, l: Iterable[K_T] = []):
+        self.cache = WeakValueDictionary[int,K_T]()
+        for val in l:
+            self.add(val)
+    def add(self, val: K_T)->K_T:
+        if (new_type:= redirect.get(type(val))) is not None:
+            val = new_type(val)
+        key = hash(val)
+        if key not in self.cache:
+            self.cache[key] = val
+        return self.cache[key]
+    def __bool__(self):
+        return bool(self.cache)
+    def __len__(self):
+        return len(self.cache)
+    def __repr__(self):
+        return repr(set(self.cache.values()))
+    def __contains__(self, value: K_T) -> bool:
+        return hash(value) in self.cache
+    def __iter__(self):
+        return self.cache.values()
 
-    # 2. when adding another element the cache doesn't grow
-    style4 = test_cache.safe(style2)
-    assert len(test_cache) == 1
-    # 3. and returns the found value
-    style3 is style4
 
-    # 4. when we delete the reference to the cache item, the cache gets cleared
-    style3 = None
-    del style4
-    assert not test_cache
+class FrozenDCache(Cache[frozendict]):
+    def add(self, d: dict) -> frozendict:
+        frz = frozendict(d)
+        return super().add(frz)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from functools import reduce
-from typing import Any, Generator, Iterator, Literal, Mapping, TypeVar, Union, Protocol
+from typing import Any, Generator, Literal, Mapping, TypeVar, Union, Protocol, TypeVar, Hashable
 from xml.etree.ElementTree import Element as _XMLElement
 from enum import Enum as _Enum, auto as enum_auto
 from operator import or_
@@ -12,6 +12,7 @@ from pygame.surface import Surface
 from pygame.font import Font
 from pygame.rect import Rect
 from pygame.event import Event
+from frozendict import FrozenOrderedDict as _frozendict
 
 class BugError(RuntimeError):
     """ A type of error that should never occur. If it occurs it needs to be fixed."""
@@ -21,13 +22,19 @@ def Screen(Protocol):
     def blit(self, __surf: Surface):
         ...
 
-K_T = TypeVar("K_T")
+K_T = TypeVar("K_T", bound=Hashable)
 V_T = TypeVar("V_T")
 ############################ Some Classes ##############################
 
 class Enum(_Enum):
     def __repr__(self):
         return f"{self.__class__.__name__}.{self.name}"
+
+
+# to make the weakref work
+class frozendict(_frozendict):
+    def __ror__(self, other):
+        return dict(self)|dict(other)
 
 
 class ReadChain(Mapping[K_T,V_T]):
@@ -151,9 +158,9 @@ Normal: NormalType = Sentinel.Normal
 #################################################
 
 Index = int|slice
-style_input = dict[str, str]
-computed_value = float | Percentage | Sentinel| FontStyle | Color | str
-style_computed = Mapping[str, computed_value]
+StyleInput = dict[str, str]
+CompValue = float | Percentage | Sentinel| FontStyle | Color | str
+StyleComputed = Mapping[str, CompValue]
 
 Number = int, float
 
