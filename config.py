@@ -1,5 +1,6 @@
 """ Any global variables are stored here"""
 from typing import Any
+from own_types import Color
 from WeakCache import Cache, FrozenDCache
 
 # This problem is proof that typing in python doesn't work
@@ -13,12 +14,18 @@ from WeakCache import Cache, FrozenDCache
 
 
 g: dict[str, Any] = {
+    # User settable
     "W": 900,       # int
     "H": 600,       # int
+    "window_bg": Color((0,0,0)),   # Color
+    "resizable": True,      # bool
+    "frameless": False,     # bool
+    "allow_screen_saver": True,
+    "default_font_size": 16, # float
+    # reserved
     "root": None,   # the html element
     "file_watcher": None, # the file watcher
     "screen": None, # pg.Surface
-    "default_font_size": 16 # float
 }
 
 def reset_config():
@@ -39,7 +46,6 @@ def add_sheet(sheet: Any):
     g["css_sheets"].add(sheet)
     g["global_sheet"] += sheet
     g["css_dirty"] = True
-    g["css_sheet_len"] = len(g["css_sheets"])
 
 ################################ constant data ########################
 

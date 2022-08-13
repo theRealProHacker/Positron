@@ -2,21 +2,25 @@
 The main file that runs the browser
 """
 
-import os
-import time
-from contextlib import redirect_stdout
 import logging
-from Style import SourceSheet
+import os
+from os.path import abspath, dirname
+import time
+from contextlib import redirect_stdout, suppress
+from typing import Any
 
+from Style import SourceSheet
 from WeakCache import Cache
 
 with open(os.devnull, "w") as f, redirect_stdout(f):
     import pygame as pg
-
-from os.path import abspath, dirname
-
+with suppress(ImportError):
+    import win32api # type: ignore
+    import win32con # type: ignore
+    import win32gui # type: ignore
 import html5lib
-from watchdog.events import DirModifiedEvent, FileModifiedEvent, FileSystemEventHandler
+from watchdog.events import (DirModifiedEvent, FileModifiedEvent,
+                             FileSystemEventHandler)
 from watchdog.observers import Observer
 
 import util
@@ -24,13 +28,27 @@ from config import g, reset_config
 from Element import Element, HTMLElement, apply_rules, create_element
 from own_types import Event, Surface, Vector2
 
-
 pg.init()
-W, H = DIM = Vector2((g["W"], g["H"]))
-SCREEN = pg.display.set_mode(DIM, pg.RESIZABLE)
-g["screen"] = SCREEN
 CLOCK = pg.time.Clock()
 logging.basicConfig(level=logging.INFO)
+
+
+# def set_mode(mode: dict[str, Any] = {}):
+#     g.update(mode)
+def set_mode():
+    global SCREEN, DIM, W, H
+    # Display Mode
+    W, H = DIM = Vector2((g["W"], g["H"]))
+    flags = 0
+    if g["resizable"]:
+        flags |= pg.RESIZABLE
+    if g["frameless"]:
+        flags |= pg.NOFRAME
+    g["screen"] = SCREEN = pg.display.set_mode((g["W"], g["H"]), flags)
+    # Screen Saver
+    pg.display.set_allow_screensaver(g["allow_screen_saver"])
+
+set_mode()
 
 running = False
 reload = False
@@ -89,7 +107,7 @@ def main(file: str):
 
         CLOCK.tick(30)
 
-        SCREEN.fill("white")
+        SCREEN.fill(g["window_bg"])
         tree.draw(SCREEN, (0, 0))
         pg.display.flip()
     running = False
@@ -139,10 +157,7 @@ class OwnHandler(FileSystemEventHandler):
         return file
 
     def on_modified(self, event: FileModifiedEvent | DirModifiedEvent):
-        if (
-            event.src_path in self.files
-            and (t := time.monotonic()) - self.last_hit > 1
-        ):
+        if event.src_path in self.files and (t := time.monotonic()) - self.last_hit > 1:
             global reload
             reload = True
             pg.event.post(Event(pg.QUIT))
