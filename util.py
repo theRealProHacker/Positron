@@ -293,8 +293,9 @@ def replace_all(s: str, olds: list[str], new: str) -> str:
 # https://docs.python.org/3/library/re.html#simulating-scanf
 int_re = r"[+-]?\d+"
 pos_int_re = r"+?\d+"
-dec_re = rf"(?:{int_re})?(?:\.\d+)?(?:e{int_re})?"
-pos_dec_re = rf"(?:{pos_int_re})?(?:\.\d+)?(?:e{int_re})?"
+# dec_re = rf"(?:{int_re})?(?:\.\d+)?(?:e{int_re})?"
+dec_re = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
+# pos_dec_re = rf"(?:{pos_int_re})?(?:\.\d+)?(?:e{int_re})?"
 units_re = re_join(*all_units)
 
 regexes: dict[str, re.Pattern] = {
@@ -303,7 +304,7 @@ regexes: dict[str, re.Pattern] = {
         "integer": int_re,
         "number": dec_re,
         "percentage": rf"{dec_re}\%",
-        "dimension": rf"(?:{dec_re})(?:\w*)",  # TODO: Use actual units
+        "dimension": rf"(?:{dec_re})(?:\w+)|0",  # TODO: Use actual units
     }.items()
 }
 

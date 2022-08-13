@@ -9,7 +9,7 @@ from Element import (AndSelector, ClassSelector, DirectChildSelector,
                      sngl_p, rel_p, matches)
 from J import J
 from own_types import Color
-from Style import color, join_styles, remove_important, split_units
+from Style import color, join_styles, remove_important, split_units, split
 from WeakCache import FrozenDCache
 
 
@@ -21,8 +21,14 @@ def test_style_computing():
     assert color("rgb(120,120,120)", {}) == Color(*(120,) * 3)
     assert color("rgba(120,120,120,120)", {}) == Color(*(120,) * 4)
     assert color("currentcolor", {"color": Color("blue")}) == Color("blue")
-    with pytest.raises(ValueError):
+    with pytest.raises(AttributeError):
         split_units("blue")
+
+    assert split("solid rgb(11, 18, 147) 3px") == [
+        "solid",
+        "rgb(11,18,147)",
+        "3px"
+    ]
 
 
 def test_css():
@@ -102,8 +108,9 @@ def test_util():
                 ".60",
                 "10e3",
                 "-3.4e-2",
+                "12.", # this shouldn't work in the standard. But I dont care
             ],
-            False: ["12.", "+-12.2", "12.1.1"],
+            False: ["+-12.2", "12.1.1"],
         },
         # https://developer.mozilla.org/en-US/docs/Web/CSS/dimension
         "dimension": {

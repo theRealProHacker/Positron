@@ -5,50 +5,19 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from functools import cache
 from itertools import chain
-from typing import Callable, Generic, Iterable, Mapping, Protocol, TypeVar, overload
+from typing import (Callable, Generic, Iterable, Mapping, Protocol, TypeVar,
+                    overload)
 
 import tinycss
 
-from config import (
-    abs_border_width,
-    abs_font_size,
-    abs_font_weight,
-    abs_length_units,
-    g,
-    rel_font_size,
-)
-from own_types import (
-    Auto,
-    AutoType,
-    Color,
-    CompValue,
-    FontStyle,
-    Normal,
-    NormalType,
-    Number,
-    NumPerc,
-    Percentage,
-    ReadChain,
-    Sentinel,
-    StyleComputed,
-    StyleInput,
-    frozendict,
-)
-from util import (
-    bc_keys,
-    bs_keys,
-    bw_keys,
-    check_regex,
-    dec_re,
-    fetch_src,
-    group_by_bool,
-    inset_keys,
-    int_re,
-    log_error,
-    marg_keys,
-    noop,
-    pad_keys,
-)
+from config import (abs_border_width, abs_font_size, abs_font_weight,
+                    abs_length_units, g, rel_font_size)
+from own_types import (Auto, AutoType, Color, CompValue, FontStyle, Normal,
+                       NormalType, Number, NumPerc, Percentage, ReadChain,
+                       Sentinel, StyleComputed, StyleInput, frozendict)
+from util import (bc_keys, bs_keys, bw_keys, check_regex, dec_re, fetch_src,
+                  group_by_bool, inset_keys, int_re, log_error, marg_keys,
+                  noop, not_neg, pad_keys)
 
 ################## Acceptor #################################
 
@@ -105,22 +74,20 @@ def _length(dimension: tuple[float, str], p_style):
     return rv
 
 
-pdc = r"\s*,\s*"
-w = rf"((?:{int_re})*)"
+# Melody
 rgb_re = re.compile(
-    rf"rgb\(\s*{w}{pdc}{w}{pdc}{w}\s*\)"
-)  # TODO: Make that rgba is also accepted in rgb
-rgba_re = re.compile(rf"rgba\(\s*{w}{pdc}{w}{pdc}{w}{pdc}{w}\s*\)")
+    r"(?:(?:rgb\(([+-]?\d+),([+-]?\d+),([+-]?\d+),?\))|(?:rgb\(([+-]?\d+),([+-]?\d+),([+-]?\d+),([+-]?\d+),?\)))"
+)
+rgba_re = re.compile(r"rgba\(([+-]?\d+),([+-]?\d+),([+-]?\d+),([+-]?\d+),?\)")
 
 
 def color(value: str, p_style):
     if value == "currentcolor":
         return p_style["color"]
-    elif (match := rgb_re.match(value)) is not None:
-        return Color(*map(int, match.groups()))
-    elif (match := rgba_re.match(value)) is not None:
-        return Color(*map(int, match.groups()))
+    value = ''.join(value.split()) # remove whitespace
     with suppress(ValueError):
+        if (match := rgb_re.match(value) or rgba_re.match(value)) is not None:
+            return Color(*map(int, filter(None, match.groups())))
         return Color(value)
 
 
@@ -171,13 +138,12 @@ def font_style(value: str, p_style):
         return FontStyle(*split)  # type: ignore
 
 
-split_units_pattern = re.compile(f"({dec_re})([a-z%]*)")
-
+split_units_pattern = re.compile(fr"({dec_re})(\w*|%)")
 
 def split_units(attr: str) -> tuple[float, str]:
     """Split a dimension or percentage into a tuple of number and the "unit" """
     match = split_units_pattern.fullmatch(attr.strip())
-    num, unit = match.groups()  # type: ignore
+    num, unit = match.groups()  # type: ignore # Raises AttributeError
     return float(num), unit
 
 
@@ -507,8 +473,8 @@ def parse_style(s: str) -> StyleInput:
     # Update the unimportant style with the important style
     return process_input(
         sorted(
-            [(k, parse_important(string)) for k, string in pre_parsed], 
-            key=lambda t: is_imp(t[1])
+            [(k, parse_important(string)) for k, string in pre_parsed],
+            key=lambda t: is_imp(t[1]),
         )
     )
 
@@ -583,11 +549,11 @@ from pygame.colordict import THECOLORS
 
 THECOLORS.update({"canvastext": (0, 0, 0, 255), "transparent": (0, 0, 0, 0)})
 
-colors = set(["current-color", *THECOLORS])
+colors = set(["currentcolor", *THECOLORS])
 
 guessing: dict[str, Callable[[str], bool]] = {
     "border-width": lambda value: value in BorderStyleAttr.kws,
-    "border-color": lambda value: value in colors,
+    "border-color": lambda value: value in colors or color(value,{"color":"black"}),
     "border-style": lambda value: value in BorderWidthAttr.kws
     or check_regex("dimension", value),
 }
@@ -633,11 +599,20 @@ def process_input(d: list[tuple[str, str]]) -> StyleInput:
     Unpacks shorthands and filters and reports invalid declarations
     """
     done: dict[str, str] = {}
-    for key, value in d:
-        try:
-            done.update(process_property(key, value))
-        except AssertionError as e:
-            log_error(f"CSS: {e.args[0]} ({key}: {value})")
+    def inner(d: Iterable[tuple[str, str]]):
+        for key, value in d:
+            try:
+                done.update(process_property(key, value))
+            except AssertionError as e:
+                log_error(f"CSS: {e.args[0] or 'Invalid Property'} ({key}: {value})")
+    inner(d)
+    while True:
+        _done, todo = group_by_bool(
+            done.items(), lambda item: item[0] in style_attrs
+        )
+        done = dict(_done)
+        if not todo: break
+        inner(todo)
     return done
 
 
@@ -659,39 +634,62 @@ def is_valid(name: str, value: str):
     return False
 
 
+def split(s: str):
+    """
+    This function is for splitting css values that include functions
+    """
+    rec = True
+    result = []
+    curr_string = ""
+    brackets = 0
+    for c in s:
+        is_w = re.match(r"\s", c)
+        if rec and not brackets and is_w:
+            rec = False
+            result.append(curr_string)
+            curr_string = ""
+        if not is_w:
+            rec = True
+            curr_string += c
+        if c == "(":
+            brackets += 1
+        elif c == ")":
+            assert brackets
+            brackets -= 1
+    if rec:
+        result.append(curr_string)
+    return result
+
+
 def process_property(key: str, value: str) -> dict[str, str]:
     """Processes a single Property as described in the main process functions"""
     # TODO: font
     # TODO: border-radii
+    arr = split(value)
     if key == "all":
-        assert key in global_values
+        assert len(arr) == 1
+        assert value in global_values
         return {k: value for k in style_attrs}
     elif key in dir_shorthands:
-        fstring = dir_shorthands[key]
-        arr = value.split()
         assert len(arr) <= len(
             directions
         ), f"Too many values: {len(arr)}/{len(directions)}"
+        fstring = dir_shorthands[key]
         _res = dict(zip(directions, arr))
         for k in directions[len(_res) :]:
             _res[k] = _res[dir_fallbacks[k]]
         return {fstring.format(k): v for k, v in _res.items()}
     elif (shorthand := smart_shorthands.get(key)) is not None:
-        shorthand = shorthand.copy()  # we change this
-        arr = value.split()
         assert len(arr) <= len(
             shorthand
         ), f"Too many values: {len(arr)}, max {len(shorthand)}"
-        result = {
-            k: v
-            for v in arr
-            for k in shorthand
-            # is only removed if is_valid
-            if is_valid(k, v) and not shorthand.remove(k)  # type: ignore[func-returns-value]
-        }
-        assert not shorthand, f"Invalid value(s): {', '.join(shorthand)}"
+        result = {k: v for v in arr for k in shorthand if is_valid(k,v)}
+        left = shorthand ^ result.keys()
+        assert not left, f"Invalid key(s): {', '.join(left)}"
         return result
     else:
+        assert len(arr) == 1
+        value = arr[0]
         assert key in style_attrs, "Unknown Property"
         assert is_valid(key, value), "Invalid Value"
         return {key: value}

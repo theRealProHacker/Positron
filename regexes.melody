@@ -42,4 +42,133 @@ either {
 }
 <end>;
 
+// TODO:
 // Could be selector
+let .single = {either {
+  // any selector
+  "*";
+  // id selector
+  match {
+    "#";
+    some of <word>;
+  }
+  // class selector
+  match {
+    "."; 
+    some of <word>;
+  }
+  // has attr selector
+  match {
+    "[";
+    any of <whitespace>;
+    some of <word>;
+    any of <whitespace>;
+    "]";
+  }
+  // attribute selectors
+  match {
+    "[";
+    any of <whitespace>;
+    some of <word>;
+    any of <whitespace>;
+    option of `[~|^$*]`;
+    "=";
+    any of <whitespace>;
+    some of <word>;
+    any of <whitespace>;
+    "]";
+  }
+  // tag selector
+  match {
+    some of <word>;
+  }
+}
+}
+let .rel = {
+  any of <whitespace>;
+  `([> +~])`;
+  any of <whitespace>;
+}
+
+<start>;
+some of match {.single;}
+any of match {
+  .rel;
+  some of match {.single;}
+}
+<end>;
+
+//rgb and rgba
+let .int = {
+  option of `[+-]`;
+  some of <digit>;
+}
+
+let .rgb = {
+  "rgb(";
+  capture{
+    .int;
+  }
+  ",";
+  capture{
+    .int;
+  }
+  ",";
+  capture{
+    .int;
+  }
+  option of match {
+    ",";
+    capture{
+      .int;
+    }
+    option of ",";
+  }
+  ")";
+}
+
+let .rgba = {
+  "rgba(";
+  capture{
+    .int;
+  }
+  ",";
+  capture{
+    .int;
+  }
+  ",";
+  capture{
+    .int;
+  }
+  ",";
+  capture{
+    .int;
+  }
+  option of ",";
+  ")";
+}
+
+// decimal
+capture {
+  option of `[+-]`;
+  either {
+    // d+(.d*)
+    match {
+      some of <digit>;
+      option of match {
+        ".";
+        any of <digit>;
+      }
+    }
+    // .d+
+    match {
+      ".";
+      some of <digit>;
+    }
+  }
+  option of match {
+    `[eE]`;
+    option of `[+-]`;
+    some of <digit>;
+  }
+}

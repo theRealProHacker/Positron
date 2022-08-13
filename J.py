@@ -2,14 +2,11 @@ from config import g
 from Element import Element, parse_selector, Selector
 
 def find_in(elem: Element, selector: Selector)->Element|None:
-    found: Element|None
-    for c in elem.iter_children():
-        if elem is c:
-            found = c if selector(c) else None
-        else:
-            found = find_in(c, selector)            
-        if found:
-            return found
+    """Breadth first search in element"""
+    if elem.matches(selector): 
+        return elem
+    for c in elem.real_children:
+        find_in(c, selector)
     return None
 
 # J is inspired by $ from jQuery and is basically an ElementProxy
@@ -26,5 +23,7 @@ class J:
                 self = super().__new__(cls)
                 self._elem = elem
                 return self
-        else:
+        elif isinstance(query, Element):
             self._elem = query
+        else:
+            raise TypeError
