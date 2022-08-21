@@ -2,72 +2,81 @@
 The main file that runs the browser
 """
 
+import asyncio
+import aioconsole
 import logging
 import os
-from os.path import abspath, dirname
 import time
-from contextlib import redirect_stdout, suppress
-from typing import Any
-
-from Style import SourceSheet
-from WeakCache import Cache
+from contextlib import redirect_stdout
+from os.path import abspath, dirname
 
 with open(os.devnull, "w") as f, redirect_stdout(f):
     import pygame as pg
-with suppress(ImportError):
-    import win32api # type: ignore
-    import win32con # type: ignore
-    import win32gui # type: ignore
+
 import html5lib
-from watchdog.events import (DirModifiedEvent, FileModifiedEvent,
-                             FileSystemEventHandler)
+from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 import util
 from config import g, reset_config
-from Element import Element, HTMLElement, apply_rules, create_element
+from Element import HTMLElement, apply_rules, create_element
 from own_types import Event, Surface, Vector2
+from Style import SourceSheet
+from WeakCache import Cache
+from J import SingleJ, J
 
-pg.init()
+did_set_mode = False
+running = False
+reload = False
+
 CLOCK = pg.time.Clock()
-logging.basicConfig(level=logging.INFO)
+# These aren't actually constant
+W: float
+H: float
+DIM: Vector2
+SCREEN: Surface
 
 
 # def set_mode(mode: dict[str, Any] = {}):
 #     g.update(mode)
 def set_mode():
-    global SCREEN, DIM, W, H
+    global SCREEN, DIM, W, H, did_set_mode
+    did_set_mode = True
     # Display Mode
     W, H = DIM = Vector2((g["W"], g["H"]))
-    flags = 0
-    if g["resizable"]:
-        flags |= pg.RESIZABLE
-    if g["frameless"]:
-        flags |= pg.NOFRAME
-    g["screen"] = SCREEN = pg.display.set_mode((g["W"], g["H"]), flags)
+    flags = 0 | pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
+    g["screen"] = SCREEN = pg.display.set_mode(DIM, flags)
     # Screen Saver
     pg.display.set_allow_screensaver(g["allow_screen_saver"])
 
-set_mode()
+# Setup
+pg.init()
+logging.basicConfig(level=logging.INFO)
 
-running = False
-reload = False
 
-
-def run(file: str):
+async def run(file: str):
     global reload
     logging.info("Starting")
+    if not did_set_mode:
+        set_mode()
     try:
-        main(file)
+        await main(file)
         while reload:
             logging.info("Reloading")
             reload = False
-            main(file)
+            await main(file)
     finally:
         pg.quit()
+        logging.info("Exiting")
 
 
-def main(file: str):
+async def tick(time: int):
+    """ Await the next tick. In this spare time all async tasks can be run. """
+    # https://youtu.be/GpqAQxH1Afc?t=833
+    await asyncio.to_thread(CLOCK.tick, time)
+
+
+async def main(file: str):
     global running
     if running:
         raise RuntimeError("Already running")
@@ -82,59 +91,30 @@ def main(file: str):
     pg.display.set_caption(g["title"])
     g["root"] = tree
 
-    tree.compute()
-    tree.layout()
-
-    end = False
-    recompute = False
     while True:
+        end = False
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 end = True
             elif event.type == pg.WINDOWRESIZED:
                 g["W"] = event.x
                 g["H"] = event.y
-                recompute = True
-
-        if end:
-            break
-        if g["css_dirty"] or g["css_sheet_len"] == len(g["css_sheets"]):
+                g["recompute"] = True
+        if end: break
+        if g["css_dirty"] or g["css_sheet_len"] != len(g["css_sheets"]):
             apply_style()
-            recompute = True
-        if recompute:
+            g["recompute"] = True
+        if g["recompute"]:
             tree.compute()
             tree.layout()
+            g["recompute"] = False
 
-        CLOCK.tick(30)
+        await tick(30)
 
         SCREEN.fill(g["window_bg"])
         tree.draw(SCREEN, (0, 0))
         pg.display.flip()
     running = False
-
-
-def test():
-    # setup code
-    example_html = """
-<html>
-    <head>
-        <p style="color: green">My example Text GgOT</p>
-    </head>
-    <body style="background-color: lightblue">
-        Text
-        <p style="color: green; width: auto">My example Text GgOT</p>
-        Text
-        <p>now a paragraph</p>
-        and Text again
-    </body>
-</html>"""
-    parsedTree = html5lib.parse(example_html)
-    tree: Element = create_element(parsedTree, parent=None)
-    print(tree.to_html())
-    g["root"] = tree
-    # now compute and assert
-    tree.compute()
-    tree.layout()
 
 
 class OwnHandler(FileSystemEventHandler):
@@ -156,10 +136,12 @@ class OwnHandler(FileSystemEventHandler):
             ob.start()
         return file
 
-    def on_modified(self, event: FileModifiedEvent | DirModifiedEvent):
+    def on_modified(self, event: FileSystemEvent):
+        logging.debug(f"File modified: {event.src_path}")
         if event.src_path in self.files and (t := time.monotonic()) - self.last_hit > 1:
             global reload
             reload = True
+            pg.event.clear(eventtype=pg.QUIT)
             pg.event.post(Event(pg.QUIT))
             self.last_hit = t
 
@@ -175,6 +157,28 @@ def apply_style():
     g["css_sheet_len"] = len(g["css_sheets"])
     apply_rules(g["root"], g["global_sheet"].all_rules)
 
+def e(q: str):
+    return SingleJ(q).elem
+
+async def Console():
+    while True:
+        try:
+            x = await aioconsole.ainput(">>> ")
+            r = eval(x)
+            if r is not None:
+                print(r)
+        except asyncio.exceptions.CancelledError:
+            break
+        except Exception as e:
+            print(e)
+
+async def async_main():
+    task = asyncio.create_task(Console())
+    await run("example.html")
+    task.cancel()
+    await task
+
 
 if __name__ == "__main__":
-    run("example.html")
+    asyncio.run(async_main())
+

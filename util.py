@@ -2,40 +2,36 @@
 Utilities for all kinds of needs (funcs, regex, etc...) 
 """
 
+import logging
 import re
 from contextlib import contextmanager, redirect_stdout, suppress
 from dataclasses import dataclass
-from functools import cache, partial
+from functools import cache, partial, reduce
 from operator import attrgetter, itemgetter
-from typing import Any, Callable, Generic, Iterable, Protocol, TypeVar
+from threading import Thread
+from typing import Any, Callable, Coroutine, Generic, Iterable, Protocol, TypeVar
 
 import pygame as pg
 import pygame.freetype as freetype
 
 from config import all_units, g
-from own_types import (
-    Auto,
-    AutoNP,
-    AutoNP4Tuple,
-    Color,
-    Dimension,
-    Float4Tuple,
-    Number,
-    Percentage,
-    Rect,
-    Surface,
-    Vector2,
-    _XMLElement,
-    StyleComputed,
-)
+from own_types import (Auto, AutoNP, AutoNP4Tuple, Color, Dimension,
+                       Float4Tuple, Number, Percentage, Rect, StyleComputed,
+                       Surface, Vector2, _XMLElement)
 
 
 def noop(*args, **kws):
+    """A no operation function"""
     return None
+
+@contextmanager
+def no_ctx(*args, **kws):
+    """An empty context manager"""
+    yield
 
 
 ################## g Manipulations ##########################
-def watch_file(file: str)->str:
+def watch_file(file: str) -> str:
     """Add the file to the watched files"""
     return g["file_watcher"].add_file(file)
 
@@ -91,8 +87,37 @@ class Calculator:
 ####################################################################
 
 ########################## Misc #########################
+class StoppableThread(Thread):
+    """ A general StoppableThread. It can be stopped with thread.stop()"""
+    daemon = True
+    def __init__(self, coro_make: Callable[[],Coroutine]):
+        """ The coro_make is a Function that returns a Coroutine """
+        Thread.__init__(self)
+        self.coro = coro_make()
+        self.running: bool = True
+
+    def run(self):
+        logging.debug("Started "+self.__class__.__name__)
+        while self.running:
+            self.coro.__next__()
+        self.coro.close()
+        logging.debug("Finished "+self.__class__.__name__)
+    
+    def stop(self):
+        self.running = False
+        return self
+        
+
 Var = TypeVar("Var")
 
+# TODO: Add Typing with overloads and typing variables:
+# Something like:
+# (a: (x)->y, b: (y)->z) -> (x)->z
+def compose(*funcs):
+    def _compose(f, g):
+        return lambda x : f(g(x))
+              
+    return reduce(_compose, funcs, lambda x : x)
 
 def make_default(value: Var | None, default: Var) -> Var:
     """
@@ -112,7 +137,7 @@ not_neg = lambda x: max(0, x)
 
 def get_tag(elem: _XMLElement) -> str:
     return (
-        elem.tag.removeprefix("{http://www.w3.org/1999/xhtml}")
+        elem.tag.removeprefix("{http://www.w3.org/1999/xhtml}").lower()
         if isinstance(elem.tag, str)
         else "comment"
     )
@@ -129,10 +154,6 @@ def all_equal(l):
     return all(x == r for r in rest)
 
 
-def group_by(l: Iterable[Var], key: Callable[[Var], Any]):
-    pass
-
-
 def group_by_bool(
     l: Iterable[Var], key: Callable[[Var], bool]
 ) -> tuple[list[Var], list[Var]]:
@@ -145,7 +166,8 @@ def group_by_bool(
             false.append(x)
     return true, false
 
-def find(__iterable: Iterable[Var], key: Callable[[Var],bool]):
+
+def find(__iterable: Iterable[Var], key: Callable[[Var], bool]):
     for x in __iterable:
         if key(x):
             return x
@@ -156,6 +178,7 @@ def find(__iterable: Iterable[Var], key: Callable[[Var],bool]):
 #################### Itemgetters/setters ###########################
 
 directions = ("top", "bottom", "left", "right")
+corners = ("top-left", "top-right", "bottom-left", "bottom-right")
 
 # Rect
 side_keys = tuple(f"mid{k}" for k in directions)
@@ -242,8 +265,8 @@ def log_error(*messages, **kwargs):
 
 
 @cache
-def print_once(t: str):
-    print(t)
+def print_once(*args):
+    print(*args)
 
 
 def print_tree(tree, indent=0):
@@ -304,9 +327,14 @@ regexes: dict[str, re.Pattern] = {
         "integer": int_re,
         "number": dec_re,
         "percentage": rf"{dec_re}\%",
-        "dimension": rf"(?:{dec_re})(?:\w+)|0",  # TODO: Use actual units
+        "dimension": rf"(?:{dec_re})(?:\w+)",  # TODO: Use actual units
     }.items()
 }
+
+
+IsFunc = Callable[[str], re.Match | None]
+is_integer: IsFunc
+is_number: IsFunc
 
 
 def check_regex(name: str, to_check: str):

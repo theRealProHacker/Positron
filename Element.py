@@ -1,66 +1,36 @@
+"""
+This file contains most of the code around the Element class
+This includes:
+- Creating Elements from a parsed tree
+- Different Element types
+- Computing, layouting and drawing the Elements
+- CSS-Selectors
+"""
+
 import re
-from contextlib import contextmanager
-from copy import copy
 from dataclasses import dataclass
 from functools import cache, cached_property, reduce
-from itertools import chain, islice
-from typing import Any, Callable, Iterable, Iterator, Protocol, Type, Union
+from itertools import chain
+from typing import Any, Callable, Iterable, Protocol, Type, Union
 
 import pygame as pg
 
-from Style import (
-    SourceSheet,
-    Style,
-    StyleRule,
-    abs_default_style,
-    get_style,
-    group_imp,
-    is_imp,
-    parse_file,
-    parse_sheet,
-    parse_style,
-    prio_keys,
-    remove_important,
-    style_attrs,
-)
-from config import add_sheet, g
+import Style
 from Box import Box, make_box
-from own_types import (
-    Auto,
-    AutoNP4Tuple,
-    BugError,
-    CompValue,
-    Dimension,
-    Float4Tuple,
-    Font,
-    FontStyle,
-    ReadChain,
-    Rect,
-    StyleComputed,
-    StyleInput,
-    Surface,
-    Vector2,
-    _XMLElement,
-)
-from util import (
-    Calculator,
-    bc_getter,
-    bs_getter,
-    bw_getter,
-    bw_setter,
-    directions,
-    get_groups,
-    get_tag,
-    group_by_bool,
-    inset_getter,
-    log_error,
-    rect_lines,
-    watch_file,
-)
+from config import add_sheet, g
+from own_types import (Auto, AutoNP4Tuple, BugError, CompValue, Dimension,
+                       DisplayType, Float4Tuple, Font, FontStyle, Normal,
+                       NormalType, Number, Percentage, ReadChain, Rect,
+                       StyleComputed, StyleInput, Surface, _XMLElement)
+from Style import (SourceSheet, StyleRule, abs_default_style, bw_keys,
+                   get_style, pack_longhands, parse_file, parse_sheet,
+                   prio_keys, style_attrs)
+from util import (Calculator, bc_getter, bs_getter, get_groups, get_tag,
+                  group_by_bool, inset_getter, log_error, print_once, rect_lines,
+                  watch_file)
 
 """ More useful links for further development
 https://developer.mozilla.org/en-US/docs/Web/CSS/image
-https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Box_Model/Mastering_margin_collapsing
 """
 
 ########################## Specificity and Rules #############################
@@ -78,20 +48,33 @@ sum_specs: Callable[[Iterable[Spec]], Spec] = lambda specs: reduce(add_specs, sp
 ################################# Globals ###################################
 
 
+@dataclass(frozen=True, slots=True)
+class TextDrawItem:
+    text: str
+    element: "Element"
+    xpos: float
+
+    @property
+    def height(self):
+        return self.element.line_height
+
+
+class Line(tuple[TextDrawItem]):
+    @property
+    def height(self):
+        return max([0,*(item.height for item in self)])
+
+
+# TODO: Get an actually acceptable font
 @cache
 def get_font(family: list[str], size: float, style: FontStyle, weight: int) -> Font:
     font = pg.font.match_font(
         name=family,
         italic=style.value == "italic",
         bold=weight > 500,  # we don't support actual weight TODO
-    )
-    if font is None:
-        log_error("Failed to find font", family, style, weight)
+    ) or log_error("Failed to find font", family, style, weight)
     font: Font = Font(font, int(size))
-    if (
-        style.value == "oblique"
-    ):  # TODO: we don't support oblique with an angle, we just fake the italic
-        font.italic = True
+    font.italic = style.value == "oblique"
     return font
 
 
@@ -100,6 +83,7 @@ def process_style(
 ) -> CompValue:
     def redirect(new_val: str):
         return process_style(elem, new_val, key, p_style)
+
     assert isinstance(val, str), val
     attr = style_attrs[key]
     ######################################## global style attributes ####################################################
@@ -119,7 +103,7 @@ def process_style(
             )
     return (
         valid
-        if (valid := attr.convert(val, p_style)) is not None
+        if (valid := attr.convert(val, p_style)) is not None or print_once(key,val)
         else redirect("unset")
     )
 
@@ -137,23 +121,31 @@ def calc_inset(inset: AutoNP4Tuple, width: float, height: float) -> Float4Tuple:
 
 
 class Element:
-    box: Box = Box.empty()
-    display: str  # the used display state. Is set before layout
+    # General
     tag: str
     attrs: dict
-    inline_style: StyleInput  # inline style
-    estyle: StyleInput  # external style
-    cstyle: StyleComputed  # computed_style
-    children: list["Element"]
+    children: list[Union["Element", "TextElement"]]
+    # Style
+    istyle: Style.Style     # inline style
+    estyle: Style.Style     # external style
+    cstyle: StyleComputed   # computed_style
+    # Layout + Draw
+    box: Box = Box.empty()
+    line_height: float
+    white_spacing: float
+    display: DisplayType        # the used display state. Is set before layout
+    layout_type: DisplayType    # the used layout state. Is set before layout
+    # Dynamic states
     focus: bool = False
+    hover: bool = False
 
     def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
-        self.children = []
-        self.parent = parent
         self.tag = tag
         self.attrs = attrs
+        self.children = []
+        self.parent = parent
         # parse element style and update default
-        self.inline_style = parse_style(attrs.get("style", ""))
+        self.istyle = Style.parse_inline_style(attrs.get("style", ""))
         self.estyle = {}
 
     def is_block(self) -> bool:
@@ -161,172 +153,209 @@ class Element:
         Returns whether an element is a block.
         Includes side effects (as a feature) that automatically adjusts false inline elements to block layout
         """
-        self.display = self.cstyle["display"]  # type: ignore
+        self.display = self.cstyle["display"]
         if self.display != "none":
-            any_child_block = any([child.is_block() for child in self.children])
-            if any_child_block:  # set all children to blocked
-                for child in self.real_children:
-                    child.display = "block"
+            if len(self.children) == 1 and isinstance(elem:=self.children[0], TextElement):
+                elem.display = self.display
+            elif any([child.is_block() for child in self.children]):  # set all children to blocked
                 self.display = "block"
+                for child in self.real_children:
+                    if child.display == "inline":
+                        child.display = "block"
         return self.display == "block"
 
     def get_height(self) -> float:
-        if self.box.height == -1:  # sentinel: height not set yet
-            assert self.parent != self, self
-            return self.parent.get_height()
-        else:
-            return self.box.height
+        # -1 is a sentinel for height not set yet
+        return self.box.height if self.box.height != -1 else self.parent.get_height()
+
+    @property
+    def input_style(self)->StyleInput:
+        """ The total input style. Fused from inline and external style """
+        return dict(
+            ReadChain(
+                Style.remove_important(
+                    Style.join_styles(self.istyle, self.estyle)
+                ), get_style(self.tag)
+            )
+        )
 
     ####################################  Main functions ######################################################
     @cache
     def matches(self, selector: "Selector"):
+        """Returns whether the given Selector matches the Element, cached"""
         return selector(self)
 
     def collide(self, pos: Dimension) -> Iterable["Element"]:
         """
-        The idea of this function is to get which elements were hit for focus, hover and mouse events
+        The idea of this function is to get which elements were hit for focus, hover, etc.
         """
-        rv: list[Iterable[Element]] = []
-        # check which children were hit
-        if self.children:
-            rv = [c.collide(pos) for c in reversed(self.children)]
-        # check if we were hit and add us if so
+        # TODO: z-index
+        for x in chain.from_iterable(
+            c.collide(pos) for c in reversed(self.real_children)
+        ):
+            yield x
         if self.box.border_box.collidepoint(pos):
-            rv.append([self])
-        return chain(*rv)
+            yield self
 
     def compute(self):
         """
         Assembles the input style and then converts it into the Elements computed style.
         It then computes all the childrens styles
         """
-        input_style = ReadChain(self.estyle, self.inline_style, get_style(self.tag))
-        high_prio, low_prio = group_by_bool(
-            input_style.keys(), lambda key: key in prio_keys
-        )
+        input_style = self.input_style
+        keys = sorted(input_style.keys(), key=prio_keys.__contains__, reverse=True)
         parent_style = dict(self.parent.cstyle)
         style: StyleComputed = {}
-        for key in high_prio + low_prio:
-            val = input_style[key]
-            new_val = process_style(self, val, key, parent_style)
-            assert (
-                new_val is not None
-            ), f"Style {key} was set to None. Which should never happen."
-            style[key] = new_val
-            if key in prio_keys:
-                parent_style[key] = new_val
+        for width_key in keys:
+            val = input_style[width_key]
+            new_val = process_style(self, val, width_key, parent_style)
+            assert new_val is not None, BugError(
+                f"Style {width_key} was set to None. Which should never happen."
+            )
+            style[width_key] = new_val
+            if width_key in prio_keys:
+                parent_style[width_key] = new_val
         # corrections
-        bw_setter(
-            style,
-            tuple(
-                0 if _style in ("none", "hidden") else width
-                for _style, width in zip(bs_getter(style), bw_getter(style))
-            ),
+        """ mdn border-width: 
+        absolute length or 0 if border-style is none or hidden
+        """
+        for width_key, bstyle in zip(bw_keys, bs_getter(style)):
+            if bstyle in ("none", "hidden"):
+                style[width_key] = 0
+        # actual value calculation:
+        fsize: float = style["font-size"]
+        lh: float | NormalType | Percentage = style["line-height"]
+        wspace = style["word-spacing"]
+        wspace: float | Percentage = Percentage(100) if wspace is Normal else wspace
+        self.font = get_font(
+            style["font-family"], fsize, style["font-style"], style["font-weight"]
         )
-        for key, value in zip(directions, bs_getter(style)):
-            if value in ("none", "hidden"):
-                style[key] = 0
+        self.line_height = (
+            lh
+            if isinstance(lh, Number) else 
+            1.5 * fsize
+            if lh is Normal else 
+            lh * fsize
+        )
+        self.word_spacing = (
+            wspace
+            if isinstance(wspace, Number)
+            else self.font.size(" ")[0]
+            if wspace is Normal
+            else self.font.size(" ")[0] * wspace
+        )
         self.cstyle = g["cstyles"].add(style)
         for child in self.children:
             child.compute()
 
     def layout(self, width: float) -> None:  # !
         """
+        Layout an element. 
         Gets the width it has available
         The input width is the width the child should take if its width is Auto
-
-        Layouts the childrens elements and sets used values for not fully resolved style-attributes.
-        Also sets the box property which determines the positioning of every element
-
-        Layout uses attributes like:
-        top, bottom, left, right
-        margin, padding, border-width,
-        width, height, (display),
         """
         if self.display == "none":
-            self.box = Box("content-box")
+            self.layout_type = 'none'
             return
+        style = self.cstyle
         self.box, set_height = make_box(
-            width, self.cstyle, self.parent.box.width, self.parent.get_height()
+            width, style, self.parent.box.width, self.parent.get_height()
         )
         if any(c.display == "block" for c in self.children):
-            with self.layout_children() as height:
-                set_height(height)
-        else:  # all children are inline
-            # Algorithmic idea
-            # convert our children to a list of (text, style) tuples and
-            # lay it out with perfect knowledge about our own width
-            # save this list
-            # then in the draw function we can use it
-            set_height(0)
+            self.layout_type = "block"
+            self.layout_children(set_height)
+        else:
+            # with word-wrap but not between words if they are too long
+            # https://stackoverflow.com/a/46220683/15046005
+            self.layout_type = "inline"
+            width = self.box.content_box.width
+            xpos: float = 0
+            current_line: list[TextDrawItem] = []
+            lines: list[Line] = []
+            def line_break():
+                nonlocal xpos
+                xpos = 0
+                lines.append(Line(current_line))
+                current_line.clear()
+            for elem in self._text_iter_desc():
+                c, text = elem.parent, elem.text
+                if text == "\n":
+                    line_break()
+                    continue
+                for word in text.split():
+                    word_width = c.font.size(word)[0]
+                    if xpos + word_width > width:
+                        line_break()
+                    current_line.append(TextDrawItem(word, c, xpos))
+                    xpos += word_width + c.word_spacing
+            lines.append(Line(current_line))
+            set_height(sum(line.height for line in lines))
+            self.lines = lines
 
-    @contextmanager
-    def layout_children(self):
+    def layout_children(self, set_height: Callable[[float], None]):
         inner: Rect = self.box.content_box
         x_pos = inner.x
         y_cursor = inner.y
-        children = self.real_children
-        flow = [
-            child
-            for child in children
-            if child.cstyle["position"] in ("static", "relative", "sticky")
-        ]
-        no_flow = [
-            child
-            for child in children
-            if child.cstyle["position"] in ("absolute", "fixed")
-        ]
+        # https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Box_Model/Mastering_margin_collapsing
+        last_margin = 0  # TODO: Margin collapsing
+        flow, no_flow = group_by_bool(
+            self.real_children, lambda x: x.cstyle["position"] in ("static", "relative", "sticky")
+        )
         for child in flow:
             child.layout(inner.width)
-            # calculate the position
             top, bottom, left, right = calc_inset(
                 inset_getter(self.cstyle), self.box.width, self.box.height
             )
-            inset: tuple[float, float] = (
-                (0, 0)
+            child.box.set_pos((
+                (x_pos, y_cursor)
                 if child.cstyle["position"] == "sticky"
-                else (bottom - top, right - left)
-            )
-            cx, cy = Vector2(x_pos, y_cursor) + inset
-            child.box.set_pos((cx, cy))
+                else (bottom - top + x_pos, right - left + y_cursor)
+            ))
             y_cursor += child.box.outer_box.height
-        yield y_cursor
+        set_height(y_cursor)
         for child in no_flow:
             child.layout(inner.width)
             # calculate position
             top, bottom, left, right = calc_inset(
                 inset_getter(self.cstyle), self.box.width, self.box.height
             )
-            cy: float = (
-                top
-                if top is not Auto
-                else self.get_height() - bottom
-                if bottom is not Auto
-                else 0
+            child.box.set_pos(
+                (
+                    (
+                        top
+                        if top is not Auto
+                        else self.get_height() - bottom
+                        if bottom is not Auto
+                        else 0
+                    ),
+                    (
+                        left
+                        if left is not Auto
+                        else inner.width - right
+                        if right is not Auto
+                        else 0
+                    ),
+                )
             )
-            cx: float = (
-                left
-                if left is not Auto
-                else inner.width - right
-                if right is not Auto
-                else 0
-            )
-            child.box.set_pos((cx, cy))
 
     def draw(self, screen: Surface, pos: Dimension):
-        # https://web.dev/howbrowserswork/#the-painting-order
+        """
+        Draws the element to the `screen` at `pos`
+        """
         if self.display == "none":
             return
         style = self.cstyle
-        draw_box = copy(self.box)
+        draw_box = self.box.copy()
         x_off, y_off = pos
         draw_box.x += x_off
         draw_box.y += y_off
-        # Now x and y represent the real position on the canvas (before it was the position in the content_box of the parent)
+        # Now x and y represent the real position on the canvas
+        # (before it was the position in the content_box of the parent)
         border_box: Rect = draw_box.border_box
         colors = bc_getter(style)
+        # https://web.dev/howbrowserswork/#the-painting-order
         # 1. draw background:
-        pg.draw.rect(screen, style["background-color"], border_box)  # type: ignore[arg-type]
+        pg.draw.rect(screen, style["background-color"], border_box)
         # 2. draw background-image
         # TODO
         # 3. draw border
@@ -345,8 +374,19 @@ class Element:
                 ):
                     pg.draw.line(screen, color, *line, int(width))  # type: ignore # TODO: kill mypy for not letting me use *
         # 4. draw children
-        for c in self.real_children:
-            c.draw(screen, draw_box.content_box.topleft)
+        if self.layout_type == 'block':
+            for c in self.real_children:
+                c.draw(screen, draw_box.content_box.topleft)
+        elif self.layout_type == 'inline':
+            ypos = 0
+            for line in self.lines:
+                for item in line:
+                    surf = self.font.render(item.text, True, item.element.cstyle["color"])
+                    screen.blit(surf, (draw_box.x+item.xpos, draw_box.y+ypos))
+                ypos += line.height 
+        else:
+            raise BugError("Wrong layout_type ({self.layout_type})")
+
         # 5. draw outline
         # TODO
         pass
@@ -363,7 +403,7 @@ class Element:
     def to_html(self, indent=0):
         """Convert the element back to formatted html"""
         # TODO: handle differently depending on display block or inline
-        attrs = [f'{k} = "{v}"' for k, v in self.attrs.items()]
+        attrs = [f'{k}="{v}"' for k, v in self.attrs.items()]
         indentation = " " * indent
         body = f"{self.tag} {' '.join(attrs)}".strip()
         if self.children:
@@ -377,29 +417,60 @@ class Element:
     def __repr__(self):
         return f"<{self.tag}>"
 
-    ############################## Helpers #####################################
-    def iter_parents(self) -> Iterator["Element"]:
-        """Iterates over the elements parents *excluding* itself"""
-        while True:
-            self = self.parent
-            yield self
-            if type(self) is HTMLElement:
-                break
+    def style_repr(self):
+        input_style = dict(ReadChain(self.istyle, self.estyle))
+        out_style = pack_longhands(
+            {
+                k:f"{input_style[k]} -> {self.cstyle[k]}" 
+                for k in input_style.keys()
+            }
+        )
+        print("{")
+        for item in out_style.items():
+            print(f"\t{': '.join(item)},")
+        print("}")
 
-    def iter_children(self) -> Iterator["Element"]:
-        """Iterates over all children *including* this element"""
-        for x in chain(
-            [self],
-            *(
-                c.iter_children()
-                for c in self.children
-                if not isinstance(c, TextElement)
-            ),
+    ############################## Helpers #####################################
+    def iter_anc(self) -> Iterable["Element"]:
+        """Iterates over all ancestors *excluding* itself"""
+        yield self.parent
+        for parent in self.parent.iter_anc():
+            yield parent
+
+    def iter_desc(self) -> Iterable["Element"]:
+        """Iterates over all descendants *including* this element"""
+        yield self
+        for x in chain.from_iterable(
+            c.iter_desc() for c in self.children if not isinstance(c, TextElement)
         ):
             yield x
 
+    def iter_siblings(self) -> Iterable["Element"]:
+        for x in self.parent.children:
+            if not x is self and not isinstance(x, TextElement):
+                yield x
+        # return filter(lambda c: not (c is self or isinstance(c, TextElement)),self.parent.children)
+
+    def _text_iter_desc(self) -> Iterable['TextElement']:
+        """
+        Alternative iteration over all descendants
+        used in text layout.
+        Shouldn't be called out of this context.
+        """
+        if self.display == "none":
+            return
+        for c in self.children:
+            if isinstance(c, TextElement):
+                yield c
+            else:
+                for x in c._text_iter_desc():
+                    yield x
+
     @property
     def real_children(self):
+        """
+        All direct children that are not MetaElements or TextElements
+        """
         return [
             c for c in self.children if not isinstance(c, (TextElement, MetaElement))
         ]
@@ -417,20 +488,24 @@ class HTMLElement(Element):
             g["lang"] = self.attrs["lang"]
         self.cstyle = {}
 
-    def compute(self):
-        super().compute()
+    def get_height(self) -> float:
+        return self.box.height
 
     def layout(self):
         self.box = Box(t="content-box", width=g["W"], height=g["H"])
         # all children correct their display
         assert self.is_block()
-        # the maximum width is g["W"] # we might also add a scrollable window in the future. Then any overflowed element will still be viewable
-        with self.layout_children():
-            pass
+        self.layout_children(lambda height: setattr(self.box, "height", height))
 
     def draw(self, screen, pos):
         for c in self.children:
             c.draw(screen, pos)
+
+    def iter_anc(self):
+        return []
+
+    def iter_siblings(self) -> Iterable["Element"]:
+        return []
 
 
 class MetaElement(Element):
@@ -441,14 +516,14 @@ class MetaElement(Element):
     """
 
     tag: str
-    display = "none"
+    display: DisplayType = "none"
 
     def __init__(self, attrs: dict[str, str], txt: str, parent: "Element"):
         self.children = []
         self.parent = parent
         self.attrs = attrs
         # parse element style and update default
-        self.inline_style = {}
+        self.istyle = {}
 
     def is_block(self):
         return False
@@ -510,10 +585,9 @@ class IMGElement(Element):
         pass
 
 
-@dataclass(slots=True)
-class TextDrawItem:
-    text: str
-    pos: Dimension
+class BrElement(Element):
+    def _text_iter_desc(self):
+        yield TextElement("\n", self)
 
 
 font_split_regex = re.compile(r"\s*\,\s*")
@@ -524,8 +598,6 @@ class TextElement:
 
     text: str
     parent: Element
-    style: StyleComputed
-    font: pg.font.Font
     tag = "Text"
     display = "inline"
 
@@ -600,6 +672,11 @@ def create_element(elem: _XMLElement, parent: Element | None = None):
         ) is not None and issubclass(meta_element, MetaElement):
             # meta_elements don't need their tag, but take their text
             new = meta_element(elem.attrib, text, parent)
+        case tag if (
+            special_elem := globals().get(tag.capitalize() + "Element")
+        ) is not None and issubclass(special_elem, Element):
+            # meta_elements don't need their tag, but take their text
+            new = special_elem(elem.attrib, text, parent)
         case _:
             new = Element(tag, elem.attrib, parent)  # type: ignore[arg-type]
 
@@ -618,23 +695,17 @@ def reveal_rule(rule: StyleRule):
 
 def apply_rules(elem: Element, rules: list[StyleRule]):
     # filter not matching selectors and sort by specificity
-    l = sorted(
+    sorted_by_sel = sorted(
         (x for rule in rules if elem.matches((x := reveal_rule(rule))[0])),
-        key = lambda rule: rule[0].spec
+        key=lambda rule: rule[0].spec,
     )
     # sort by importance
-    unpacked = sorted(
-        [(sel,value[1],name,value[0])
-            for sel,style in l
-                for name,value in style.items()],
-        key=lambda t: t[1]
+    elem.estyle = dict(
+        sorted(
+            chain.from_iterable(style.items() for _, style in sorted_by_sel),
+            key = lambda t: Style.is_imp(t[1])
+        )
     )
-    elem.estyle = {
-        name:value for _,_,name,value in unpacked
-    }
-    # dict(
-    #     zip(*islice(zip(*unpacked),2,4))
-    # )
     for c in elem.real_children:
         apply_rules(c, rules)
 
@@ -646,7 +717,7 @@ EmptyElement.parent = None  # type: ignore
 
 
 class InlineElement(Element):
-    """This is the interface of an element with display = "inline" """
+    """ This is the interface of an element with display = "inline" """
 
 
 ################################# Selectors #######################################
@@ -785,7 +856,7 @@ class DirectChildSelector(CompositeSelector):
     spec = cached_property(joined_specs)
 
     def __call__(self, elem: Element):
-        chain = [elem, *elem.iter_parents()]
+        chain = [elem, *elem.iter_anc()]
         if len(chain) != len(self.selectors):
             return False
         return all(parent.matches(sel) for parent, sel in zip(chain, self.selectors))
@@ -802,7 +873,7 @@ class ChildSelector(CompositeSelector):
         own_sel, p_sel = self.selectors
         if not own_sel(elem):
             return False
-        return any(p.matches(p_sel) for p in elem.iter_parents())
+        return any(p.matches(p_sel) for p in elem.iter_anc())
 
     __str__ = lambda self: " ".join(str(s) for s in self.selectors)  # type: ignore[attr-defined]
 

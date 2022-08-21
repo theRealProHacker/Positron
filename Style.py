@@ -5,19 +5,18 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from functools import cache
 from itertools import chain
-from typing import (Callable, Generic, Iterable, Mapping, Protocol, TypeVar,
-                    overload)
+from typing import Generic, Iterable, Mapping, Protocol, TypeVar, overload
 
 import tinycss
 
 from config import (abs_border_width, abs_font_size, abs_font_weight,
                     abs_length_units, g, rel_font_size)
-from own_types import (Auto, AutoType, Color, CompValue, FontStyle, Normal,
-                       NormalType, Number, NumPerc, Percentage, ReadChain,
-                       Sentinel, StyleComputed, StyleInput, frozendict)
-from util import (bc_keys, bs_keys, bw_keys, check_regex, dec_re, fetch_src,
-                  group_by_bool, inset_keys, int_re, log_error, marg_keys,
-                  noop, not_neg, pad_keys)
+from own_types import (Auto, AutoType, Color, CompValue, FontStyle, Length,
+                       Normal, NormalType, Number, NumPerc, Percentage,
+                       ReadChain, Sentinel, StyleComputed, StyleInput,
+                       frozendict)
+from util import (bc_keys, bs_keys, bw_keys, dec_re, fetch_src, group_by_bool,
+                  inset_keys, log_error, marg_keys, noop, pad_keys, get_groups)
 
 ################## Acceptor #################################
 
@@ -29,66 +28,29 @@ class Acceptor(Protocol[CompValue_T]):
     def __call__(self, value: str, p_style: StyleComputed) -> None | CompValue_T:
         ...
 
-
-def _length(dimension: tuple[float, str], p_style):
-    """
-    Gets a dimension (a tuple of a number and any unit)
-    and returns a pixel value as a Number
-    Raises ValueError or TypeError if something is wrong with the input.
-
-    See: https://developer.mozilla.org/en-US/docs/Web/CSS/length
-    """
-    num, s = dimension  # Raises ValueError if dimension has not exactly 2 entries
-    if num == 0:
-        return 0  # we don't even have to look at the unit. Especially because the unit might be the empty string
-    abs_length: dict[str, float] = abs_length_units
-    w: int = g["W"]
-    h: int = g["H"]
-    rv: float
-    match num, s:
-        # source:
-        # https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Values_and_units
-        # absolute values first--------------------------------------
-        case x, key if key in abs_length:
-            rv = abs_length[key] * x
-        # now relative values --------------------------------------
-        case x, "em":
-            rv = p_style["font-size"] * x
-        case x, "rem":
-            rv = g["root"]._style["font-size"] * x
-        # view-port-relative values --------------------------------------
-        case x, "vw":
-            rv = x * 0.01 * w
-        case x, "vh":
-            rv = x * 0.01 * h
-        case x, "vmin":
-            rv = x * 0.01 * min(w, h)
-        case x, "vmax":
-            rv = x * 0.01 * max(w, h)
-        # TODO: ex, ic, ch, ((lh, rlh, cap)), (vb, vi, sv*, lv*, dv*)
-        # See: https://developer.mozilla.org/en-US/docs/Web/CSS/length#relative_length_units_based_on_viewport
-        case x, s if isinstance(x, Number) and isinstance(s, str):
-            raise ValueError(f"{s} is not an accepted unit")
-        case _:
-            raise TypeError()
-    return rv
-
-
+# https://regexr.com/3ag5b
+hex_re = re.compile(
+    r"#([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})"
+)
 # Melody
 rgb_re = re.compile(
-    r"(?:(?:rgb\(([+-]?\d+),([+-]?\d+),([+-]?\d+),?\))|(?:rgb\(([+-]?\d+),([+-]?\d+),([+-]?\d+),([+-]?\d+),?\)))"
+    fr"rgba?\(({dec_re}),({dec_re}),({dec_re})(?:,({dec_re}),?)?\)"
 )
-rgba_re = re.compile(r"rgba\(([+-]?\d+),([+-]?\d+),([+-]?\d+),([+-]?\d+),?\)")
-
 
 def color(value: str, p_style):
     if value == "currentcolor":
         return p_style["color"]
-    value = ''.join(value.split()) # remove whitespace
     with suppress(ValueError):
-        if (match := rgb_re.match(value) or rgba_re.match(value)) is not None:
-            return Color(*map(int, filter(None, match.groups())))
+        if (groups := get_groups(value, rgb_re)) is not None:
+            return Color(*map(lambda x: int(float(x)), groups))
+        elif (groups := get_groups(value, hex_re)) is not None:
+            return Color(*map(lambda x: int(x*(2//len(x)), 16), groups))
         return Color(value)
+
+
+def number(value: str, p_style):
+    with suppress(ValueError):
+        return float(value)
 
 
 def font_size(value: str, p_style):
@@ -138,13 +100,62 @@ def font_style(value: str, p_style):
         return FontStyle(*split)  # type: ignore
 
 
-split_units_pattern = re.compile(fr"({dec_re})(\w*|%)")
+split_units_pattern = re.compile(rf"({dec_re})(\w+|%)")
+
 
 def split_units(attr: str) -> tuple[float, str]:
     """Split a dimension or percentage into a tuple of number and the "unit" """
+    if attr == "0":
+        return (0,"")
     match = split_units_pattern.fullmatch(attr.strip())
     num, unit = match.groups()  # type: ignore # Raises AttributeError
     return float(num), unit
+
+
+def _length(dimension: tuple[float, str], p_style):
+    """
+    Gets a dimension (a tuple of a number and any unit)
+    and returns a pixel value as a Number
+    Raises ValueError or TypeError if something is wrong with the input.
+
+    See: https://developer.mozilla.org/en-US/docs/Web/CSS/length
+    """
+    num, s = dimension  # Raises ValueError if dimension has not exactly 2 entries
+    if num == 0:
+        return Length(
+            0
+        )  # we don't even have to look at the unit. Especially because the unit might be the empty string
+    abs_length: dict[str, float] = abs_length_units
+    w: int = g["W"]
+    h: int = g["H"]
+    rv: float
+    match num, s:
+        # source:
+        # https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Values_and_units
+        # absolute values first--------------------------------------
+        case x, key if key in abs_length:
+            rv = abs_length[key] * x
+        # now relative values --------------------------------------
+        case x, "em":
+            rv = p_style["font-size"] * x
+        case x, "rem":
+            rv = g["root"]._style["font-size"] * x
+        # view-port-relative values --------------------------------------
+        case x, "vw":
+            rv = x * 0.01 * w
+        case x, "vh":
+            rv = x * 0.01 * h
+        case x, "vmin":
+            rv = x * 0.01 * min(w, h)
+        case x, "vmax":
+            rv = x * 0.01 * max(w, h)
+        # TODO: ex, ic, ch, ((lh, rlh, cap)), (vb, vi, sv*, lv*, dv*)
+        # See: https://developer.mozilla.org/en-US/docs/Web/CSS/length#relative_length_units_based_on_viewport
+        case x, s if isinstance(x, Number) and isinstance(s, str):
+            raise ValueError(f"'{s}' is not an accepted unit")
+        case _:
+            raise TypeError()
+    return Length(rv)
 
 
 def length(value: str, p_style):
@@ -159,6 +170,18 @@ def length_percentage(value: str, p_style, mult: float | None = None):
             return Percentage(num) if mult is None else mult * Percentage(num)
         else:
             return _length((num, unit), p_style)
+
+
+T1 = TypeVar("T1", bound=CompValue)
+T2 = TypeVar("T2", bound=CompValue)
+
+
+def combine_accs(acc1: Acceptor[T1], acc2: Acceptor[T2]) -> Acceptor[T1 | T2]:
+    def inner(value: str, p_style):
+        result1 = acc1(value, p_style)
+        return result1 if result1 is not None else acc2(value, p_style)
+
+    return inner
 
 
 ################################## Style Data ################################
@@ -250,7 +273,9 @@ style_attrs: dict[str, Types] = {
     "font-family": StyleAttr("Arial", acc=no_change),
     "font-size": StyleAttr("medium", acc=font_size),
     "font-style": StyleAttr("normal", acc=font_style),
-    "line-height": StyleAttr("normal", normal, length_percentage, True),
+    "line-height": StyleAttr(
+        "normal", normal, combine_accs(number, length_percentage), True
+    ),
     "word-spacing": StyleAttr("normal", normal, length_percentage, True),
     "display": StyleAttr("inline", {"inline", "block", "none"}),
     "background-color": StyleAttr("transparent", acc=color),
@@ -262,14 +287,17 @@ style_attrs: dict[str, Types] = {
     "box-sizing": StyleAttr("content-box", {"content-box", "border-box"}),
     **{key: AALP for key in chain(inset_keys, pad_keys, marg_keys)},
     **{key: BorderWidthAttr for key in bw_keys},
-    **{key: StyleAttr("currentcolor", acc=color) for key in bc_keys},
     **{key: BorderStyleAttr for key in bs_keys},
+    **{key: StyleAttr("currentcolor", acc=color, inherits=False) for key in bc_keys},
 }
 
 abs_default_style = {
     k: "inherit" if v.inherits else v.initial for k, v in style_attrs.items()
 }
 """ The default style for a value (just like "unset") """
+# https://trac.webkit.org/browser/trunk/Source/WebCore/css/html.css
+# https://hg.mozilla.org/mozilla-central/file/tip/layout/style/res/html.css
+# https://www.w3schools.com/cssref/css_default_values.asp
 
 element_styles = defaultdict(
     dict,
@@ -282,7 +310,8 @@ element_styles = defaultdict(
         "head": {
             "display": "none",
         },
-        # "h1": {"font-size": "30px"},
+        "span": {"display": "inline"}
+        # "h1": {"font-size": "2em"},
         # "p": {
         #     "display": "block",
         #     "margin-top": "1em",
@@ -341,27 +370,22 @@ StyleSheet = dict[str, Style]
 Rule = AtRule | StyleRule
 
 
-def join_styles(style1: Style, style2: Style):
+def join_styles(style1: Style, style2: Style)->Style:
     """
     Join two styles. Prefers the first
     """
-    fused = style1 | style2
-    return {
-        **{
-            k: fused[k] for k in style1 ^ style2.keys()
-        },  # all keys that are in one but not both # type: ignore[list-item]
-        **{
-            k: style2[k] if style2[k][1] and not style1[k][1] else style1[k]
-            for k in style1 & style2.keys()
-        },  # all keys that are in both
-    }
+    fused = dict(style1)
+    for k, v in style2.items():
+        if k not in fused or (is_imp(v) and not is_imp(fused[k])):
+            fused[k] = v
+    return fused
 
 
 def is_imp(t: Value):
     return t[1]
 
 
-IMPORTANT = "!important"
+IMPORTANT = " !important"
 
 
 def parse_important(s: str) -> Value:
@@ -378,12 +402,12 @@ def remove_important(style: Style) -> StyleInput:
     ...
 
 
-def remove_important(style):
+def remove_important(style: list[Property]|Style)->StyleInput|list[tuple[str,str]]:
     """
     Remove the information whether a value in the style is important
     """
-    d = style if isinstance(style, list) else style.items()
-    return type(style)((k, v[0]) for k, v in d)
+    d, t = (style, list) if isinstance(style, list) else (style.items(), dict)
+    return t((k, v[0]) for k, v in d)
 
 
 def add_important(style: StyleInput, imp: bool) -> Style:
@@ -391,13 +415,6 @@ def add_important(style: StyleInput, imp: bool) -> Style:
     Add the information whether a value in the style is important
     """
     return {k: (v, imp) for k, v in style.items()}
-
-
-def group_imp(iter: Iterable[Value]):
-    return group_by_bool(
-        iter,
-        lambda t: is_imp(t[1]),
-    )
 
 
 def get_media() -> Media:
@@ -435,7 +452,7 @@ class SourceSheet(list[Rule]):
         return hash(tuple(self))
 
     @classmethod
-    def join(cls, sheets):
+    def join(cls, sheets: Iterable['SourceSheet']):
         return cls(chain.from_iterable(sheets))
 
     def append(self, __object) -> None:
@@ -456,27 +473,21 @@ g["global_sheet"] = SourceSheet()
 ############################### Parsing functions #######################################
 
 
-def parse_style(s: str) -> StyleInput:
+def parse_inline_style(s: str) -> Style:
     """
     Parse a style string. For example an inline style.
     Self-written right now
     """
     if not s:
         return {}
-    data = s.removeprefix("{").removesuffix("}").strip().split(";")
-    pre_parsed: list[tuple[str, str]] = [
-        tuple(key.strip() for key in splitted)  # type: ignore # we assert that the length is 2
+    data = s.removeprefix("{").removesuffix("}").strip().lower().split(";")
+    pre_parsed = [
+        (_split[0], parse_important(_split[1]))
         for value in data
-        if len(splitted := value.split(":")) == 2
+        if len(_split := tuple(key.strip() for key in value.split(":"))) == 2
         or log_error(f"CSS: Invalid style declaration ({value})")
     ]
-    # Update the unimportant style with the important style
-    return process_input(
-        sorted(
-            [(k, parse_important(string)) for k, string in pre_parsed],
-            key=lambda t: is_imp(t[1]),
-        )
-    )
+    return process(pre_parsed)
 
 
 Parser = tinycss.CSS21Parser()
@@ -509,7 +520,7 @@ def parse_sheet(source: str) -> SourceSheet:
     """
     Parses a whole css sheet
     """
-    tiny_sheet: tinycss.css21.Stylesheet = Parser.parse_stylesheet(source)
+    tiny_sheet: tinycss.css21.Stylesheet = Parser.parse_stylesheet(source.lower())
     return SourceSheet(handle_rule(rule) for rule in tiny_sheet.rules)
 
 
@@ -551,30 +562,23 @@ THECOLORS.update({"canvastext": (0, 0, 0, 255), "transparent": (0, 0, 0, 0)})
 
 colors = set(["currentcolor", *THECOLORS])
 
-guessing: dict[str, Callable[[str], bool]] = {
-    "border-width": lambda value: value in BorderStyleAttr.kws,
-    "border-color": lambda value: value in colors or color(value,{"color":"black"}),
-    "border-style": lambda value: value in BorderWidthAttr.kws
-    or check_regex("dimension", value),
-}
-
 directions = ("top", "right", "bottom", "left")
 global_values = frozenset({"inherit", "initial", "unset", "revert"})
 
 dir_fallbacks = {"right": "top", "bottom": "top", "left": "right"}
-dir_shorthands = dict(
+dir_shorthands: dict[str, str] = dict(
     [
         ("margin", "margin-{}"),
         ("padding", "padding-{}"),
         ("border-width", "border-{}-width"),
-        ("border-color", "border-{}-color"),
         ("border-style", "border-{}-style"),
+        ("border-color", "border-{}-color"),
         ("inset", "{}"),
     ]
 )
 # smart shorthands are when the split depends on the values
 smart_shorthands = {
-    "border": {"border-width", "border-style", "border-color"},
+    "border": { "border-width", "border-style", "border-color",},
     **{
         f"border-{k}": {
             f"border-{k}-width",
@@ -587,11 +591,15 @@ smart_shorthands = {
 
 
 def process(d: list[Property] | Style) -> Style:
-    itr = d if isinstance(d, list) else d.items()
-    imp, not_imp = group_by_bool(itr, lambda t: is_imp(t[1]))
-    return add_important(
-        process_input(remove_important(not_imp)), False
-    ) | add_important(process_input(remove_important(imp)), True)
+    itr = (d if isinstance(d, list) else d.items())
+    imp, nimp = map(
+        process_input,
+        map(
+            remove_important,
+            group_by_bool(itr,lambda t: is_imp(t[1]))
+        )
+    )
+    return add_important(nimp, False) | add_important(imp, True)
 
 
 def process_input(d: list[tuple[str, str]]) -> StyleInput:
@@ -599,19 +607,21 @@ def process_input(d: list[tuple[str, str]]) -> StyleInput:
     Unpacks shorthands and filters and reports invalid declarations
     """
     done: dict[str, str] = {}
+
     def inner(d: Iterable[tuple[str, str]]):
         for key, value in d:
             try:
                 done.update(process_property(key, value))
             except AssertionError as e:
-                log_error(f"CSS: {e.args[0] or 'Invalid Property'} ({key}: {value})")
+                reason = e.args[0] if e.args else 'Invalid Property'
+                log_error(f"CSS: {reason} ({key}: {value})")
+
     inner(d)
     while True:
-        _done, todo = group_by_bool(
-            done.items(), lambda item: item[0] in style_attrs
-        )
+        _done, todo = group_by_bool(done.items(), lambda item: item[0] in style_attrs)
         done = dict(_done)
-        if not todo: break
+        if not todo:
+            break
         inner(todo)
     return done
 
@@ -620,17 +630,14 @@ def is_valid(name: str, value: str):
     """
     Checks whether the given CSS property is valid
     """
-    if name in global_values:
+    if value in global_values:
         return True
-    elif (validator := guessing.get(name)) is not None:
-        return validator(value)
     elif (attr := style_attrs.get(name)) is not None:
-        if name in attr.kws:
-            return True
         with suppress(KeyError):
-            if attr.accept(value, {}) is None:
-                return False
+            return value in attr.kws or attr.accept(value, {}) is not None
         return True
+    elif (fstring := dir_shorthands.get(name)) is not None:
+        return is_valid(fstring.format("top"), value)
     return False
 
 
@@ -665,6 +672,7 @@ def process_property(key: str, value: str) -> dict[str, str]:
     """Processes a single Property as described in the main process functions"""
     # TODO: font
     # TODO: border-radii
+    # TODO: outline
     arr = split(value)
     if key == "all":
         assert len(arr) == 1
@@ -683,9 +691,9 @@ def process_property(key: str, value: str) -> dict[str, str]:
         assert len(arr) <= len(
             shorthand
         ), f"Too many values: {len(arr)}, max {len(shorthand)}"
-        result = {k: v for v in arr for k in shorthand if is_valid(k,v)}
-        left = shorthand ^ result.keys()
-        assert not left, f"Invalid key(s): {', '.join(left)}"
+        result = {k: v for v in arr for k in shorthand if is_valid(k, v)}
+        left = set(arr).difference(result.values())
+        assert not left, f"Invalid value(s): {', '.join(left)}"
         return result
     else:
         assert len(arr) == 1
@@ -693,3 +701,23 @@ def process_property(key: str, value: str) -> dict[str, str]:
         assert key in style_attrs, "Unknown Property"
         assert is_valid(key, value), "Invalid Value"
         return {key: value}
+
+
+def pack_longhands(d: StyleComputed) -> StyleInput:
+    """Pack longhands back into their shorthands for readability"""
+    d: dict[str, str] = {k: str(v).removesuffix(".0") for k, v in d.items()}
+    for shorthand, fstring in dir_shorthands.items():
+        formatted = [fstring.format(s) for s in directions]
+        if not all(f in d for f in formatted):
+            continue
+        longhands = [d.pop(f) for f in formatted]
+        match longhands:
+            case [w, x, y, z] if w == x == y == z:  # 0
+                d[shorthand] = w
+            case [w1, x1, w2, x2] if w1 == w2 and x1 == x2:  # 0 1
+                d[shorthand] = f"{w1} {x1}"
+            case [w, x1, y, x2] if x1 == x2:  # 0 1 2
+                d["shorthand"] = f"{w} {x1} {y}"
+            case _:
+                d["shorthand"] = " ".join(longhands)
+    return d

@@ -17,6 +17,7 @@ g: dict[str, Any] = {
     # User settable
     "W": 900,       # int
     "H": 600,       # int
+    "window_bg": Color("white"),   # Color
     "resizable": True,      # bool
     "frameless": False,     # bool
     "allow_screen_saver": True,
@@ -33,6 +34,7 @@ def reset_config():
         "lang": "",     # str # this is set in Element.py by the HTMLElement
         "title": "",    # str # this is set in Element.py by the title element
         # TODO: split cstyles into two styles. inherited and not inherited
+        "recompute": True,  # bool 
         "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache
         "css_sheets": Cache(),  # Cache[SourceSheet] # a list of external css SourceSheets
         "css_dirty": False,   # bool

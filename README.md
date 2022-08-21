@@ -21,6 +21,7 @@
 
 ## Stylesheet sources
 
+
 ### Global stylesheets
 - User agent stylesheet for each attribute
     - inherited values have a default of inherit
@@ -34,8 +35,8 @@
 - User stylesheet overrides
 - Author stylesheet overrides (element selectors)
 
-### Head Style
-- User agent style for the head element (tag: html).
+### Root Style
+- User agent style for the root element (tag: html).
     - background: white
     - color: black
 - User style overrides
@@ -44,6 +45,7 @@
 # Internal Attribute Specifications
 
 These specify the attributes with their types and constraints. Every computed type should comply with this specification. That is essential!
+Comment: However, these seem to be redundant now, because Style.styleattrs defines them pretty well
 
 - font-weight: 
     - From: number, "normal", "bold", "lighter", and "bolder"
@@ -85,10 +87,11 @@ These specify the attributes with their types and constraints. Every computed ty
 - box-sizing: "content-box" or "border-box"
 - margin(tbrl): float or Auto or percentage
 - padding(tbrl): float or Auto or percentage
+- **border** (width, style, color)
 - border-width(tbrl): float or Auto
-- border-color(tbrl): Color
 - border-style(tbrl): str (https://drafts.csswg.org/css-backgrounds/#border-style)
-- line-height: float or percentage or Normal
+- border-color(tbrl): Color
+- line-height: float or Length or percentage or Normal
 - word-spacing: float or percentage or Normal
 
 # The Element class
@@ -113,3 +116,9 @@ compute:
     such as width, margin-right, text-indent, and top), percentage-specified values turn into percentage-computed values. 
     Additionally, unitless numbers specified on the line-height property become the computed value, as specified. 
     The relative values that remain in the computed value become absolute when the used value is determined.
+
+
+# Documented differences to the specifications
+
+1. Numbers in CSS can be written with a trailing `.`. Example: `line-height: 12.` (Please don't do this)
+2. `rgb(r,g,b,alpha)` is also valid, as is `rgba(r,g,b)`

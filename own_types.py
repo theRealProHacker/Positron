@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from functools import reduce
+import re
 from typing import Any, Generator, Literal, Mapping, TypeVar, Union, Protocol, TypeVar, Hashable
 from xml.etree.ElementTree import Element as _XMLElement
 from enum import Enum as _Enum, auto as enum_auto
@@ -14,7 +15,7 @@ from pygame.rect import Rect
 from pygame.event import Event
 from frozendict import FrozenOrderedDict as _frozendict
 
-class BugError(RuntimeError):
+class BugError(AssertionError):
     """ A type of error that should never occur. If it occurs it needs to be fixed."""
 
 # Abstract Protocols
@@ -35,6 +36,9 @@ class Enum(_Enum):
 class frozendict(_frozendict):
     def __ror__(self, other):
         return dict(self)|dict(other)
+    
+    def items(self):
+        return [tuple(item) for item in super().items()]
 
 
 class ReadChain(Mapping[K_T,V_T]):
@@ -123,23 +127,28 @@ class Percentage:
         return other * self.value * 0.01
     def __rmul__(self, other: float)->float:
         return other * self.value * 0.01
+    def __repr__(self):
+        return str(self.value).removesuffix(".0")+"%"
 
+@dataclass(frozen=True)
 class FontStyle:
     value: Literal["normal", "italic", "oblique"]
     angle: float
     def __init__(self, value: Literal["normal", "italic", "oblique"], angle: str|None = None):
         assert value in ("normal", "italic", "oblique")
-        self.value = value
-        self.angle = 14 if angle is None else float(angle)
+        object.__setattr__(self, "value", value)
+        object.__setattr__(self, "angle", 14 if angle is None else float(angle))
 
-    def __hash__(self):
-        return hash(f"{self.value}@{self.angle}")
 
 class Color(pg.Color):
     def __setattr__(self, __name: str, __value: Any) -> None:
         raise TypeError("Color can't be mutated")
     def __hash__(self):
         return hash(int(self))
+
+class Length(float):
+    def __repr__(self):
+        return f"Length({super().__repr__()})"
 
 ################################################
 
@@ -159,11 +168,12 @@ Normal: NormalType = Sentinel.Normal
 
 Index = int|slice
 StyleInput = dict[str, str]
-CompValue = float | Percentage | Sentinel| FontStyle | Color | str
+CompValue = Any # | float | Percentage | Sentinel| FontStyle | Color | str
 StyleComputed = Mapping[str, CompValue]
 
 Number = int, float
 
+DisplayType = Literal['inline','block','none']
 NumPerc = float|Percentage
 AutoNP = float|Percentage|AutoType
 AutoNP4Tuple = tuple[AutoNP, AutoNP, AutoNP, AutoNP]
@@ -172,9 +182,3 @@ SNP_T = TypeVar("SNP_T",bound = SNP, covariant=True)
 
 SNP4Tuple = tuple[SNP, SNP, SNP, SNP]
 Float4Tuple = tuple[float, float, float, float]
-
-if __name__ == '__main__':
-    # test sentinels
-    print(Auto)
-    assert Auto.name.lower() == "auto"
-    # test Acceptors

@@ -49,15 +49,14 @@ guess_slicing: dict[str, Index] = {
 
 def _sum(*args: float)->float:
     """ This function can take a single value or an iterable and returns a single Number"""
-    if len(args) == 1:
-        x = args[0]
-        if isinstance(x, Number):
+    match args:
+        case [x] if isinstance(x, Number):
             return x
-        elif isinstance(x, Iterable):
+        case [x] if isinstance(x, Iterable):
             return sum(x)
-    else:
-        return sum(args)
-    raise TypeError
+        case _:
+            return sum(args)
+    raise TypeError # mypy doesn't recognise this as unreachable
 
 def _convert(box: 'Box', frm: str, to: str, part: Index)->float:
     if frm == to:
@@ -233,7 +232,7 @@ def make_box(
             case default:
                 return calc.multi2(default)
 
-    box_sizing: str = style["box-sizing"] # type: ignore
+    box_sizing: str = style["box-sizing"]
 
     margin: Float4Tuple
     padding = calc.multi4(pad_getter(style), 0)
@@ -243,13 +242,13 @@ def make_box(
         width = not_neg(given_width - _sum(*margin[2:], *border[2:], *padding[2:]))
     else:
         # width is a resolvable value. So margin: auto resolves to all of the remaining space
-        width = calc(style["width"]) # type: ignore[arg-type]
+        width = calc(style["width"])
         _margin = mrg_getter(style)
         margin =  calc.multi2(_margin[:2], 0) \
             + merge_horizontal_margin(_margin[2:], avail = given_width - _sum(width, *border[2:], *padding[2:]))
 
     # -1 is a sentinel value to say that the height hasn't yet been specified (height auto)
-    height = calc(style["height"], auto_val=-1, perc_val = parent_height) # type: ignore[arg-type]
+    height = calc(style["height"], auto_val=-1, perc_val = parent_height)
 
     box = Box(
         box_sizing,

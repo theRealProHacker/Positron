@@ -2,44 +2,63 @@ import pygame as pg
 import pytest
 from pytest import raises
 
+import Box
+import Element
+import J
+import Style
 import util
-from Box import Box
 from Element import (AndSelector, ClassSelector, DirectChildSelector,
-                     HasAttrSelector, IdSelector, TagSelector, parse_selector,
-                     sngl_p, rel_p, matches)
-from J import J
-from own_types import Color
-from Style import color, join_styles, remove_important, split_units, split
+                     HasAttrSelector, IdSelector, TagSelector,
+                     parse_selector, rel_p, sngl_p)
+from own_types import Color, Length
 from WeakCache import FrozenDCache
 
 
 def test_style_computing():
-    assert split_units("3px") == (3, "px")
-    assert split_units("0") == (0, "")
-    assert split_units("70%") == (70, "%")
-
-    assert color("rgb(120,120,120)", {}) == Color(*(120,) * 3)
-    assert color("rgba(120,120,120,120)", {}) == Color(*(120,) * 4)
-    assert color("currentcolor", {"color": Color("blue")}) == Color("blue")
+    assert Style.split_units("3px") == (3, "px")
+    assert Style.split_units("0") == (0, "")
+    assert Style.split_units("70%") == (70, "%")
     with pytest.raises(AttributeError):
-        split_units("blue")
+        Style.split_units("blue")
+        
+    assert Style.length("3px", {}) == Length(3)
 
-    assert split("solid rgb(11, 18, 147) 3px") == [
+    assert Style.color("rgb(120,120,120)", {}) == Color(*(120,) * 3)
+    assert Style.color("rgba(120,120,120,120)", {}) == Color(*(120,) * 4)
+    assert Style.color("currentcolor", {"color": Color("blue")}) == Color("blue")
+    assert Style.color("#fff", {}) == Style.color("#ffffff", {}) == Color("white")
+    assert Style.color("#000", {}) == Style.color("#000000", {}) == Color("black")
+
+    assert Style.is_valid("border-width", "medium")
+    assert Style.is_valid("border-style", "solid")
+    assert Style.is_valid("border-color", "black")
+
+    assert Style.process_property("border", "solid") == {
+        "border-style": "solid"
+    }
+
+    assert Style.split("solid rgb(11, 18, 147) 3px") == [
         "solid",
         "rgb(11,18,147)",
-        "3px"
+        "3px",
     ]
+    # TODO
+    with raises(AssertionError):
+        assert Style.split("""oblique 10px 'Courier New' , Courier      
+        , monospace;""") == [
+            "oblique",
+            "10px",
+            "'Courier New',Courier,monospace",
+        ]
 
-
-def test_css():
-    assert remove_important(
-        join_styles({"color": ("red", False)}, {"color": ("blue", False)})
-    ) == {"color": "red"}
-    assert remove_important(
-        join_styles({"color": ("red", False)}, {"color": ("blue", True)})
-    ) == {"color": "blue"}
     # TODO: Add some more complex tests
-
+    assert Style.remove_important(
+        Style.join_styles({"color": ("red", False)}, {"color": ("blue", False)})
+    ) == {"color": "red"}
+    assert Style.remove_important(
+        Style.join_styles({"color": ("red", False)}, {"color": ("blue", True)})
+    ) == {"color": "blue"}
+    
 
 def test_selector_parsing():
     for x in ("#id", ".class", "[target]"):
@@ -47,8 +66,8 @@ def test_selector_parsing():
 
     for x in (" ", " > ", "+", "~ "):
         assert rel_p.match(x)
-    
-    assert matches("p > ", rel_p) == ("p", ">")
+
+    assert Element.matches("p > ", rel_p) == ("p", ">")
 
     selector = parse_selector("a#hello.dark[target]")
     assert selector == AndSelector(
@@ -76,7 +95,7 @@ def test_selector_parsing():
 
 
 def test_boxes():
-    box = Box("content-box", border=(3,) * 4, width=500, height=150, content_width=True)
+    box = Box.Box("content-box", border=(3,) * 4, width=500, height=150, content_width=True)
     assert box.content_box == pg.Rect(0, 0, 500, 150), box.content_box
 
     box.set_pos((0, 0))
@@ -86,7 +105,7 @@ def test_boxes():
 
 def test_J():
     with raises(AttributeError):  # should raise because g["root"] is None
-        J("somevalidselector")
+        J.SingleJ("somevalidselector")
 
 
 def test_util():
@@ -108,7 +127,7 @@ def test_util():
                 ".60",
                 "10e3",
                 "-3.4e-2",
-                "12.", # this shouldn't work in the standard. But I dont care
+                "12.",
             ],
             False: ["+-12.2", "12.1.1"],
         },
@@ -119,9 +138,9 @@ def test_util():
         },
     }
     for name, val in tests.items():
-        for b,items in val.items():
+        for b, items in val.items():
             for x in items:
-                assert bool(util.check_regex(name,x)) is b
+                assert bool(util.check_regex(name, x)) is b
 
 
 def test_cache():
@@ -149,3 +168,11 @@ def test_cache():
     style3 = None
     del style4
     assert len(test_cache) == 0
+
+if __name__ == "__main__":
+    test_style_computing()
+    test_selector_parsing()
+    test_boxes()
+    test_J()
+    test_util()
+    test_cache()

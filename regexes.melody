@@ -44,112 +44,92 @@ either {
 
 // TODO:
 // Could be selector
-let .single = {either {
-  // any selector
-  "*";
-  // id selector
-  match {
-    "#";
-    some of <word>;
-  }
-  // class selector
-  match {
-    "."; 
-    some of <word>;
-  }
-  // has attr selector
-  match {
-    "[";
-    any of <whitespace>;
-    some of <word>;
-    any of <whitespace>;
-    "]";
-  }
-  // attribute selectors
-  match {
-    "[";
-    any of <whitespace>;
-    some of <word>;
-    any of <whitespace>;
-    option of `[~|^$*]`;
-    "=";
-    any of <whitespace>;
-    some of <word>;
-    any of <whitespace>;
-    "]";
-  }
-  // tag selector
-  match {
-    some of <word>;
-  }
-}
-}
-let .rel = {
-  any of <whitespace>;
-  `([> +~])`;
-  any of <whitespace>;
-}
+// let .single = {either {
+//   // any selector
+//   "*";
+//   // id selector
+//   match {
+//     "#";
+//     some of <word>;
+//   }
+//   // class selector
+//   match {
+//     "."; 
+//     some of <word>;
+//   }
+//   // has attr selector
+//   match {
+//     "[";
+//     any of <whitespace>;
+//     some of <word>;
+//     any of <whitespace>;
+//     "]";
+//   }
+//   // attribute selectors
+//   match {
+//     "[";
+//     any of <whitespace>;
+//     some of <word>;
+//     any of <whitespace>;
+//     option of `[~|^$*]`;
+//     "=";
+//     any of <whitespace>;
+//     some of <word>;
+//     any of <whitespace>;
+//     "]";
+//   }
+//   // tag selector
+//   match {
+//     some of <word>;
+//   }
+// }
+// }
+// let .rel = {
+//   any of <whitespace>;
+//   `([> +~])`;
+//   any of <whitespace>;
+// }
 
-<start>;
-some of match {.single;}
-any of match {
-  .rel;
-  some of match {.single;}
-}
-<end>;
+// <start>;
+// some of match {.single;}
+// any of match {
+//   .rel;
+//   some of match {.single;}
+// }
+// <end>;
 
 //rgb and rgba
-let .int = {
-  option of `[+-]`;
-  some of <digit>;
+// dec_re from util.py
+let .decimal = {
+  `{dec_re}`;
 }
-
 let .rgb = {
-  "rgb(";
+  "rgb";
+  option of "a";
+  "(";
   capture{
-    .int;
+    .decimal;
   }
   ",";
   capture{
-    .int;
+    .decimal;
   }
   ",";
   capture{
-    .int;
+    .decimal;
   }
   option of match {
     ",";
     capture{
-      .int;
+      .decimal;
     }
     option of ",";
   }
   ")";
 }
 
-let .rgba = {
-  "rgba(";
-  capture{
-    .int;
-  }
-  ",";
-  capture{
-    .int;
-  }
-  ",";
-  capture{
-    .int;
-  }
-  ",";
-  capture{
-    .int;
-  }
-  option of ",";
-  ")";
-}
-
 // decimal
-capture {
+let .decimal {
   option of `[+-]`;
   either {
     // d+(.d*)
