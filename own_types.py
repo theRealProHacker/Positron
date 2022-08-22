@@ -1,10 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from functools import reduce
-from typing import Any, Generator, Literal, Mapping, TypeVar, Union, TypeVar, Hashable, Protocol
+from typing import Any, Generator, Literal, Mapping, TypeVar, Union, TypeVar, Hashable, Protocol, Generic, Iterable
 from xml.etree.ElementTree import Element as _XMLElement
 from enum import Enum as _Enum, auto as enum_auto
 from operator import or_
+from weakref import WeakValueDictionary
 
 import pygame as pg
 from pygame.math import Vector2 as _Vector2
@@ -173,6 +174,48 @@ Auto: AutoType = Sentinel.Auto
 Normal: NormalType = Sentinel.Normal
 
 #################################################
+
+############################# WeakRefCache ###############################
+
+
+class weakstr(str):
+    pass
+
+redirect: dict[type,type] = {
+    str: weakstr
+}
+
+
+class Cache(Generic[K_T]): # The Cache is a set like structure but it uses a dict underneath
+    def __init__(self, l: Iterable[K_T] = []):
+        self.cache = WeakValueDictionary[int,K_T]()
+        for val in l:
+            self.add(val)
+    def add(self, val: K_T)->K_T:
+        if (new_type:= redirect.get(type(val))) is not None:
+            val = new_type(val)
+        key = hash(val)
+        if key not in self.cache:
+            self.cache[key] = val
+        return self.cache[key]
+    def __bool__(self):
+        return bool(self.cache)
+    def __len__(self):
+        return len(self.cache)
+    def __repr__(self):
+        return repr(set(self.cache.values()))
+    def __contains__(self, value: K_T) -> bool:
+        return hash(value) in self.cache
+    def __iter__(self):
+        return self.cache.values()
+
+
+class FrozenDCache(Cache[frozendict]):
+    def add(self, d: dict) -> frozendict:
+        frz = frozendict(d)
+        return super().add(frz)
+##########################################################################
+
 
 Index = int|slice
 StyleInput = dict[str, str]

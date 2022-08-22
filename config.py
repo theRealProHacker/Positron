@@ -1,7 +1,6 @@
 """ Any global variables are stored here"""
 from typing import Any
-from own_types import Color
-from WeakCache import Cache, FrozenDCache
+from own_types import Color, Cache, FrozenDCache
 
 # This problem is proof that typing in python doesn't work
 # For typing GlobalDict needs access to Element (a Protocol doesn't make sense, because the Protocol would just be
@@ -15,30 +14,31 @@ from WeakCache import Cache, FrozenDCache
 
 g: dict[str, Any] = {
     # User settable
-    "W": 900,       # int
-    "H": 600,       # int
-    "window_bg": Color("white"),   # Color
-    "resizable": True,      # bool
-    "frameless": False,     # bool
+    "W": 900,                       # int
+    "H": 600,                       # int
+    "window_bg": Color("white"),    # Color
+    "resizable": True,              # bool
+    "frameless": False,             # bool
     "allow_screen_saver": True,
-    "default_font_size": 16, # float
+    "default_font_size": 16,        # float
     # reserved
-    "root": None,   # the html element
-    "file_watcher": None, # the file watcher
-    "screen": None, # pg.Surface
+    "root": None,                   # the html element
+    "file_watcher": None,           # the file watcher
+    "screen": None,                 # pg.Surface
+    # "global_sheet": SourceSheet() # Is added in Style.py
 }
 
 def reset_config():
     global g
+    # TODO: split cstyles into two styles. inherited and not inherited
     g.update({
-        "lang": "",     # str # this is set in Element.py by the HTMLElement
-        "title": "",    # str # this is set in Element.py by the title element
-        # TODO: split cstyles into two styles. inherited and not inherited
-        "recompute": True,  # bool 
+        "lang": "",                 # str # this is set in Element.py by the HTMLElement
+        "title": "",                # str # this is set in Element.py by the title element
+        "recompute": True,          # bool 
         "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache
-        "css_sheets": Cache(),  # Cache[SourceSheet] # a list of external css SourceSheets
-        "css_dirty": False,   # bool
-        "css_sheet_len": 0
+        "css_sheets": Cache(),      # Cache[SourceSheet] # a list of external css SourceSheets
+        "css_dirty": False,         # bool
+        "css_sheet_len": 0          # int
     })
     g["global_sheet"].clear()
 # main must reset
