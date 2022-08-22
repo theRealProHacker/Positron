@@ -9,15 +9,17 @@ from dataclasses import dataclass
 from functools import cache, partial, reduce
 from operator import attrgetter, itemgetter
 from threading import Thread
-from typing import Any, Callable, Coroutine, Generic, Iterable, Protocol, TypeVar
+from typing import (Any, Callable, Coroutine, Generic, Iterable, Protocol,
+                    TypeVar)
+from weakref import WeakValueDictionary
 
 import pygame as pg
 import pygame.freetype as freetype
 
 from config import all_units, g
-from own_types import (Auto, AutoNP, AutoNP4Tuple, Color, Dimension,
+from own_types import (K_T, Auto, AutoNP, AutoNP4Tuple, Color, Dimension,
                        Float4Tuple, Number, Percentage, Rect, StyleComputed,
-                       Surface, Vector2, _XMLElement)
+                       Surface, Vector2, _XMLElement, frozendict)
 
 
 def noop(*args, **kws):
@@ -348,7 +350,51 @@ def check_regex(name: str, to_check: str):
 for key, value in regexes.items():
     globals()[f"is_{key}"] = partial(check_regex, key)
 
-####################################################################
+##########################################################################
+
+############################# WeakRefCache ###############################
+
+
+class weakstr(str):
+    pass
+
+redirect: dict[type,type] = {
+    str: weakstr
+}
+
+
+class Cache(Generic[K_T]): # The Cache is a set like structure but it uses a dict underneath
+    def __init__(self, l: Iterable[K_T] = []):
+        self.cache = WeakValueDictionary[int,K_T]()
+        for val in l:
+            self.add(val)
+    def add(self, val: K_T)->K_T:
+        if (new_type:= redirect.get(type(val))) is not None:
+            val = new_type(val)
+        key = hash(val)
+        if key not in self.cache:
+            self.cache[key] = val
+        return self.cache[key]
+    def __bool__(self):
+        return bool(self.cache)
+    def __len__(self):
+        return len(self.cache)
+    def __repr__(self):
+        return repr(set(self.cache.values()))
+    def __contains__(self, value: K_T) -> bool:
+        return hash(value) in self.cache
+    def __iter__(self):
+        return self.cache.values()
+
+
+class FrozenDCache(Cache[frozendict]):
+    def add(self, d: dict) -> frozendict:
+        frz = frozendict(d)
+        return super().add(frz)
+
+
+
+##########################################################################
 
 ############################# Pygame related #############################
 

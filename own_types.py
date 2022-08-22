@@ -1,8 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from functools import reduce
-import re
-from typing import Any, Generator, Literal, Mapping, TypeVar, Union, Protocol, TypeVar, Hashable
+from typing import Any, Generator, Literal, Mapping, TypeVar, Union, TypeVar, Hashable, Protocol
 from xml.etree.ElementTree import Element as _XMLElement
 from enum import Enum as _Enum, auto as enum_auto
 from operator import or_
@@ -10,8 +9,8 @@ from operator import or_
 import pygame as pg
 from pygame.math import Vector2 as _Vector2
 from pygame.surface import Surface
+from pygame.rect import Rect as _Rect
 from pygame.font import Font
-from pygame.rect import Rect
 from pygame.event import Event
 from frozendict import FrozenOrderedDict as _frozendict
 
@@ -19,7 +18,7 @@ class BugError(AssertionError):
     """ A type of error that should never occur. If it occurs it needs to be fixed."""
 
 # Abstract Protocols
-def Screen(Protocol):
+class Screen(Protocol):
     def blit(self, __surf: Surface):
         ...
 
@@ -32,7 +31,6 @@ class Enum(_Enum):
         return f"{self.__class__.__name__}.{self.name}"
 
 
-# to make the weakref work
 class frozendict(_frozendict):
     def __ror__(self, other):
         return dict(self)|dict(other)
@@ -42,7 +40,7 @@ class frozendict(_frozendict):
 
 
 class ReadChain(Mapping[K_T,V_T]):
-    """ A Read-Only ChainMap"""
+    """ A Read-Only ChainMap """
     # partially copied from the original ChainMap
     def __init__(self, *maps: Mapping[K_T,V_T]):
         self.maps = maps # immutable maps
@@ -118,6 +116,16 @@ class Vector2(_Vector2):
         return Vector2(
             self.x*other,
             self.y*other
+        )
+
+class Rect(_Rect):
+    @property
+    def corners(self):
+        return (
+            self.topleft,
+            self.topright,
+            self.bottomleft,
+            self.bottomright
         )
 
 @dataclass(frozen=True)
