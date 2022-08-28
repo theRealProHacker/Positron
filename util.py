@@ -7,17 +7,16 @@ import re
 from contextlib import contextmanager, redirect_stdout, suppress
 from dataclasses import dataclass
 from functools import cache, partial, reduce
-from operator import attrgetter, itemgetter
 from threading import Thread
-from typing import (Any, Callable, Coroutine, Generic, Iterable, Protocol,
+from typing import (Any, Callable, Coroutine, Iterable,
                     TypeVar)
 
 import pygame as pg
 import pygame.freetype as freetype
 
 from config import all_units, g
-from own_types import (Auto, AutoNP, AutoNP4Tuple, Color, Dimension,
-                       Float4Tuple, Number, Percentage, Rect, StyleComputed,
+from own_types import (Auto, AutoLP, AutoLP4Tuple, Color, Dimension,
+                       Float4Tuple, Number, Percentage, Rect,
                        Surface, Vector2, _XMLElement)
 
 
@@ -52,7 +51,7 @@ class Calculator:
 
     def __call__(
         self,
-        value: AutoNP,
+        value: AutoLP,
         auto_val: float | None = None,
         perc_val: float | None = None,
     ) -> float:
@@ -74,14 +73,14 @@ class Calculator:
             return not_neg(perc_val * value)
         raise TypeError
 
-    def _multi(self, values: Iterable[AutoNP], *args) -> tuple[float, ...]:
+    def _multi(self, values: Iterable[AutoLP], *args) -> tuple[float, ...]:
         return tuple(self(val, *args) for val in values)
 
     # only relevant for typing
-    def multi2(self, values: tuple[AutoNP, AutoNP], *args) -> tuple[float, float]:
+    def multi2(self, values: tuple[AutoLP, AutoLP], *args) -> tuple[float, float]:
         return self._multi(values, *args)  # type: ignore
 
-    def multi4(self, values: AutoNP4Tuple, *args) -> Float4Tuple:
+    def multi4(self, values: AutoLP4Tuple, *args) -> Float4Tuple:
         return self._multi(values, *args)  # type: ignore
 
 
@@ -133,7 +132,8 @@ def in_bounds(x: float, lower: float, upper: float) -> float:
     return x
 
 
-not_neg = lambda x: max(0, x)
+def not_neg(x: float):
+    return max(0,x)
 
 
 def get_tag(elem: _XMLElement) -> str:
@@ -173,70 +173,6 @@ def find(__iterable: Iterable[Var], key: Callable[[Var], bool]):
         if key(x):
             return x
 
-
-####################################################################
-
-#################### Itemgetters/setters ###########################
-
-directions = ("top", "bottom", "left", "right")
-corners = ("top-left", "top-right", "bottom-left", "bottom-right")
-
-# Rect
-side_keys = tuple(f"mid{k}" for k in directions)
-# style
-pad_keys = tuple(f"padding-{k}" for k in directions)
-marg_keys = tuple(f"margin-{k}" for k in directions)
-bs_keys = tuple(f"border-{k}-style" for k in directions)
-bw_keys = tuple(f"border-{k}-width" for k in directions)
-bc_keys = tuple(f"border-{k}-color" for k in directions)
-inset_keys = directions
-
-# https://stackoverflow.com/questions/54785148/destructuring-dicts-and-objects-in-python
-Input_T = TypeVar("Input_T", covariant=True)
-Output_T = TypeVar("Output_T", covariant=True)
-
-
-class GeneralGetter(Protocol[Input_T, Output_T]):
-    def __call__(input: Input_T) -> Output_T:
-        ...
-
-
-class Getter(Protocol[Output_T]):
-    def __call__(self, input: StyleComputed) -> Output_T:
-        ...
-
-
-class T4Getter(Protocol[Output_T]):
-    def __call__(
-        self, input: StyleComputed
-    ) -> tuple[Output_T, Output_T, Output_T, Output_T]:
-        ...
-
-
-_T = TypeVar("_T")
-
-
-class itemsetter(Generic[_T]):
-    def __init__(self, keys: tuple[str, ...]):
-        self.keys = keys
-
-    def __call__(self, map: Any, values: tuple[_T, ...]) -> None:
-        for key, value in zip(self.keys, values):
-            map[key] = value
-
-
-FGetter = GeneralGetter[Rect, Float4Tuple]
-rs_getter: FGetter = attrgetter(*side_keys)  # type: ignore[assignment]
-
-ANPGetter = T4Getter[AutoNP]
-inset_getter: ANPGetter = itemgetter(*inset_keys)  # type: ignore[assignment]
-pad_getter: ANPGetter = itemgetter(*pad_keys)  # type: ignore[assignment]
-bw_getter: ANPGetter = itemgetter(*bw_keys)  # type: ignore[assignment]
-bw_setter = itemsetter[str](bw_keys)
-mrg_getter: ANPGetter = itemgetter(*marg_keys)  # type: ignore[assignment]
-
-bc_getter: T4Getter[Color] = itemgetter(*bc_keys)  # type: ignore[assignment]
-bs_getter: T4Getter[str] = itemgetter(*bs_keys)  # type: ignore[assignment]
 
 ####################################################################
 

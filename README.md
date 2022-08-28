@@ -16,11 +16,12 @@
 - [Firefox Source Structure](https://firefox-source-docs.mozilla.org/contributing/directory_structure.html)
 
 # Thoughts
+## Problems that this project is currently facing
+1. Unicode
+2. Fast media (images, videos, audio). This applies especially to video. 
+3. Using the GPU to accelerate drawing. (Related to 2.)
 
 ## Stylesheets
-
-## Stylesheet sources
-
 
 ### Global stylesheets
 - User agent stylesheet for each attribute
@@ -31,7 +32,12 @@
 
 ### Specific stylesheets
 - User agent stylesheet for element x 
-    - div: 
+    - Example  
+        ```css
+        div {
+            display: "block"
+        }
+        ```
 - User stylesheet overrides
 - Author stylesheet overrides (element selectors)
 
@@ -45,11 +51,11 @@
 # Internal Attribute Specifications
 
 These specify the attributes with their types and constraints. Every computed type should comply with this specification. That is essential!
-Comment: However, these seem to be redundant now, because Style.styleattrs defines them pretty well
+> Comment: However, these feel more and more redundant now, because Style.style_attrs defines them pretty well.
 
 - font-weight: 
     - From: number, "normal", "bold", "lighter", and "bolder"
-    - To: float between 1 and 1000
+    - To: Number between 1 and 1000
     - Implementation:  
         If the exact weight given is unavailable, then the following rule is used to determine the weight actually rendered:
 
@@ -66,33 +72,34 @@ Comment: However, these seem to be redundant now, because Style.styleattrs defin
     - Implementation: complex; defined in some `get_font` method
 - font-size:
     - From: length-percentage, absolute kw, relative kw
-    - To: float > 0
+    - To: `Length > 0`
 - font-style: FontStyle
 - color: 
     - From: name, rgb, rgba, hex and more
-    - To: Color
+    - To: `Color`
 - display: string (inline, block, none)
-- background-color: Color
+- background-color: `Color`
 - width: 
     - From: "auto" or length-percentage
-    - To: Length (>=0) or a keyword or percentage
-- height: Length (>=0) or Auto or percentage
+    - To: Length (>=0) or `Auto` or percentage
+- height: Length (>=0) or `Auto` or percentage
 - position: 
     - From: keyword
     - To: str
 - top: 
     - From: "auto" or length-percentage
-    - To: float or Auto or percentage
+    - To: Length or `Auto` or `Percentage`
 - same for bottom, right and left
 - box-sizing: "content-box" or "border-box"
-- margin(tbrl): float or Auto or percentage
-- padding(tbrl): float or Auto or percentage
+- margin(tbrl): Length or `Auto` or `Percentage`
+- padding(tbrl): Length or `Auto` or `Percentage`
 - **border** (width, style, color)
-- border-width(tbrl): float or Auto
+- border-width(tbrl): int
 - border-style(tbrl): str (https://drafts.csswg.org/css-backgrounds/#border-style)
 - border-color(tbrl): Color
-- line-height: float or Length or percentage or Normal
-- word-spacing: float or percentage or Normal
+- border-radius: Length or Percentage
+- line-height: Number or Length or `Percentage` or Normal
+- word-spacing: Number or `Percentage` or Normal
 
 # The Element class
 
@@ -122,3 +129,11 @@ compute:
 
 1. Numbers in CSS can be written with a trailing `.`. Example: `line-height: 12.` (Please don't do this)
 2. `rgb(r,g,b,alpha)` is also valid, as is `rgba(r,g,b)`
+3. `margin: 0 0 inherit inherit` is also valid and maps to 
+```css
+margin-top: 0;
+margin-left:0;
+margin-bottom: inherit;
+margin-right: inherit;
+```
+4. Also if any of the four values in `margin` were invalid, the rest would still be accepted.

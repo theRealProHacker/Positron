@@ -98,7 +98,7 @@ either {
 // }
 // <end>;
 
-//rgb and rgba
+// rgb and rgba
 // dec_re from util.py
 let .decimal = {
   `{dec_re}`;

@@ -15,19 +15,20 @@ from typing import Any, Callable, Iterable, Protocol, Type, Union
 
 import pygame as pg
 
+import rounded_box
 import Style
 from Box import Box, make_box
 from config import add_sheet, g
-from own_types import (Auto, AutoNP4Tuple, BugError, CompValue, Dimension,
+from own_types import (Auto, AutoLP4Tuple, BugError, CompValue, Dimension,
                        DisplayType, Float4Tuple, Font, FontStyle, Normal,
-                       NormalType, Number, Percentage, ReadChain, Rect,
-                       StyleComputed, StyleInput, Surface, _XMLElement)
-from Style import (SourceSheet, StyleRule, abs_default_style, bw_keys,
-                   get_style, pack_longhands, parse_file, parse_sheet,
+                       NormalType, Number, Percentage, Rect, StyleComputed,
+                       StyleInput, Surface, _XMLElement)
+from Style import (SourceSheet, StyleRule, abs_default_style, bc_getter,
+                   br_getter, bs_getter, bw_getter, bw_keys, get_style,
+                   inset_getter, pack_longhands, parse_file, parse_sheet,
                    prio_keys, style_attrs)
-from util import (Calculator, bc_getter, bs_getter, get_groups, get_tag,
-                  group_by_bool, inset_getter, log_error, print_once, rect_lines,
-                  watch_file)
+from util import (Calculator, get_groups, get_tag, group_by_bool, log_error,
+                  print_once, watch_file)
 
 """ More useful links for further development
 https://developer.mozilla.org/en-US/docs/Web/CSS/image
@@ -62,7 +63,7 @@ class TextDrawItem:
 class Line(tuple[TextDrawItem]):
     @property
     def height(self):
-        return max([0,*(item.height for item in self)])
+        return max([0, *(item.height for item in self)])
 
 
 # TODO: Get an actually acceptable font
@@ -78,11 +79,9 @@ def get_font(family: list[str], size: float, style: FontStyle, weight: int) -> F
     return font
 
 
-def process_style(
-    elem: "Element", val: str, key: str, p_style: StyleComputed
-) -> CompValue:
+def process_style(tag: str, val: str, key: str, p_style: StyleComputed) -> CompValue:
     def redirect(new_val: str):
-        return process_style(elem, new_val, key, p_style)
+        return process_style(tag, new_val, key, p_style)
 
     assert isinstance(val, str), val
     attr = style_attrs[key]
@@ -97,21 +96,22 @@ def process_style(
             return redirect(abs_default_style[key])
         case "revert":
             return (
-                redirect("inherit")
-                if attr.inherits
-                else redirect(get_style(elem.tag)[key])
+                redirect("inherit") if attr.inherits else redirect(get_style(tag)[key])
             )
     return (
         valid
-        if (valid := attr.convert(val, p_style)) is not None or print_once(key,val)
+        if (valid := attr.convert(val, p_style)) is not None or print_once(key, val)
         else redirect("unset")
     )
 
 
 calculator = Calculator(None)
+"""
+The main shared calculator with no default percentage_val
+"""
 
 
-def calc_inset(inset: AutoNP4Tuple, width: float, height: float) -> Float4Tuple:
+def calc_inset(inset: AutoLP4Tuple, width: float, height: float) -> Float4Tuple:
     return calculator.multi2(inset[:2], 0, height) + calculator.multi2(
         inset[2:], 0, width
     )
@@ -126,15 +126,15 @@ class Element:
     attrs: dict
     children: list[Union["Element", "TextElement"]]
     # Style
-    istyle: Style.Style     # inline style
-    estyle: Style.Style     # external style
-    cstyle: StyleComputed   # computed_style
+    istyle: Style.Style  # inline style
+    estyle: Style.Style  # external style
+    cstyle: StyleComputed  # computed_style
     # Layout + Draw
     box: Box = Box.empty()
     line_height: float
     white_spacing: float
-    display: DisplayType        # the used display state. Is set before layout
-    layout_type: DisplayType    # the used layout state. Is set before layout
+    display: DisplayType  # the used display state. Is set before layout
+    layout_type: DisplayType  # the used layout state. Is set before layout
     # Dynamic states
     focus: bool = False
     hover: bool = False
@@ -155,9 +155,13 @@ class Element:
         """
         self.display = self.cstyle["display"]
         if self.display != "none":
-            if len(self.children) == 1 and isinstance(elem:=self.children[0], TextElement):
+            if len(self.children) == 1 and isinstance(
+                elem := self.children[0], TextElement
+            ):
                 elem.display = self.display
-            elif any([child.is_block() for child in self.children]):  # set all children to blocked
+            elif any(
+                [child.is_block() for child in self.children]
+            ):  # set all children to blocked
                 self.display = "block"
                 for child in self.real_children:
                     if child.display == "inline":
@@ -169,15 +173,9 @@ class Element:
         return self.box.height if self.box.height != -1 else self.parent.get_height()
 
     @property
-    def input_style(self)->StyleInput:
-        """ The total input style. Fused from inline and external style """
-        return dict(
-            ReadChain(
-                Style.remove_important(
-                    Style.join_styles(self.istyle, self.estyle)
-                ), get_style(self.tag)
-            )
-        )
+    def input_style(self) -> StyleInput:
+        """The total input style. Fused from inline and external style"""
+        return Style.remove_important(Style.join_styles(self.istyle, self.estyle))
 
     ####################################  Main functions ######################################################
     @cache
@@ -202,13 +200,13 @@ class Element:
         Assembles the input style and then converts it into the Elements computed style.
         It then computes all the childrens styles
         """
-        input_style = self.input_style
+        input_style = get_style(self.tag) | self.input_style
         keys = sorted(input_style.keys(), key=prio_keys.__contains__, reverse=True)
         parent_style = dict(self.parent.cstyle)
         style: StyleComputed = {}
         for width_key in keys:
             val = input_style[width_key]
-            new_val = process_style(self, val, width_key, parent_style)
+            new_val = process_style(self.tag, val, width_key, parent_style)
             assert new_val is not None, BugError(
                 f"Style {width_key} was set to None. Which should never happen."
             )
@@ -232,10 +230,10 @@ class Element:
         )
         self.line_height = (
             lh
-            if isinstance(lh, Number) else 
-            1.5 * fsize
-            if lh is Normal else 
-            lh * fsize
+            if isinstance(lh, Number)
+            else 1.5 * fsize
+            if lh is Normal
+            else lh * fsize
         )
         self.word_spacing = (
             wspace
@@ -250,12 +248,12 @@ class Element:
 
     def layout(self, width: float) -> None:  # !
         """
-        Layout an element. 
+        Layout an element.
         Gets the width it has available
         The input width is the width the child should take if its width is Auto
         """
         if self.display == "none":
-            self.layout_type = 'none'
+            self.layout_type = "none"
             return
         style = self.cstyle
         self.box, set_height = make_box(
@@ -272,11 +270,13 @@ class Element:
             xpos: float = 0
             current_line: list[TextDrawItem] = []
             lines: list[Line] = []
+
             def line_break():
                 nonlocal xpos
                 xpos = 0
                 lines.append(Line(current_line))
                 current_line.clear()
+
             for elem in self._text_iter_desc():
                 c, text = elem.parent, elem.text
                 if text == "\n":
@@ -299,18 +299,21 @@ class Element:
         # https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Box_Model/Mastering_margin_collapsing
         last_margin = 0  # TODO: Margin collapsing
         flow, no_flow = group_by_bool(
-            self.real_children, lambda x: x.cstyle["position"] in ("static", "relative", "sticky")
+            self.real_children,
+            lambda x: x.cstyle["position"] in ("static", "relative", "sticky"),
         )
         for child in flow:
             child.layout(inner.width)
-            top, bottom, left, right = calc_inset(
+            top, right, bottom, left = calc_inset(
                 inset_getter(self.cstyle), self.box.width, self.box.height
             )
-            child.box.set_pos((
-                (x_pos, y_cursor)
-                if child.cstyle["position"] == "sticky"
-                else (bottom - top + x_pos, right - left + y_cursor)
-            ))
+            child.box.set_pos(
+                (
+                    (x_pos, y_cursor)
+                    if child.cstyle["position"] == "sticky"
+                    else (bottom - top + x_pos, right - left + y_cursor)
+                )
+            )
             y_cursor += child.box.outer_box.height
         set_height(y_cursor)
         for child in no_flow:
@@ -338,52 +341,50 @@ class Element:
                 )
             )
 
-    def draw(self, screen: Surface, pos: Dimension):
+    def draw(self, surf: Surface, pos: Dimension):
         """
         Draws the element to the `screen` at `pos`
         """
         if self.display == "none":
             return
         style = self.cstyle
+        # setup
         draw_box = self.box.copy()
-        x_off, y_off = pos
-        draw_box.x += x_off
-        draw_box.y += y_off
-        # Now x and y represent the real position on the canvas
-        # (before it was the position in the content_box of the parent)
-        border_box: Rect = draw_box.border_box
-        colors = bc_getter(style)
+        draw_box.pos += pos
+        border_box = draw_box.border_box
+        drawing_border = any(draw_box.border)
         # https://web.dev/howbrowserswork/#the-painting-order
-        # 1. draw background:
-        pg.draw.rect(screen, style["background-color"], border_box)
-        # 2. draw background-image
-        # TODO
-        # 3. draw border
-        if any(draw_box.border):
-            assert any(b == "solid" for b in bs_getter(style))
-            if (
-                (bw := draw_box.border[0])
-                and all(w == bw for w in draw_box.border)
-                and (bc := colors[0])
-                and all(c == bc for c in colors)
-            ):  # the most common case (border-width and -color are uniform)
-                pg.draw.rect(screen, bc, border_box, int(bw))
-            else:  # every line has to be drawn individually but we have no border-radii
-                for line, width, color in zip(
-                    rect_lines(border_box), draw_box.border, colors
-                ):
-                    pg.draw.line(screen, color, *line, int(width))  # type: ignore # TODO: kill mypy for not letting me use *
+        # 1.+ 3. draw background and border:
+        if not drawing_border:
+            pg.draw.rect(surf, style["background-color"], border_box)
+        else:
+            rounded_box.draw_box(
+                surf,
+                border_box,
+                style["background-color"],
+                bc_getter(style),
+                draw_box.border,
+                tuple(
+                    (
+                        int(calculator(brx, perc_val=border_box.width)),
+                        int(calculator(bry, perc_val=border_box.height)),
+                    )
+                    for brx, bry in br_getter(style)
+                ),
+            )
         # 4. draw children
-        if self.layout_type == 'block':
+        if self.layout_type == "block":
             for c in self.real_children:
-                c.draw(screen, draw_box.content_box.topleft)
-        elif self.layout_type == 'inline':
+                c.draw(surf, draw_box.content_box.topleft)
+        elif self.layout_type == "inline":
             ypos = 0
             for line in self.lines:
                 for item in line:
-                    surf = self.font.render(item.text, True, item.element.cstyle["color"])
-                    screen.blit(surf, (draw_box.x+item.xpos, draw_box.y+ypos))
-                ypos += line.height 
+                    surf = self.font.render(
+                        item.text, True, item.element.cstyle["color"]
+                    )
+                    surf.blit(surf, (draw_box.x + item.xpos, draw_box.y + ypos))
+                ypos += line.height
         else:
             raise BugError("Wrong layout_type ({self.layout_type})")
 
@@ -418,12 +419,8 @@ class Element:
         return f"<{self.tag}>"
 
     def style_repr(self):
-        input_style = dict(ReadChain(self.istyle, self.estyle))
         out_style = pack_longhands(
-            {
-                k:f"{input_style[k]} -> {self.cstyle[k]}" 
-                for k in input_style.keys()
-            }
+            {k: f"'{_in}'->{self.cstyle[k]}" for k, _in in self.input_style.items()}
         )
         print("{")
         for item in out_style.items():
@@ -432,7 +429,7 @@ class Element:
 
     ############################## Helpers #####################################
     def iter_anc(self) -> Iterable["Element"]:
-        """Iterates over all ancestors *excluding* itself"""
+        """Iterates over all ancestors *excluding* this element"""
         yield self.parent
         for parent in self.parent.iter_anc():
             yield parent
@@ -451,7 +448,7 @@ class Element:
                 yield x
         # return filter(lambda c: not (c is self or isinstance(c, TextElement)),self.parent.children)
 
-    def _text_iter_desc(self) -> Iterable['TextElement']:
+    def _text_iter_desc(self) -> Iterable["TextElement"]:
         """
         Alternative iteration over all descendants
         used in text layout.
@@ -703,7 +700,7 @@ def apply_rules(elem: Element, rules: list[StyleRule]):
     elem.estyle = dict(
         sorted(
             chain.from_iterable(style.items() for _, style in sorted_by_sel),
-            key = lambda t: Style.is_imp(t[1])
+            key=lambda t: Style.is_imp(t[1]),
         )
     )
     for c in elem.real_children:
@@ -717,7 +714,7 @@ EmptyElement.parent = None  # type: ignore
 
 
 class InlineElement(Element):
-    """ This is the interface of an element with display = "inline" """
+    """This is the interface of an element with display = "inline" """
 
 
 ################################# Selectors #######################################

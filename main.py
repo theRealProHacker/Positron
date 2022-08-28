@@ -3,6 +3,7 @@ The main file that runs the browser
 """
 
 import asyncio
+import re
 import aioconsole
 import logging
 import os
@@ -20,9 +21,8 @@ from watchdog.observers import Observer
 import util
 from config import g, reset_config
 from Element import HTMLElement, apply_rules, create_element
-from own_types import Event, Surface, Vector2
+from own_types import Event, Surface, Vector2, Cache
 from Style import SourceSheet
-from WeakCache import Cache
 from J import SingleJ, J
 
 did_set_mode = False
@@ -82,7 +82,8 @@ async def main(file: str):
         raise RuntimeError("Already running")
     running = True
     reset_config()
-    g["file_watcher"] = OwnHandler([file])
+    g["file_watcher"] = OwnHandler()
+    file = g["file_watcher"].add_file(file)
 
     html = util.fetch_src(file)
     parsed = html5lib.parse(html)
@@ -118,12 +119,10 @@ async def main(file: str):
 
 
 class OwnHandler(FileSystemEventHandler):
-    def __init__(self, files: list[str]):
+    def __init__(self):
         self.last_hit = time.monotonic()  # this doesn't need to be extremely accurate
         self.files = Cache[str]()
         self.dirs = set[str]()
-        for file in files:
-            self.add_file(file)
 
     def add_file(self, file: str):
         file = abspath(file)
@@ -164,9 +163,12 @@ async def Console():
     while True:
         try:
             x = await aioconsole.ainput(">>> ")
-            r = eval(x)
-            if r is not None:
-                print(r)
+            try:
+                r = eval(x)
+                if r is not None:
+                    print(r)
+            except SyntaxError:
+                exec(x)
         except asyncio.exceptions.CancelledError:
             break
         except Exception as e:

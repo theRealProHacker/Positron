@@ -5,20 +5,67 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from functools import cache
 from itertools import chain
-from typing import Generic, Iterable, Mapping, Protocol, TypeVar, overload
+from operator import itemgetter
+from typing import (Generic, Iterable, Mapping, Protocol, TypeVar, cast,
+                    overload)
 
 import tinycss
 
 from config import (abs_border_width, abs_font_size, abs_font_weight,
                     abs_length_units, g, rel_font_size)
-from own_types import (Auto, AutoType, Color, CompValue, FontStyle, Length,
-                       Normal, NormalType, Number, NumPerc, Percentage,
-                       ReadChain, Sentinel, StyleComputed, StyleInput,
+from own_types import (V_T, Auto, AutoLP, AutoType, Color, CompValue,
+                       FontStyle, Length, LengthPerc, Normal, NormalType,
+                       Number, Percentage, Sentinel, StyleComputed, StyleInput,
                        frozendict)
-from util import (bc_keys, bs_keys, bw_keys, dec_re, fetch_src, group_by_bool,
-                  inset_keys, log_error, marg_keys, noop, pad_keys, get_groups)
+from util import dec_re, fetch_src, get_groups, group_by_bool, log_error, noop
 
-################## Acceptor #################################
+#################### Itemgetters/setters ###########################
+
+# https://stackoverflow.com/questions/54785148/destructuring-dicts-and-objects-in-python
+Output_T = TypeVar("Output_T", covariant=True)
+
+
+class T4Getter(Protocol[Output_T]):
+    def __call__(
+        self, input: StyleComputed
+    ) -> tuple[Output_T, Output_T, Output_T, Output_T]:
+        ...
+
+
+class itemsetter(Generic[V_T]):
+    def __init__(self, keys: tuple[str, ...]):
+        self.keys = keys
+
+    def __call__(self, map: dict, values: tuple[V_T, ...]) -> None:
+        for key, value in zip(self.keys, values):
+            map[key] = value
+
+
+directions = ("top", "right", "bottom", "left")
+corners = ("top-left", "top-right", "bottom-right", "bottom-left")
+
+pad_keys = tuple(f"padding-{k}" for k in directions)
+marg_keys = tuple(f"margin-{k}" for k in directions)
+bs_keys = tuple(f"border-{k}-style" for k in directions)
+bw_keys = tuple(f"border-{k}-width" for k in directions)
+bc_keys = tuple(f"border-{k}-color" for k in directions)
+br_keys = tuple(f"border-{k}-radius" for k in corners)
+inset_keys = directions
+
+ALPGetter = T4Getter[AutoLP]
+inset_getter: ALPGetter = itemgetter(*inset_keys)  # type: ignore[assignment]
+mrg_getter: ALPGetter = itemgetter(*marg_keys)  # type: ignore[assignment]
+pad_getter: ALPGetter = itemgetter(*pad_keys)  # type: ignore[assignment]
+
+bw_getter: T4Getter[int] = itemgetter(*bw_keys)  # type: ignore[assignment]
+bc_getter: T4Getter[Color] = itemgetter(*bc_keys)  # type: ignore[assignment]
+bs_getter: T4Getter[str] = itemgetter(*bs_keys)  # type: ignore[assignment]
+br_getter: T4Getter[tuple[LengthPerc, LengthPerc]] = itemgetter(*br_keys)  # type: ignore[assignment]
+
+####################################################################
+
+
+################## Acceptors #################################
 
 
 CompValue_T = TypeVar("CompValue_T", bound=CompValue, covariant=True)
@@ -28,23 +75,21 @@ class Acceptor(Protocol[CompValue_T]):
     def __call__(self, value: str, p_style: StyleComputed) -> None | CompValue_T:
         ...
 
+
 # https://regexr.com/3ag5b
-hex_re = re.compile(
-    r"#([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})"
-)
+hex_re = re.compile(r"#([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})")
 # Melody
-rgb_re = re.compile(
-    fr"rgba?\(({dec_re}),({dec_re}),({dec_re})(?:,({dec_re}),?)?\)"
-)
+rgb_re = re.compile(rf"rgba?\(({dec_re}),({dec_re}),({dec_re})(?:,({dec_re}),?)?\)")
+
 
 def color(value: str, p_style):
     if value == "currentcolor":
         return p_style["color"]
     with suppress(ValueError):
         if (groups := get_groups(value, rgb_re)) is not None:
-            return Color(*map(lambda x: int(float(x)), groups))
+            return Color(*map(lambda x: round(float(x)), groups))
         elif (groups := get_groups(value, hex_re)) is not None:
-            return Color(*map(lambda x: int(x*(2//len(x)), 16), groups))
+            return Color(*map(lambda x: int(x * (2 // len(x)), 16), groups))
         return Color(value)
 
 
@@ -106,7 +151,7 @@ split_units_pattern = re.compile(rf"({dec_re})(\w+|%)")
 def split_units(attr: str) -> tuple[float, str]:
     """Split a dimension or percentage into a tuple of number and the "unit" """
     if attr == "0":
-        return (0,"")
+        return (0, "")
     match = split_units_pattern.fullmatch(attr.strip())
     num, unit = match.groups()  # type: ignore # Raises AttributeError
     return float(num), unit
@@ -167,9 +212,21 @@ def length_percentage(value: str, p_style, mult: float | None = None):
     with suppress(AttributeError):
         num, unit = split_units(value)
         if unit == "%":
-            return Percentage(num) if mult is None else mult * Percentage(num)
+            return Percentage(num) if mult is None else Length(mult * Percentage(num))
         else:
             return _length((num, unit), p_style)
+
+
+def border_radius(value: str, p_style):
+    match value.split():
+        case [x]:
+            lpx = length_percentage(x, p_style)
+            if lpx is not None:
+                return (lpx, lpx)
+        case [x, y]:
+            lpx, lpy = length_percentage(x, p_style), length_percentage(y, p_style)
+            if lpx is not None and lpy is not None:
+                return (lpx, lpy)
 
 
 T1 = TypeVar("T1", bound=CompValue)
@@ -229,15 +286,19 @@ class StyleAttr(Generic[CompValue_T]):
 auto: dict[str, AutoType] = {"auto": Auto}
 normal: dict[str, NormalType] = {"normal": Normal}
 
-alp = (auto, length_percentage)
-aalp: tuple[str, dict[str, AutoType], Acceptor[NumPerc]] = (
+AALP = StyleAttr(
     "auto",
     auto,
     length_percentage,
 )
-AALP = StyleAttr(*aalp)
-BorderWidthAttr: StyleAttr[NumPerc] = StyleAttr(
-    "medium", abs_border_width, length_percentage
+
+BorderWidthAttr: StyleAttr[int] = StyleAttr(
+    "medium",
+    abs_border_width,
+    lambda value, p_style: int(x)
+    if (x := length_percentage(value, p_style)) is not None
+    else None,
+    inherits=False,
 )
 BorderStyleAttr: StyleAttr[str] = StyleAttr(
     "none",
@@ -246,7 +307,7 @@ BorderStyleAttr: StyleAttr[str] = StyleAttr(
         "hidden",  # partially implemented
         "dotted",
         "dashed",
-        "solid",  # partially implemented
+        "solid",  # implemented
         "double",
         "groove",
         "ridge",
@@ -255,19 +316,20 @@ BorderStyleAttr: StyleAttr[str] = StyleAttr(
     },
     inherits=False,
 )
+BorderColorAttr: StyleAttr[Color] = StyleAttr("currentcolor", acc=color, inherits=False)
+BorderRadiusAttr: StyleAttr[LengthPerc] = StyleAttr(
+    "0", cast(dict[str, Length], {}), border_radius, inherits=False
+)
 
 
 def no_change(value: str, p_style) -> str:
     return value
 
 
-Types = StyleAttr[CompValue]
+prio_keys = {"color", "font-size"}  # currentcolor and 1em for example
 
 
-prio_keys = {"color", "font-size"}
-
-
-style_attrs: dict[str, Types] = {
+style_attrs: dict[str, StyleAttr[CompValue]] = {
     "color": StyleAttr("canvastext", acc=color),
     "font-weight": StyleAttr("normal", abs_font_weight, font_weight),
     "font-family": StyleAttr("Arial", acc=no_change),
@@ -288,7 +350,8 @@ style_attrs: dict[str, Types] = {
     **{key: AALP for key in chain(inset_keys, pad_keys, marg_keys)},
     **{key: BorderWidthAttr for key in bw_keys},
     **{key: BorderStyleAttr for key in bs_keys},
-    **{key: StyleAttr("currentcolor", acc=color, inherits=False) for key in bc_keys},
+    **{key: BorderColorAttr for key in bc_keys},
+    **{key: BorderRadiusAttr for key in br_keys},
 }
 
 abs_default_style = {
@@ -323,14 +386,12 @@ element_styles = defaultdict(
 
 @cache
 def get_style(tag: str):
-    return ReadChain(element_styles[tag], abs_default_style)
+    return abs_default_style | element_styles[tag]
 
 
 ###########################  CSS-Parsing ############################
 
-"""
-A list of stylesheets that applies styles to elements automatically
-"""
+
 ############################# Types #######################################
 class AtRule(ABC):
     pass
@@ -370,7 +431,7 @@ StyleSheet = dict[str, Style]
 Rule = AtRule | StyleRule
 
 
-def join_styles(style1: Style, style2: Style)->Style:
+def join_styles(style1: Style, style2: Style) -> Style:
     """
     Join two styles. Prefers the first
     """
@@ -402,7 +463,9 @@ def remove_important(style: Style) -> StyleInput:
     ...
 
 
-def remove_important(style: list[Property]|Style)->StyleInput|list[tuple[str,str]]:
+def remove_important(
+    style: list[Property] | Style,
+) -> StyleInput | list[tuple[str, str]]:
     """
     Remove the information whether a value in the style is important
     """
@@ -452,7 +515,7 @@ class SourceSheet(list[Rule]):
         return hash(tuple(self))
 
     @classmethod
-    def join(cls, sheets: Iterable['SourceSheet']):
+    def join(cls, sheets: Iterable["SourceSheet"]):
         return cls(chain.from_iterable(sheets))
 
     def append(self, __object) -> None:
@@ -560,25 +623,26 @@ from pygame.colordict import THECOLORS
 
 THECOLORS.update({"canvastext": (0, 0, 0, 255), "transparent": (0, 0, 0, 0)})
 
-colors = set(["currentcolor", *THECOLORS])
-
-directions = ("top", "right", "bottom", "left")
+colors = {"currentcolor", *THECOLORS}
 global_values = frozenset({"inherit", "initial", "unset", "revert"})
 
 dir_fallbacks = {"right": "top", "bottom": "top", "left": "right"}
-dir_shorthands: dict[str, str] = dict(
-    [
-        ("margin", "margin-{}"),
-        ("padding", "padding-{}"),
-        ("border-width", "border-{}-width"),
-        ("border-style", "border-{}-style"),
-        ("border-color", "border-{}-color"),
-        ("inset", "{}"),
-    ]
-)
+dir_shorthands: dict[str, tuple[str, ...]] = {
+    "margin": marg_keys,
+    "padding": pad_keys,
+    "border-width": bw_keys,
+    "border-style": bs_keys,
+    "border-color": bc_keys,
+    "border-radius": br_keys,
+    "inset": inset_keys,
+}
 # smart shorthands are when the split depends on the values
 smart_shorthands = {
-    "border": { "border-width", "border-style", "border-color",},
+    "border": {
+        "border-width",
+        "border-style",
+        "border-color",
+    },
     **{
         f"border-{k}": {
             f"border-{k}-width",
@@ -591,13 +655,9 @@ smart_shorthands = {
 
 
 def process(d: list[Property] | Style) -> Style:
-    itr = (d if isinstance(d, list) else d.items())
+    itr = d if isinstance(d, list) else d.items()
     imp, nimp = map(
-        process_input,
-        map(
-            remove_important,
-            group_by_bool(itr,lambda t: is_imp(t[1]))
-        )
+        process_input, map(remove_important, group_by_bool(itr, lambda t: is_imp(t[1])))
     )
     return add_important(nimp, False) | add_important(imp, True)
 
@@ -613,7 +673,7 @@ def process_input(d: list[tuple[str, str]]) -> StyleInput:
             try:
                 done.update(process_property(key, value))
             except AssertionError as e:
-                reason = e.args[0] if e.args else 'Invalid Property'
+                reason = e.args[0] if e.args else "Invalid Property"
                 log_error(f"CSS: {reason} ({key}: {value})")
 
     inner(d)
@@ -636,8 +696,8 @@ def is_valid(name: str, value: str):
         with suppress(KeyError):
             return value in attr.kws or attr.accept(value, {}) is not None
         return True
-    elif (fstring := dir_shorthands.get(name)) is not None:
-        return is_valid(fstring.format("top"), value)
+    elif (keys := dir_shorthands.get(name)) is not None:
+        return is_valid(keys[0], value)
     return False
 
 
@@ -668,35 +728,49 @@ def split(s: str):
     return result
 
 
+def process_dir(value: list[str]):
+    assert len(value) <= 4, f"Too many values: {len(value)}/4"
+    match value:
+        case [x, y, z]:
+            return [x, y, z, y]
+        case v:
+            return v * (4 // len(v))
+
+
 def process_property(key: str, value: str) -> dict[str, str]:
-    """Processes a single Property as described in the main process functions"""
+    """Processes a single Property, by unpacking shorthands"""
     # TODO: font
-    # TODO: border-radii
     # TODO: outline
     arr = split(value)
     if key == "all":
         assert len(arr) == 1
         assert value in global_values
-        return {k: value for k in style_attrs}
-    elif key in dir_shorthands:
-        assert len(arr) <= len(
-            directions
-        ), f"Too many values: {len(arr)}/{len(directions)}"
-        fstring = dir_shorthands[key]
-        _res = dict(zip(directions, arr))
-        for k in directions[len(_res) :]:
-            _res[k] = _res[dir_fallbacks[k]]
-        return {fstring.format(k): v for k, v in _res.items()}
+        return dict.fromkeys(style_attrs, value)
+    elif key == "border-radius" and "/" in value:
+        x_y = re.split(r"\s*/\s*", value, 1)
+        return dict(
+            zip(
+                br_keys,
+                (
+                    " ".join(item)
+                    for item in zip(*map(lambda s: process_dir(s.split()), x_y))
+                ),
+            )
+        )
+    elif (keys := dir_shorthands.get(key)) is not None:
+        return dict(zip(keys, process_dir(arr)))
     elif (shorthand := smart_shorthands.get(key)) is not None:
         assert len(arr) <= len(
             shorthand
         ), f"Too many values: {len(arr)}, max {len(shorthand)}"
+        if len(arr) == 1 and arr[0] in global_values:
+            return {k: arr[0] for k in shorthand}  # global value for all keys
         result = {k: v for v in arr for k in shorthand if is_valid(k, v)}
         left = set(arr).difference(result.values())
         assert not left, f"Invalid value(s): {', '.join(left)}"
         return result
     else:
-        assert len(arr) == 1
+        assert len(arr) == 1 or len(arr) == 2 and key in br_keys
         value = arr[0]
         assert key in style_attrs, "Unknown Property"
         assert is_valid(key, value), "Invalid Value"
@@ -706,11 +780,10 @@ def process_property(key: str, value: str) -> dict[str, str]:
 def pack_longhands(d: StyleComputed) -> StyleInput:
     """Pack longhands back into their shorthands for readability"""
     d: dict[str, str] = {k: str(v).removesuffix(".0") for k, v in d.items()}
-    for shorthand, fstring in dir_shorthands.items():
-        formatted = [fstring.format(s) for s in directions]
-        if not all(f in d for f in formatted):
+    for shorthand, keys in dir_shorthands.items():
+        if not all(f in d for f in keys):
             continue
-        longhands = [d.pop(f) for f in formatted]
+        longhands = [d.pop(f) for f in keys]
         match longhands:
             case [w, x, y, z] if w == x == y == z:  # 0
                 d[shorthand] = w

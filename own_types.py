@@ -125,9 +125,21 @@ class Rect(_Rect):
         return (
             self.topleft,
             self.topright,
+            self.bottomright,
             self.bottomleft,
-            self.bottomright
         )
+    
+    @staticmethod
+    def from_span(point1: Dimension, point2: Dimension):
+        """
+        Rect from two points.
+        """
+        x1, y1 = point1
+        x2, y2 = point2
+        rect = Rect((x1, y1), (x2 - x1, y2 - y1))
+        rect.normalize()
+        return rect
+    
 
 @dataclass(frozen=True)
 class Percentage:
@@ -224,10 +236,10 @@ StyleComputed = Mapping[str, CompValue]
 
 Number = int, float
 
-DisplayType = Literal['inline','block','none']
-NumPerc = float|Percentage
-AutoNP = float|Percentage|AutoType
-AutoNP4Tuple = tuple[AutoNP, AutoNP, AutoNP, AutoNP]
+DisplayType = Literal['inline', 'block', 'none']
+LengthPerc = Length|Percentage
+AutoLP = Length|Percentage|AutoType
+AutoLP4Tuple = tuple[AutoLP, AutoLP, AutoLP, AutoLP]
 SNP = Sentinel|float|Percentage
 SNP_T = TypeVar("SNP_T",bound = SNP, covariant=True)
 
