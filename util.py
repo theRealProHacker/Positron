@@ -267,7 +267,7 @@ def create_file(file_name: str):
             return create_file(name + " (2)" + ext)
 
 
-async def download(url: str, dir: str = os.environ["TEMP"], fast: bool = True) -> File:
+async def download(url: str, dir: str = os.environ.get("TEMP") or ".", fast: bool = True) -> File:
     """
     Downloads a file from the given url as a stream into the given directory
 
