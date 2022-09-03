@@ -11,5 +11,5 @@ jobs:
         with:
           python-version: '3.10'
           cache: pip
-      - run: py -m mypy .
-      - run: py -m pytest
+      - run: pyton3 -m mypy .
+      - run: python3 -m pytest
