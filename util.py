@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from functools import cache, partial
 from os.path import abspath, dirname
 from types import FunctionType
-from typing import Any, Callable, Coroutine, Iterable
+from typing import Any, Callable, Iterable
 from urllib.error import URLError
 from urllib.parse import urlparse
 

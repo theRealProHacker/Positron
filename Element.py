@@ -578,6 +578,11 @@ class ImgElement(Element):
     image: Media.Image|None
     def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
         # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img
+        # TODO: 
+        # decoding: await the image load before displaying anything if set to sync (other is async)
+        # loading: load the image as soon as possible if set to eager (right now) only load if in view if set to lazy
+        # sizes and srcset: responsiveness
+        # usemap: refers to a map for clicks
         super().__init__(tag, attrs, parent)
         try:
             self.image = Media.Image(attrs["src"])
