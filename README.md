@@ -1,37 +1,44 @@
 # Simple comments
 
 # Sources (MVPs)
-- MDN
+- [MDN](developer.mozilla.org)
 - [The official HTML specifications](html.spec.whatwg.org)
 - [How Browsers work](https://web.dev/howbrowserswork/)
 - [Web Browser Engineering](https://browser.engineering/)
+- Just to be honest [StackOverflow](https://stackoverflow.com)
 ## Single sources
 - https://zerox-dg.github.io/blog/2021/09/26/Browser-from-Scratch-Layout/
 - https://runebook.dev/en/docs/css/css_flow_layout/block_and_inline_layout_in_normal_flow
 - https://www.rexegg.com/regex-boundaries.html
 - https://hacks.mozilla.org/2017/08/inside-a-super-fast-css-engine-quantum-css-aka-stylo/
 
-# Sites to save
+## Sites to save
 - [Parsing](https://html.spec.whatwg.org/multipage/parsing.html#tokenization)
 - [Firefox Source Structure](https://firefox-source-docs.mozilla.org/contributing/directory_structure.html)
 
 # Thoughts
+## Feature Ideas
+- https://web.archive.org/web/20110210133151/http://refactormycode.com/codes/333-sanitize-html
+- animated GIF support (https://yeahexp.com/how-to-insert-animated-gif-into-pygame/)
+
 ## Problems that this project is currently facing
-1. Unicode
-2. Fast media (images, videos, audio). This applies especially to video. 
+1. Unicode and font selection
+2. Fast media (images, videos, audio). This applies especially to video. Which is basically moving image synced with audio
 3. Using the GPU to accelerate drawing. (Related to 2.)
+4. Support for all formats (eg. animated GIF)
 
-## Stylesheets
+# Stylesheets
 
-### Global stylesheets
+## Global stylesheets
 - User agent stylesheet for each attribute
     - inherited values have a default of inherit
-    - display: "inline"
+    - others have other default values:  
+    `display: "inline"`
 - User stylesheet overrides
 - Author stylesheet overrides (--root)
 
-### Specific stylesheets
-- User agent stylesheet for element x 
+## Specific stylesheets
+- [User agent stylesheet for element x](https://www.w3.org/TR/CSS2/sample.html)
     - Example  
         ```css
         div {
@@ -41,12 +48,6 @@
 - User stylesheet overrides
 - Author stylesheet overrides (element selectors)
 
-### Root Style
-- User agent style for the root element (tag: html).
-    - background: white
-    - color: black
-- User style overrides
-
 
 # Internal Attribute Specifications
 
@@ -54,8 +55,8 @@ These specify the attributes with their types and constraints. Every computed ty
 > Comment: However, these feel more and more redundant now, because Style.style_attrs defines them pretty well.
 
 - font-weight: 
-    - From: number, "normal", "bold", "lighter", and "bolder"
-    - To: Number between 1 and 1000
+    - From: number, `normal`, `bold`, `lighter`, and `bolder`
+    - To: `Number` between `1` and `1000`
     - Implementation:  
         If the exact weight given is unavailable, then the following rule is used to determine the weight actually rendered:
 
@@ -71,43 +72,39 @@ These specify the attributes with their types and constraints. Every computed ty
     - To: same string
     - Implementation: complex; defined in some `get_font` method
 - font-size:
-    - From: length-percentage, absolute kw, relative kw
-    - To: `Length > 0`
-- font-style: FontStyle
+    - From: `length-percentage`, absolute kw, relative kw
+    - To: `Length` > 0
+- font-style: `FontStyle`
 - color: 
     - From: name, rgb, rgba, hex and more
     - To: `Color`
-- display: string (inline, block, none)
+- display: keyword
 - background-color: `Color`
 - width: 
-    - From: "auto" or length-percentage
-    - To: Length (>=0) or `Auto` or percentage
-- height: Length (>=0) or `Auto` or percentage
-- position: 
-    - From: keyword
-    - To: str
-- top: 
-    - From: "auto" or length-percentage
-    - To: Length or `Auto` or `Percentage`
-- same for bottom, right and left
-- box-sizing: "content-box" or "border-box"
-- margin(tbrl): Length or `Auto` or `Percentage`
-- padding(tbrl): Length or `Auto` or `Percentage`
-- **border** (width, style, color)
-- border-width(tbrl): int
-- border-style(tbrl): str (https://drafts.csswg.org/css-backgrounds/#border-style)
-- border-color(tbrl): Color
-- border-radius: Length or Percentage
-- line-height: Number or Length or `Percentage` or Normal
-- word-spacing: Number or `Percentage` or Normal
+    - From: `auto` or `length-percentage`
+    - To: `Length` (>=0) or `Auto` or `Percentage`
+- height: `Length` (>=0) or `Auto` or `Percentage`
+- position: keyword
+- top, bottom, right and left: 
+    - From: `auto` or `length-percentage`
+    - To: `Length` or `Auto` or `Percentage`
+- box-sizing: `content-box` or `border-box`
+- margin(tbrl): `Length` or `Auto` or `Percentage`
+- padding(tbrl): `Length` or `Auto` or `Percentage`
+- border-width(tbrl): `int`
+- border-style(tbrl): `str` (https://drafts.csswg.org/css-backgrounds/#border-style)
+- border-color(tbrl): `Color`
+- border-radius: `Length` or `Percentage`
+- line-height: `Number` or `Length` or `Percentage` or `Normal`
+- word-spacing: `Number` or `Percentage` or `Normal`
 
 # The Element class
 
-box: Box
+box: Box  
 display: str
 
-compute:
-    https://developer.mozilla.org/en-US/docs/Web/CSS/computed_value
+[compute](https://developer.mozilla.org/en-US/docs/Web/CSS/computed_value):  
+
     The computed value of a CSS property is the value that is transferred from parent to child during inheritance. 
     It is calculated from the specified value by:
 
@@ -127,8 +124,9 @@ compute:
 
 # Documented differences to the specifications
 
-1. Numbers in CSS can be written with a trailing `.`. Example: `line-height: 12.` (Please don't do this)
-2. `rgb(r,g,b,alpha)` is also valid, as is `rgba(r,g,b)`
+1. Numbers in CSS can be written with a trailing `.`  
+Example: `line-height: 12.` (Please don't do this)
+2. `rgb(r,g,b,a)` is also valid, as is `rgba(r,g,b)`
 3. `margin: 0 0 inherit inherit` is also valid and maps to 
 ```css
 margin-top: 0;
@@ -137,3 +135,4 @@ margin-bottom: inherit;
 margin-right: inherit;
 ```
 4. Also if any of the four values in `margin` were invalid, the rest would still be accepted.
+5. URLs can generally also be absolute or relative paths without having to use the `file://` syntax

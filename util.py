@@ -2,49 +2,49 @@
 Utilities for all kinds of needs (funcs, regex, etc...) 
 """
 
+import asyncio
 import logging
+import mimetypes
+import os
 import re
+import socket
+import time
 from contextlib import contextmanager, redirect_stdout, suppress
 from dataclasses import dataclass
-from functools import cache, partial, reduce
-from threading import Thread
-from typing import (Any, Callable, Coroutine, Iterable,
-                    TypeVar)
+from functools import cache, partial
+from os.path import abspath, dirname
+from types import FunctionType
+from typing import Any, Callable, Coroutine, Iterable
+from urllib.error import URLError
+from urllib.parse import urlparse
 
 import pygame as pg
 import pygame.freetype as freetype
+import requests
+import tldextract
+from watchdog.events import FileSystemEvent, FileSystemEventHandler
+from watchdog.observers import Observer
 
 from config import all_units, g
-from own_types import (Auto, AutoLP, AutoLP4Tuple, Color, Dimension,
-                       Float4Tuple, Number, Percentage, Rect,
-                       Surface, Vector2, _XMLElement)
+from own_types import (V_T, Auto, AutoLP, AutoLP4Tuple, BugError, Cache, Color,
+                       Dimension, Event, Float4Tuple, Length, OpenMode, OpenModeReading, OpenModeWriting,
+                       Percentage, Rect, Surface, Vector2, _XMLElement)
+
+mimetypes.init()
 
 
 def noop(*args, **kws):
     """A no operation function"""
     return None
 
-@contextmanager
-def no_ctx(*args, **kws):
-    """An empty context manager"""
-    yield
-
-
-################## g Manipulations ##########################
-def watch_file(file: str) -> str:
-    """Add the file to the watched files"""
-    return g["file_watcher"].add_file(file)
-
-
-####################################################################
 
 ################## Element Calculation ######################
-# This calculates values that have to be calculated after being computed
 @dataclass
 class Calculator:
     """
-    A calculator is for calculating the values of ANP attributes (width, height, border-width, etc.)
-    It only needs the ANP value, a percentage value and an auto value. If latter are None then they will raise an Exception
+    A calculator is for calculating the values of AlP attributes (width, height, border-width, etc.)
+    It only needs the AlP value, a percentage value and an auto value. If latter are None then they will raise an Exception
+    if a Percentage or Auto are encountered respectively
     """
 
     default_perc_val: float | None
@@ -59,17 +59,19 @@ class Calculator:
         This helper function takes a value, an auto_val
         and the perc_value and returns a Number
         if the value is Auto then the auto_value is returned
-        if the value is a Number that is returned
+        if the value is a Length that is returned
         if the value is a Percentage the Percentage is multiplied with the perc_value
         """
         perc_val = make_default(perc_val, self.default_perc_val)
         if value is Auto:
-            assert auto_val is not None, "This attribute cannot be Auto"
+            assert auto_val is not None, BugError("This attribute cannot be Auto")
             return auto_val
-        elif isinstance(value, Number):
+        elif isinstance(value, Length):
             return not_neg(value)
         elif isinstance(value, Percentage):
-            assert perc_val is not None, f"This attribute cannot be a percentage"
+            assert perc_val is not None, BugError(
+                "This attribute cannot be a percentage"
+            )
             return not_neg(perc_val * value)
         raise TypeError
 
@@ -86,40 +88,50 @@ class Calculator:
 
 ####################################################################
 
+
+########################## FileWatcher #############################
+class FileWatcher(FileSystemEventHandler):
+    """
+    A FileWatcher is really just a watchdog Eventhandler that holds a set of files to be watched.
+    If any file changes, the app is asked to restart by setting the `g["reload"]` flag and sending a
+    Quit Event to the Event Queue
+    """
+
+    def __init__(self):
+        self.last_hit = time.monotonic()  # this doesn't need to be extremely accurate
+        self.files = Cache[str]()
+        self.dirs = set[str]()
+
+    def add_file(self, file: str):
+        file = abspath(file)
+        file = self.files.add(file)
+        new_dir = dirname(file)
+        if not new_dir in self.dirs:
+            self.dirs.add(new_dir)
+            ob = Observer()
+            ob.schedule(self, new_dir)
+            ob.start()
+        return file
+
+    def on_modified(self, event: FileSystemEvent):
+        logging.debug(f"File modified: {event.src_path}")
+        if event.src_path in self.files and (t := time.monotonic()) - self.last_hit > 1:
+            g["reload"] = True
+            pg.event.clear(eventtype=pg.QUIT)
+            pg.event.post(Event(pg.QUIT))
+            self.last_hit = t
+
+
+#########################################################
+
 ########################## Misc #########################
-class StoppableThread(Thread):
-    """ A general StoppableThread. It can be stopped with thread.stop()"""
-    daemon = True
-    def __init__(self, coro_make: Callable[[],Coroutine]):
-        """ The coro_make is a Function that returns a Coroutine """
-        Thread.__init__(self)
-        self.coro = coro_make()
-        self.running: bool = True
 
-    def run(self):
-        logging.debug("Started "+self.__class__.__name__)
-        while self.running:
-            self.coro.__next__()
-        self.coro.close()
-        logging.debug("Finished "+self.__class__.__name__)
-    
-    def stop(self):
-        self.running = False
-        return self
-        
 
-Var = TypeVar("Var")
+def get_dpi():
+    return pg.display.get_display_sizes()[0]
 
-# TODO: Add Typing with overloads and typing variables:
-# Something like:
-# (a: (x)->y, b: (y)->z) -> (x)->z
-def compose(*funcs):
-    def _compose(f, g):
-        return lambda x : f(g(x))
-              
-    return reduce(_compose, funcs, lambda x : x)
 
-def make_default(value: Var | None, default: Var) -> Var:
+def make_default(value: V_T | None, default: V_T) -> V_T:
     """
     If the `value` is None this returns `default` else it returns `value`
     """
@@ -133,7 +145,11 @@ def in_bounds(x: float, lower: float, upper: float) -> float:
 
 
 def not_neg(x: float):
-    return max(0,x)
+    return max(0, x)
+
+
+def abs_div(x):
+    return 1/x if x<1 else x
 
 
 def get_tag(elem: _XMLElement) -> str:
@@ -156,8 +172,8 @@ def all_equal(l):
 
 
 def group_by_bool(
-    l: Iterable[Var], key: Callable[[Var], bool]
-) -> tuple[list[Var], list[Var]]:
+    l: Iterable[V_T], key: Callable[[V_T], bool]
+) -> tuple[list[V_T], list[V_T]]:
     true = []
     false = []
     for x in l:
@@ -168,7 +184,7 @@ def group_by_bool(
     return true, false
 
 
-def find(__iterable: Iterable[Var], key: Callable[[Var], bool]):
+def find(__iterable: Iterable[V_T], key: Callable[[V_T], bool]):
     for x in __iterable:
         if key(x):
             return x
@@ -179,19 +195,232 @@ def find(__iterable: Iterable[Var], key: Callable[[Var], bool]):
 ############################## I/O #################################
 
 
-def fetch_src(src: str):
-    # right now this is just a relative or absolute path to the cwd
-    return readf(src)
+@dataclass(frozen=True, slots=True)
+class File:
+    """
+    A File object can be used to read and write to a file.
+    """
+    name: str
+    mime_type: str | None = None
+    encoding: str | None = None
+
+    @property
+    def ext(self) -> str:
+        # if you need both name and ext then use splitext directly
+        return os.path.splitext(self.name)[1]
+
+    @contextmanager
+    def open(self, mode: OpenMode, *args, **kwargs):
+        if self.encoding:
+            kwargs.setdefault("encoding", self.encoding)
+        with open(self.name, mode, *args, **kwargs) as f:
+            yield f
+
+    def read(self, mode: OpenModeReading = "r", *args, **kwargs):
+        with self.open(mode, *args, **kwargs) as f:
+            return f.read()
+
+    def write(self, mode: OpenModeWriting = "w", *args, **kwargs):
+        with self.open(mode, *args, **kwargs) as f:
+            return f.write()
 
 
-def readf(path: str):
-    with open(path, "r", encoding="utf-8") as file:
-        return file.read()
+# @contextmanager
+# def open_temp(path: str, *args, **kwargs):
+#     with open(os.path.join(os.environ["TEMP"], path), *args, **kwargs) as f:
+#         yield f
+
+# @contextmanager
+# def random_file(file_ending: str)->TextIOWrapper:
+#     file_name = hex(random.randrange(2**10))[2:]+file_ending
+#     # file_name = ''.join(str(random.randrange(0,10)) for _ in range(8))+file_ending
+#     try:
+#         with open_temp(file_name, "x") as f:
+#             yield f
+#     except FileExistsError:
+#         with random_file(file_ending) as f:
+#             yield f
 
 
+def is_online() -> bool:
+    # https://www.codespeedy.com/how-to-check-the-internet-connection-in-python/
+    own_adress = socket.gethostbyname(socket.gethostname())
+    return own_adress != "127.0.0.1"
+
+
+def create_file(file_name: str):
+    try:
+        with open(file_name, "x") as _:
+            return file_name
+    except FileExistsError:
+        # "file (2)" -> "file (3)"
+        if (
+            new_name := re.sub(
+                r"\((\d+)\)",
+                lambda x: f"({int(x.group(1)[::-1])+1})"[::-1],
+                file_name[::-1],
+            )[::-1]
+        ) != file_name:
+            return create_file(new_name)
+        else:
+            name, ext = os.path.splitext(file_name)
+            return create_file(name + " (2)" + ext)
+
+
+async def download(url: str, dir: str = os.environ["TEMP"], fast: bool = True) -> File:
+    """
+    Downloads a file from the given url as a stream into the given directory
+
+    Raises Request Errors, OSErrors, or URLErrors.
+    """
+    # TODO: Use Multiprocessing to really improve downloads
+    # https://docs.python.org/3/library/asyncio-task.html
+    # sleep() always suspends the current task, allowing other tasks to run.
+    # Setting the delay to 0 provides an optimized path to allow other tasks to run.
+    # This can be used by long-running functions to avoid blocking the event loop
+    # for the full duration of the function call.
+    ext: str | None
+    mime_type: str | None
+    chardet: str | None
+    sleep = (not fast) * 0.01
+    parse_result = urlparse(url)
+    if parse_result.scheme == "file":
+        if os.path.exists(path := parse_result.path.removeprefix("/")):
+            return File(path)
+        else:
+            raise URLError("File doesn't exist", url)
+    elif parse_result.scheme == "":
+        # try to find the file in the current directory
+        if os.path.exists(path := parse_result.path):
+            return File(path)
+        # if that doesn't work, then try https://
+        httpurl = url + ("/" if "/" not in url else "")
+        with suppress(Exception):
+            return await download("https://" + httpurl, dir, fast)
+        # if that doesn't work either, try http://
+        with suppress(Exception):
+            return await download("http://" + httpurl, dir, fast)
+        raise URLError("Could not find file or uri: " + url)
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+    name, ext = os.path.splitext(os.path.basename(parse_result.path))
+    name = name or tldextract.extract(parse_result.netloc).domain
+    # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
+    # TODO: multipart with boundaries
+    if (_content_type := response.headers.get("Content-Type")) is not None:
+        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
+        content_type = [
+            x.strip() for x in _content_type.split(";")
+        ]  # we throw away the extra stuff. TODO: use that extra stuff
+        chardet_bgn = "chardet="
+        match content_type:
+            case [mime_type]:
+                chardet = mimetypes.guess_type(url)[1]
+            case [mime_type, chardet] if chardet.startswith(chardet_bgn):
+                chardet = chardet[len(chardet_bgn) :]
+            case _:
+                raise BugError(f"Unknown content type: {content_type}")
+        ext = ext or mimetypes.guess_extension(mime_type)
+    else:
+        mime_type, chardet = mimetypes.guess_type(url)
+    if ext is None:
+        raise BugError(
+            f"Couldn't guess extension for file: {url}->{name,ext}, Content-Type: {content_type}"
+        )
+    filename = os.path.abspath(os.path.join(dir, name + ext))
+    with open(filename, "wb") as f:
+        chunk: bytes
+        for chunk in response.iter_content():
+            f.write(chunk)
+            await asyncio.sleep(sleep)
+    logging.debug(f"Downloaded {url} into {filename}")
+    # TODO: guess mime type and encoding from content if None
+    return File(filename, mime_type, chardet)
+
+def sync_download(url: str, dir: str = os.environ["TEMP"]) -> File:
+    """
+    Downloads a file from the given url as a stream into the given directory
+    Raises RequestException, OSErrors, or URLErrors.
+    """
+    # TODO: Use Multiprocessing to really improve downloads
+    # TODO: guess mime type and encoding from content if None
+    # https://docs.python.org/3/library/asyncio-task.html
+    # sleep() always suspends the current task, allowing other tasks to run.
+    # Setting the delay to 0 provides an optimized path to allow other tasks to run.
+    # This can be used by long-running functions to avoid blocking the event loop
+    # for the full duration of the function call.
+    with suppress(OSError):
+        if os.path.exists(url):
+            return File(os.path.abspath(url))
+    ext: str | None
+    mime_type: str | None
+    chardet: str | None
+    parse_result = urlparse(url)
+    if parse_result.scheme == "file":
+        if os.path.exists(path := parse_result.path.removeprefix("/")):
+            return File(path)
+        else:
+            raise URLError("File not found: " + url)
+    elif parse_result.scheme in ("http", "https"):
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        name, ext = os.path.splitext(os.path.basename(parse_result.path))
+        name = name or tldextract.extract(parse_result.netloc).domain
+        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
+        # TODO: multipart with boundaries
+        if (_content_type := response.headers.get("Content-Type")) is not None:
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
+            content_type = [
+                x.strip() for x in _content_type.split(";")
+            ]  # we throw away the extra stuff. TODO: use that extra stuff
+            chardet_bgn = "chardet="
+            match content_type:
+                case [mime_type]:
+                    chardet = mimetypes.guess_type(url)[1]
+                case [mime_type, chardet] if chardet.startswith(chardet_bgn):
+                    chardet = chardet[len(chardet_bgn) :]
+                case _:
+                    raise BugError(f"Unknown content type: {content_type}")
+            ext = ext or mimetypes.guess_extension(mime_type)
+        else:
+            mime_type, chardet = mimetypes.guess_type(url)
+        if ext is None:
+            raise BugError(
+                f"Couldn't guess extension for file: {url}->{name,ext}, Content-Type: {content_type}"
+            )
+        filename = os.path.abspath(os.path.join(dir, name + ext))
+        with open(filename, "wb") as f:
+            chunk: bytes
+            for chunk in response.iter_content():
+                f.write(chunk)
+        logging.debug(f"Downloaded {url} into {filename}")
+    elif parse_result.scheme == "":
+        # try https:// then http://
+        httpurl = url + ("/" if "/" not in url else "")
+        with suppress(requests.exceptions.RequestException, OSError, URLError):
+            return sync_download("https://" + httpurl, dir)
+        with suppress(requests.exceptions.RequestException, OSError, URLError):
+            return sync_download("http://" + httpurl, dir)
+        raise URLError("Could not find file or uri: "+ url)
+    else:
+        raise URLError("Could not find file or uri: "+ url)
+    return File(filename, mime_type, chardet)
+
+def fetch_txt(src: str)->str:
+    file: File = sync_download(src)
+    return file.read()
+
+
+# def readf(path: str):
+#     with open(path, "r", encoding="utf-8") as file:
+#         return file.read()
+# use File(path).read() instead
+
+
+_error_logfile = File("error.log", encoding="utf-8")
 @contextmanager
 def clog_error():
-    with open("error.log", "a", encoding="utf-8") as file:
+    with _error_logfile.open("a") as file:
         with redirect_stdout(file):
             yield
 
@@ -202,8 +431,8 @@ def log_error(*messages, **kwargs):
 
 
 @cache
-def print_once(*args):
-    print(*args)
+def print_once(*args, **kwargs):
+    print(*args, **kwargs)
 
 
 def print_tree(tree, indent=0):
@@ -236,8 +465,11 @@ def compile(patterns: Iterable[str | re.Pattern]):
 
 
 def get_groups(s: str, p: re.Pattern) -> list[str] | None:
-    if (match := p.search(s)) and (groups := [g for g in match.groups() if g]):
-        return groups
+    if match := p.search(s):
+        if groups := [g for g in match.groups() if g]:
+            return groups
+        else:
+            return [match.group()]
     return None
 
 
@@ -248,6 +480,38 @@ def re_join(*args: str) -> str:
 def replace_all(s: str, olds: list[str], new: str) -> str:
     pattern = re.compile(re_join(*olds))
     return pattern.sub(new, s)
+
+
+# Reverse regex
+"""
+Search or replace in the regex from the end of the string.
+The given regex will not be reversed TODO: implement this
+"""
+
+
+def rev_groups(pattern: re.Pattern | str, s: str):
+    _pattern = re.compile(pattern)
+    groups = get_groups(s[::-1], _pattern)
+    return None if groups is None else [group[::-1] for group in groups]
+
+
+def rev_sub(
+    pattern: re.Pattern | str,
+    s: str,
+    repl: str | Callable[[list[str]], str],
+    count: int = -1,
+):
+    if isinstance(repl, str):
+        _repl = repl[::-1]
+    elif isinstance(repl, FunctionType):
+
+        def _repl(match: re.Match):
+            return repl([group[::-1] for group in match.groups()])[::-1]
+
+    else:
+        raise TypeError
+
+    return re.sub(pattern, _repl, s[::-1], count)[::-1]
 
 
 # https://docs.python.org/3/library/re.html#simulating-scanf

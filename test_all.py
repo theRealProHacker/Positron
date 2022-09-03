@@ -1,5 +1,10 @@
+import asyncio
+import os
+from contextlib import suppress
+
 import pygame as pg
 import pytest
+import requests
 from pytest import raises
 
 import Box
@@ -8,58 +13,58 @@ import J
 import Style
 import util
 from Element import (AndSelector, ClassSelector, DirectChildSelector,
-                     HasAttrSelector, IdSelector, TagSelector,
-                     parse_selector, rel_p, sngl_p)
-from own_types import Color, Length, FrozenDCache, Rect, Auto
+                     HasAttrSelector, IdSelector, TagSelector, parse_selector,
+                     rel_p, sngl_p)
+from own_types import Auto, Color, FrozenDCache, Length, Rect
+
+# https://stackoverflow.com/a/70016047/15046005
+pytest_plugins = ("pytest_asyncio",)
 
 
 def test_joint():
     style = Style.remove_important(Style.parse_inline_style("""margin: 0 auto"""))
     assert style == {
-        "margin-top":"0",
+        "margin-top": "0",
         "margin-right": "auto",
-        "margin-bottom":"0",
-        "margin-left": "auto"
+        "margin-bottom": "0",
+        "margin-left": "auto",
     }
-    comp_style = {
-        k:Element.process_style("test", v, k, {}) for k,v in style.items()
-    }
+    comp_style = {k: Element.process_style("test", v, k, {}) for k, v in style.items()}
     assert comp_style == {
         "margin-top": Length(0),
         "margin-right": Auto,
-        "margin-bottom":Length(0),
-        "margin-left": Auto
+        "margin-bottom": Length(0),
+        "margin-left": Auto,
     }
     margin = Style.mrg_getter(comp_style)
     assert margin[Box._horizontal] == (Auto, Auto)
     assert margin[Box._vertical] == (Length(0), Length(0))
 
     style = Style.remove_important(
-        Style.parse_inline_style("""
+        Style.parse_inline_style(
+            """
         margin: 20px auto;padding:10px;border:solid medium;width:200px;height:200px;box-sizing: border-box
-        """)
+        """
+        )
     )
-    comp_style = {
-        k:Element.process_style("test", v, k, {}) for k,v in style.items()
-    }
-    box,set_height = Box.make_box(900,comp_style,900,600)
-    assert set_height == util.noop # height is defined
-    mrg_r_l = (900-200-3*2-10*2)/2
+    comp_style = {k: Element.process_style("test", v, k, {}) for k, v in style.items()}
+    box, set_height = Box.make_box(900, comp_style, 900, 600)
+    assert set_height == util.noop  # height is defined
+    mrg_r_l = (900 - 200 - 3 * 2 - 10 * 2) / 2
     assert box == Box.Box(
         "border-box",
-        margin = (20,mrg_r_l,20,mrg_r_l),
-        border = (3,)*4,
-        padding = (10,)*4,
-        width = 200,
-        height = 200,
+        margin=(20, mrg_r_l, 20, mrg_r_l),
+        border=(3,) * 4,
+        padding=(10,) * 4,
+        width=200,
+        height=200,
     )
-    
+
 
 def test_own_types():
     # clock-wise rotation
-    assert Rect(0,0,400,400).corners == (
-        (0,0), (400,0), (400,400), (0,400)
-    )
+    assert Rect(0, 0, 400, 400).corners == ((0, 0), (400, 0), (400, 400), (0, 400))
+
 
 def test_cache():
     test_cache = FrozenDCache()
@@ -90,14 +95,15 @@ def test_cache():
 
 def test_style_computing():
     assert Style.split_units("3px") == (3, "px")
-    assert Style.split_units("0")   == (0, "")
+    assert Style.split_units("0") == (0, "")
     assert Style.split_units("70%") == (70, "%")
     with pytest.raises(AttributeError):
         Style.split_units("blue")
-        
-    assert Style.length("3px", {})  == Length(3)
 
-    assert Style.color("rgb(120,120,120)", {})      == Color(*(120,) * 3)
+    assert Style.length("3px", {}) == Length(3)
+
+    assert Style.color("rgb(120,120,120)", {}) == Color(*(120,) * 3)
+    assert Style.style_attrs["color"].accept("rgb(120,120,120)", {}) == Color(*(120,) * 3)
     assert Style.color("rgba(120,120,120,120)", {}) == Color(*(120,) * 4)
     assert Style.color("currentcolor", {"color": Color("blue")}) == Color("blue")
     assert Style.color("#fff", {}) == Style.color("#ffffff", {}) == Color("white")
@@ -110,12 +116,17 @@ def test_style_computing():
     ]
     # TODO
     with raises(AssertionError):
-        assert Style.split("""oblique 10px 'Courier New' , Courier      
-        , monospace;""") == [
-            "oblique",
-            "10px",
-            "'Courier New',Courier,monospace",
-        ]
+        assert (
+            Style.split(
+                """oblique 10px 'Courier New' , Courier      
+        , monospace;"""
+            )
+            == [
+                "oblique",
+                "10px",
+                "'Courier New',Courier,monospace",
+            ]
+        )
 
     # TODO: Add some more complex tests
     assert Style.remove_important(
@@ -126,23 +137,15 @@ def test_style_computing():
     ) == {"color": "blue"}
 
     # https://developer.mozilla.org/en-US/docs/Web/CSS/margin#syntax
-    assert Style.process_dir(
-        ["1em"]
-    ) == ['1em', '1em', '1em', '1em']
-    assert Style.process_dir(
-        "5% auto".split()
-    ) == ['5%', 'auto', '5%', 'auto']
-    assert Style.process_property(
-        "margin", "1em auto 2em"
-    ) == {
+    assert Style.process_dir(["1em"]) == ["1em", "1em", "1em", "1em"]
+    assert Style.process_dir("5% auto".split()) == ["5%", "auto", "5%", "auto"]
+    assert Style.process_property("margin", "1em auto 2em") == {
         "margin-top": "1em",
         "margin-right": "auto",
         "margin-bottom": "2em",
         "margin-left": "auto",
     }
-    assert Style.process_property(
-        "margin", "2px 1em 0 auto"
-    ) == {
+    assert Style.process_property("margin", "2px 1em 0 auto") == {
         "margin-top": "2px",
         "margin-right": "1em",
         "margin-bottom": "0",
@@ -157,9 +160,7 @@ def test_style_computing():
     border-bottom-right-radius: 1em 5em;
     border-bottom-left-radius:  1em 5em;
     """
-    assert Style.process_property(
-        "border-radius", "1em/5em"
-    ) == {
+    assert Style.process_property("border-radius", "1em/5em") == {
         "border-top-left-radius": "1em 5em",
         "border-top-right-radius": "1em 5em",
         "border-bottom-right-radius": "1em 5em",
@@ -168,10 +169,7 @@ def test_style_computing():
     assert Style.is_valid("border-width", "medium")
     assert Style.is_valid("border-style", "solid")
     assert Style.is_valid("border-color", "black")
-    assert Style.process_property("border", "solid") == {
-        "border-style": "solid"
-    }
-
+    assert Style.process_property("border", "solid") == {"border-style": "solid"}
 
 
 def test_selector_parsing():
@@ -209,12 +207,14 @@ def test_selector_parsing():
 
 
 def test_boxes():
-    box = Box.Box("content-box", border=(3,) * 4, width=500, height=150, content_width=True)
-    assert box.content_box == pg.Rect(0, 0, 500, 150), box.content_box
+    box = Box.Box(
+        "content-box", border=(3,) * 4, width=500, height=150, outer_width=True
+    )
+    assert box.content_box == pg.Rect(0, 0, 500 - 6, 150), box.content_box
 
-    box.pos = (0,0)
-    assert box.content_box == pg.Rect(3, 3, 500, 150), box.content_box
-    assert box.outer_box == pg.Rect(0, 0, 500 + 6, 150 + 6), box.outer_box
+    box.set_pos((0, 0))
+    assert box.content_box == pg.Rect(3, 3, 500 - 6, 150), box.content_box
+    assert box.outer_box == pg.Rect(0, 0, 500, 150 + 6), box.outer_box
 
 
 def test_J():
@@ -223,11 +223,22 @@ def test_J():
 
 
 def test_util():
+    # Regex
+    # finds the period followed by the two spaces and not by the single space.
+    # But the regex has to be flipped (First the space, then the period)
+    assert util.rev_groups(r"\s*\.", "I like the rain. But not the sun.  ")[0] == ".  "
+    # here the idea is to only replace the last x matches
+    assert (
+        util.rev_sub(
+            r"(\d+)", "123, 124, 124", lambda groups: str(int(groups[0]) + 1), 1
+        )
+        == "123, 124, 125"
+    )
     tests = {
         # https://developer.mozilla.org/en-US/docs/Web/CSS/integer#examples
         "integer": {
             True: ["12", "+123", "-456", "0", "+0", "-0", "00"],
-            False: ["12.0", "12.", "+---12", "ten", "_5", r"\35", "\4E94", "3e4"],
+            False: ["12.0", "12.", "+---12", "ten", "_5", r"\35", r"\4E94", "3e4"],
         },
         # https://developer.mozilla.org/en-US/docs/Web/CSS/number#examples
         "number": {
@@ -256,8 +267,25 @@ def test_util():
             for x in items:
                 assert bool(util.check_regex(name, x)) is b
 
+async def _test_async():
+    # IO
+    expected_path = util.abspath("google.html")
+    with suppress(requests.exceptions.ConnectionError):
+        actual_path = await util.download("https://www.google.com/", dir=".")
+        os.remove(actual_path)
+        assert actual_path == expected_path
+    result = "Result"
+    def inner():
+        return result
+    assert await asyncio.to_thread(inner) == result
+
+
+def test_image_element():
+    Element.ImgElement.make_dimensions((None, None), (500, 800)) == (500, 800)
+    Element.ImgElement.make_dimensions((1000, None), (500, 800)) == (500, 1600)
+    Element.ImgElement.make_dimensions((None, 400), (500, 800)) == (250, 400)
+    Element.ImgElement.make_dimensions((500, 400), (500, 800)) == (500, 400)
+
 
 if __name__ == "__main__":
-    for k, v in globals().items():
-        if k.startswith("test_"):
-            v()
+    pytest.main()

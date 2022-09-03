@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from functools import reduce
-from typing import Any, Generator, Literal, Mapping, TypeVar, Union, TypeVar, Hashable, Protocol, Generic, Iterable
+from typing import Any, Generator, Literal, Mapping, TypeAlias, TypeVar, Union, TypeVar, Hashable, Protocol, Generic, Iterable
 from xml.etree.ElementTree import Element as _XMLElement
 from enum import Enum as _Enum, auto as enum_auto
 from operator import or_
@@ -13,6 +13,7 @@ from pygame.surface import Surface
 from pygame.rect import Rect as _Rect
 from pygame.font import Font
 from pygame.event import Event
+from pygame.mask import Mask
 from frozendict import FrozenOrderedDict as _frozendict
 
 class BugError(AssertionError):
@@ -171,6 +172,7 @@ class Length(float):
     def __repr__(self):
         return f"Length({super().__repr__()})"
 
+
 ################################################
 
 ################## Sentinels ###################
@@ -245,3 +247,78 @@ SNP_T = TypeVar("SNP_T",bound = SNP, covariant=True)
 
 SNP4Tuple = tuple[SNP, SNP, SNP, SNP]
 Float4Tuple = tuple[float, float, float, float]
+
+######################### Copied from _typeshed ############################
+
+OpenTextModeUpdating = Literal[
+    "r+",
+    "+r",
+    "rt+",
+    "r+t",
+    "+rt",
+    "tr+",
+    "t+r",
+    "+tr",
+    "w+",
+    "+w",
+    "wt+",
+    "w+t",
+    "+wt",
+    "tw+",
+    "t+w",
+    "+tw",
+    "a+",
+    "+a",
+    "at+",
+    "a+t",
+    "+at",
+    "ta+",
+    "t+a",
+    "+ta",
+    "x+",
+    "+x",
+    "xt+",
+    "x+t",
+    "+xt",
+    "tx+",
+    "t+x",
+    "+tx",
+]
+OpenTextModeWriting = Literal["w", "wt", "tw", "a", "at", "ta", "x", "xt", "tx"]
+OpenTextModeReading = Literal["r", "rt", "tr", "U", "rU", "Ur", "rtU", "rUt", "Urt", "trU", "tUr", "Utr"]
+OpenTextMode = Union[OpenTextModeUpdating, OpenTextModeWriting, OpenTextModeReading]
+OpenBinaryModeUpdating = Literal[
+    "rb+",
+    "r+b",
+    "+rb",
+    "br+",
+    "b+r",
+    "+br",
+    "wb+",
+    "w+b",
+    "+wb",
+    "bw+",
+    "b+w",
+    "+bw",
+    "ab+",
+    "a+b",
+    "+ab",
+    "ba+",
+    "b+a",
+    "+ba",
+    "xb+",
+    "x+b",
+    "+xb",
+    "bx+",
+    "b+x",
+    "+bx",
+]
+OpenBinaryModeWriting = Literal["wb", "bw", "ab", "ba", "xb", "bx"]
+OpenBinaryModeReading = Literal["rb", "br", "rbU", "rUb", "Urb", "brU", "bUr", "Ubr"]
+OpenBinaryMode = Union[OpenBinaryModeUpdating, OpenBinaryModeReading, OpenBinaryModeWriting]
+
+OpenModeReading = Union[OpenTextModeReading, OpenBinaryModeReading]
+OpenModeWriting = Union[OpenTextModeWriting, OpenBinaryModeWriting]
+OpenModeUpdating = Union[OpenTextModeUpdating, OpenBinaryModeUpdating]
+
+OpenMode = Union[OpenTextMode, OpenBinaryMode]

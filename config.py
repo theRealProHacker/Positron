@@ -1,5 +1,7 @@
 """ Any global variables are stored here"""
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
+from queue import Queue
 from own_types import Color, Cache, FrozenDCache
 
 # This problem is proof that typing in python doesn't work
@@ -25,7 +27,8 @@ g: dict[str, Any] = {
     "root": None,                   # the html element
     "file_watcher": None,           # the file watcher
     "screen": None,                 # pg.Surface
-    # "global_sheet": SourceSheet() # Is added in Style.py
+    "global_sheet": None,           # SourceSheet() # Is added in Style.py
+    "tasks": []
 }
 
 def reset_config():
@@ -35,10 +38,12 @@ def reset_config():
         "lang": "",                 # str # this is set in Element.py by the HTMLElement
         "title": "",                # str # this is set in Element.py by the title element
         "recompute": True,          # bool 
+        "reload": False,            # bool
         "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache
         "css_sheets": Cache(),      # Cache[SourceSheet] # a list of external css SourceSheets
         "css_dirty": False,         # bool
-        "css_sheet_len": 0          # int
+        "css_sheet_len": 0,         # int
+        "loader_queue" : Queue(),    # Queue[tuple[str,callback]]
     })
     g["global_sheet"].clear()
 # main must reset
@@ -47,6 +52,10 @@ def add_sheet(sheet: Any):
     g["css_sheets"].add(sheet)
     g["global_sheet"] += sheet
     g["css_dirty"] = True
+
+def watch_file(file: str) -> str:
+    """Add the file to the watched files. The caller has to hold on to the file until it shouldn't be watched anymore"""
+    return g["file_watcher"].add_file(file)
 
 ################################ constant data ########################
 

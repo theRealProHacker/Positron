@@ -17,7 +17,7 @@ from own_types import (V_T, Auto, AutoLP, AutoType, Color, CompValue,
                        FontStyle, Length, LengthPerc, Normal, NormalType,
                        Number, Percentage, Sentinel, StyleComputed, StyleInput,
                        frozendict)
-from util import dec_re, fetch_src, get_groups, group_by_bool, log_error, noop
+from util import dec_re, fetch_txt, get_groups, group_by_bool, log_error, noop
 
 #################### Itemgetters/setters ###########################
 
@@ -575,7 +575,7 @@ def parse_file(source: str) -> SourceSheet:
     It sets the current_file globally which is just for debugging purposes.
     """
     with set_curr_file(source):
-        data = fetch_src(source)
+        data = fetch_txt(source)
         return parse_sheet(data)
 
 
@@ -741,6 +741,7 @@ def process_property(key: str, value: str) -> dict[str, str]:
     """Processes a single Property, by unpacking shorthands"""
     # TODO: font
     # TODO: outline
+    # IDEA: if we do this then it would make sense to actually return the value if it is static
     arr = split(value)
     if key == "all":
         assert len(arr) == 1
@@ -770,14 +771,13 @@ def process_property(key: str, value: str) -> dict[str, str]:
         assert not left, f"Invalid value(s): {', '.join(left)}"
         return result
     else:
-        assert len(arr) == 1 or len(arr) == 2 and key in br_keys
-        value = arr[0]
         assert key in style_attrs, "Unknown Property"
-        assert is_valid(key, value), "Invalid Value"
+        value = ' '.join(arr)
+        # assert is_valid(key, value), "Invalid Value" 
         return {key: value}
 
 
-def pack_longhands(d: StyleComputed) -> StyleInput:
+def pack_longhands(d: StyleInput|StyleComputed) -> StyleInput:
     """Pack longhands back into their shorthands for readability"""
     d: dict[str, str] = {k: str(v).removesuffix(".0") for k, v in d.items()}
     for shorthand, keys in dir_shorthands.items():

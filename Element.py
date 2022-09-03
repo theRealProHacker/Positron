@@ -17,18 +17,19 @@ import pygame as pg
 
 import rounded_box
 import Style
-from Box import Box, make_box
-from config import add_sheet, g
+import Media
+import Box
+from config import add_sheet, g, watch_file
 from own_types import (Auto, AutoLP4Tuple, BugError, CompValue, Dimension,
                        DisplayType, Float4Tuple, Font, FontStyle, Normal,
                        NormalType, Number, Percentage, Rect, StyleComputed,
                        StyleInput, Surface, _XMLElement)
 from Style import (SourceSheet, StyleRule, abs_default_style, bc_getter,
-                   br_getter, bs_getter, bw_getter, bw_keys, get_style,
-                   inset_getter, pack_longhands, parse_file, parse_sheet,
-                   prio_keys, style_attrs)
+                   br_getter, bs_getter, bw_keys, get_style, inset_getter,
+                   pack_longhands, parse_file, parse_sheet, prio_keys,
+                   style_attrs)
 from util import (Calculator, get_groups, get_tag, group_by_bool, log_error,
-                  print_once, watch_file)
+                  print_once)
 
 """ More useful links for further development
 https://developer.mozilla.org/en-US/docs/Web/CSS/image
@@ -100,7 +101,7 @@ def process_style(tag: str, val: str, key: str, p_style: StyleComputed) -> CompV
             )
     return (
         valid
-        if (valid := attr.convert(val, p_style)) is not None or print_once(key, val)
+        if (valid := attr.convert(val, p_style)) is not None or print_once("Uncomputable property found:" ,key, val)
         else redirect("unset")
     )
 
@@ -130,7 +131,7 @@ class Element:
     estyle: Style.Style  # external style
     cstyle: StyleComputed  # computed_style
     # Layout + Draw
-    box: Box = Box.empty()
+    box: Box.Box = Box.Box.empty()
     line_height: float
     white_spacing: float
     display: DisplayType  # the used display state. Is set before layout
@@ -248,15 +249,13 @@ class Element:
 
     def layout(self, width: float) -> None:  # !
         """
-        Layout an element.
-        Gets the width it has available
-        The input width is the width the child should take if its width is Auto
+        Layout an element. Gets the width it has available
         """
         if self.display == "none":
             self.layout_type = "none"
             return
         style = self.cstyle
-        self.box, set_height = make_box(
+        self.box, set_height = Box.make_box(
             width, style, self.parent.box.width, self.parent.get_height()
         )
         if any(c.display == "block" for c in self.children):
@@ -343,7 +342,7 @@ class Element:
 
     def draw(self, surf: Surface, pos: Dimension):
         """
-        Draws the element to the `screen` at `pos`
+        Draws the element to the `surf` at `pos`
         """
         if self.display == "none":
             return
@@ -489,7 +488,7 @@ class HTMLElement(Element):
         return self.box.height
 
     def layout(self):
-        self.box = Box(t="content-box", width=g["W"], height=g["H"])
+        self.box = Box.Box(t="content-box", width=g["W"], height=g["H"])
         # all children correct their display
         assert self.is_block()
         self.layout_children(lambda height: setattr(self.box, "height", height))
@@ -573,13 +572,62 @@ class CommentElement(MetaElement):
         return self.to_html()
 
 
-class IMGElement(Element):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # eg fetch the image and save a reference in this element
+class ImgElement(Element):
+    size: None|tuple[int, int]
+    given_size: tuple[int|None,int|None]
+    image: Media.Image|None
+    def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
+        # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img
+        super().__init__(tag, attrs, parent)
+        try:
+            self.image = Media.Image(attrs["src"])
+            self.given_size = (
+                int(w) if (w:=attrs.get("width")) is not None else None,
+                int(h) if (h:=attrs.get("height")) is not None else None
+            )
+        except (KeyError, ValueError):
+            self.image = None
+            self.given_size = (None,None)
+        self.size = self.given_size if not None in self.given_size else None # type: ignore # as always mypy is too stupid
+
+    @staticmethod
+    def make_dimensions(given_size: tuple[int|None,int|None], intrinsic_size: tuple[int, int])->tuple[int,int]:
+        ix,iy = intrinsic_size
+        match given_size:
+            case [None, None]:
+                return ix,iy
+            case [x, None]:
+                return x, iy * x // ix
+            case [None, y]:
+                return ix * y // iy, y
+            case [x,y]:
+                return x,y
+        raise ValueError(given_size)
+
+    @staticmethod
+    def crop_image(surf: Surface, to_size: Dimension):
+        return pg.transform.scale(surf, to_size)
 
     def layout(self, width):
-        pass
+        if self.cstyle["display"] == "none" or self.image is None:
+            return
+        if self.image.is_loaded:
+            self.size = self.make_dimensions(self.given_size, self.image.size)
+        w,h = self.size if self.size is not None else (x or 0 for x in self.given_size)
+        self.box = Box.Box(
+            self.cstyle["box-sizing"],
+            # TODO: add border, margin, padding
+            width=w,
+            height=h
+        )
+
+    def draw(self, surf, pos):
+        if self.cstyle["display"] == "none" or self.image is None:
+            return
+        if self.size is not None and self.image.is_loaded:
+            draw_surf = self.crop_image(self.image.surf, self.size)
+            surf.blit(draw_surf, self.box.pos + pos)
+              
 
 
 class BrElement(Element):
@@ -591,7 +639,7 @@ font_split_regex = re.compile(r"\s*\,\s*")
 
 
 class TextElement:
-    """Special element that can't be accessed from HTML directly but represent any raw text"""
+    """Special element that can't be accessed from HTML directly but represents any raw text"""
 
     text: str
     parent: Element
@@ -673,7 +721,7 @@ def create_element(elem: _XMLElement, parent: Element | None = None):
             special_elem := globals().get(tag.capitalize() + "Element")
         ) is not None and issubclass(special_elem, Element):
             # meta_elements don't need their tag, but take their text
-            new = special_elem(elem.attrib, text, parent)
+            new = special_elem(tag, elem.attrib, parent)
         case _:
             new = Element(tag, elem.attrib, parent)  # type: ignore[arg-type]
 

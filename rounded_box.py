@@ -4,9 +4,10 @@ from functools import cache
 from typing import Sequence
 
 import pygame as pg
+from pygame import gfxdraw
 
 from own_types import (V_T, Color, Dimension, Float4Tuple, Rect, Surface,
-                       Vector2)
+                       Vector2, Mask)
 from util import all_equal
 
 
@@ -86,22 +87,6 @@ _corner2sides = (
 )
 
 
-def corner2sides(corners: list[tuple[V_T, V_T]]) -> list[tuple[V_T, V_T]]:
-    """Convert corner data to side data"""
-
-    def pick_corner(
-        corner_index: tuple[int, int], vec: tuple[int, int]
-    ) -> tuple[V_T, V_T]:
-        l = []
-        for i in corner_index:
-            for j, x in zip(corners[i], vec):
-                if x:
-                    l.append(j)
-        return tuple(l)  # type: ignore
-
-    return [pick_corner(i, vec) for i, vec in zip(_corner2sides, side_vectors)]
-
-
 def adj_corners(corners: list[V_T]) -> list[tuple[V_T, V_T]]:
     """
     Return the adjacent corners of all four sides
@@ -109,19 +94,8 @@ def adj_corners(corners: list[V_T]) -> list[tuple[V_T, V_T]]:
     return [(corners[i1], corners[i2]) for i1, i2 in _corner2sides]
 
 
-assert corner2sides(
-    [
-        (3, 1),  # topleft
-        (5, 4),  # topright
-        (10, 0),  # bottomright
-        (8, 20),  # bottomleft
-    ]
-) == [
-    (3, 5), # top
-    (4, 0), # right
-    (10, 8),# bottom
-    (20, 1),# left
-]
+def cut_out(surf: Surface, mask: Mask):
+    pass
 
 
 @cache
@@ -130,7 +104,12 @@ def full_ellipse(size: tuple[int, int], color: Color, width: int) -> Surface:
     Returns a surface with an ellipse drawn in it.
     """
     surface = pg.Surface(size, flags=pg.SRCALPHA)
-    pg.draw.ellipse(surface, color, Rect(0, 0, *size), width)
+    rect = Rect(0, 0, *size)
+    if width == 0:
+        dx, dy = size
+        gfxdraw.filled_ellipse(surface, *rect.center, dx//2, dy//2, color)
+    else:
+        pg.draw.ellipse(surface, color, rect, width)
     return surface
 
 
@@ -143,8 +122,11 @@ def advanced_draw_box(
     radii: tuple[tuple[int, int], ...],
 ):
     def draw_rect(color, rect):
-        pg.draw.rect(surf, color, rect)
+        gfxdraw.box(surf, rect, color)
+        # pg.draw.rect(surf, color, rect)
     def draw_arc(color, rect, start_angle, stop_angle, width):
+        # for i in range(width):
+        #     gfxdraw.arc(surf, *rect.center, )
         for _ in range(1000):
             pg.draw.arc(surf, color, rect, start_angle, stop_angle, width)
     corners = [Vector2(x) for x in box.corners]
@@ -175,7 +157,9 @@ def advanced_draw_box(
         if all(ewidths):
             if all_equal(ewidths) and all_equal(ecolors):
                 # draw a single arc
-                draw_arc(ecolors[0], ell_rect, start_angle, stop_angle, ewidths[0])
+                ellipse = full_ellipse(ell_rect.size, ecolors[0], ewidths[0])
+                surf.blit(ellipse, corner_rect.topleft, Rect.from_span(ell_center, angle_vec + ell_center))
+                # draw_arc(ecolors[0], ell_rect, start_angle, stop_angle, ewidths[0]) # Problem with pygames arc function
             else:
                 # draw two arcs
                 corner_angles = (

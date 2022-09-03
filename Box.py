@@ -133,6 +133,7 @@ class Box:
         _t = box_sizing(t)
         for attr, val in zip(("x", "y"), pos):
             self._set(attr, val, _t)
+        return self
 
     @property
     def outer_box(self):
@@ -205,7 +206,6 @@ class Box:
         """Enables things like self.margin_horizontal = (0,0)"""
         split = name.split("_")
         if len(split) == 2:
-            print(f"Setting {name} in Box")
             prop, part = split
             slicing = part_slices[part]
             new_val = mutate_tuple(getattr(self, prop), value, slicing)
