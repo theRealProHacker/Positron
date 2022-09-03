@@ -12,6 +12,8 @@ jobs:
           python-version: '3.10'
           cache: pip
       - run: python3 -m venv venv
+      - run: ls venv
+      - run: ls venv/Scripts
       - run: venv/Scripts/activate
       - run: pip install -r requirements.txt
       - run: python3 -m mypy .
