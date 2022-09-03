@@ -267,7 +267,10 @@ def create_file(file_name: str):
             return create_file(name + " (2)" + ext)
 
 
-async def download(url: str, dir: str = os.environ.get("TEMP") or ".", fast: bool = True) -> File:
+save_dir = os.environ.get("TEMP") or "."
+
+
+async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
     """
     Downloads a file from the given url as a stream into the given directory
 
@@ -337,7 +340,7 @@ async def download(url: str, dir: str = os.environ.get("TEMP") or ".", fast: boo
     # TODO: guess mime type and encoding from content if None
     return File(filename, mime_type, chardet)
 
-def sync_download(url: str, dir: str = os.environ["TEMP"]) -> File:
+def sync_download(url: str, dir: str = save_dir) -> File:
     """
     Downloads a file from the given url as a stream into the given directory
     Raises RequestException, OSErrors, or URLErrors.
