@@ -99,7 +99,7 @@ class Image:
         return self
 
     def draw(self, screen: Surface, pos: Dimension):
-        if self.is_loaded:
+        if self.surf is not None:
             screen.blit(self.surf, pos)
         elif self.unloaded:
             self.init_load()
