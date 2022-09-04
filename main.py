@@ -18,7 +18,7 @@ with open(os.devnull, "w") as f, redirect_stdout(f):
 
 import util
 from config import g, reset_config, watch_file
-from Element import HTMLElement, apply_rules, create_element
+from Element import HTMLElement, apply_style, create_element
 from J import J, SingleJ # for console
 from own_types import Surface, Vector2
 from Style import SourceSheet
@@ -52,16 +52,6 @@ def set_mode():
     g["screen"] = SCREEN = pg.display.set_mode(DIM, flags)
     # Screen Saver
     pg.display.set_allow_screensaver(g["allow_screen_saver"])
-
-
-def apply_style():
-    """
-    Apply the global SourceSheet to all elements
-    """
-    g["global_sheet"] = SourceSheet.join(g["css_sheets"])
-    g["css_dirty"] = False
-    g["css_sheet_len"] = len(g["css_sheets"])
-    apply_rules(g["root"], g["global_sheet"].all_rules)
 
 
 def e(q: str):

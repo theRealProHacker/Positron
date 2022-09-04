@@ -70,7 +70,7 @@ class Line(tuple[TextDrawItem]):
         return max([0, *(item.height for item in self)])
 
 
-# TODO: Get an actually acceptable font
+# TODO: Get an actually acceptable font and also give a list of possible fonts
 @cache
 def get_font(family: list[str], size: float, style: FontStyle, weight: int) -> Font:
     """
@@ -132,6 +132,7 @@ class Element:
     """
     The Element represents an HTML-Element
     """
+
     # General
     tag: str
     attrs: dict
@@ -754,26 +755,31 @@ def create_element(elem: _XMLElement, parent: Element | None = None):
     return new
 
 
-def reveal_rule(rule: StyleRule):
-    selector, style = rule
-    return parse_selector(selector), style
-
-
-def apply_rules(elem: Element, rules: list[StyleRule]):
-    # filter not matching selectors and sort by specificity
-    sorted_by_sel = sorted(
-        (x for rule in rules if elem.matches((x := reveal_rule(rule))[0])),
+def apply_style():
+    """
+    Apply the global SourceSheet to all elements
+    """
+    g["global_sheet"] = SourceSheet.join(g["css_sheets"])
+    g["css_dirty"] = False
+    g["css_sheet_len"] = len(g["css_sheets"])
+    # sort all rules by the selectors specificities
+    rules = sorted(
+        (
+            (parse_selector(str_sel), style)
+            for str_sel, style in g["global_sheet"].all_rules
+        ),
         key=lambda rule: rule[0].spec,
     )
-    # sort by importance
-    elem.estyle = dict(
-        sorted(
-            chain.from_iterable(style.items() for _, style in sorted_by_sel),
-            key=lambda t: Style.is_imp(t[1]),
+    root: Element = g["root"]
+    for elem in root.iter_desc():
+        # chain all matching styles and sort them by their importance
+        elem.estyle = dict(
+            sorted(
+                chain.from_iterable(style.items() for selector, style in rules if selector(elem)),
+                key=lambda t: Style.is_imp(t[1]),
+            )
         )
-    )
-    for c in elem.real_children:
-        apply_rules(c, rules)
+
 
 ################################# Selectors #######################################
 # https://www.w3.org/TR/selectors-3/
@@ -976,7 +982,7 @@ def parse_selector(s: str) -> Selector:
         raise BugError("Empty selector")
     if "," in s:
         return OrSelector(tuple(parse_selector(x) for x in s.split(",")))
-    elif len(_single:=s.split()) == 1:
+    elif len(_single := s.split()) == 1:
         return proc_single(_single[0])
     else:
         singles: list[str] = []
