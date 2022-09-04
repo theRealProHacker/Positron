@@ -379,13 +379,13 @@ class Element:
             ypos = 0
             for line in self.lines:
                 for item in line:
-                    surf = self.font.render(
+                    word_surf = self.font.render(
                         item.text, True, item.element.cstyle["color"]
                     )
-                    surf.blit(surf, (draw_box.x + item.xpos, draw_box.y + ypos))
+                    surf.blit(word_surf, (draw_box.x + item.xpos, draw_box.y + ypos))
                 ypos += line.height
         else:
-            raise BugError("Wrong layout_type ({self.layout_type})")
+            raise BugError(f"Wrong layout_type ({self.layout_type})")
 
         # 5. draw outline
         # TODO
