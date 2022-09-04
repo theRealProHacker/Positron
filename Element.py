@@ -15,10 +15,10 @@ from typing import Any, Callable, Iterable, Protocol, Type, Union
 
 import pygame as pg
 
+import Box
+import Media
 import rounded_box
 import Style
-import Media
-import Box
 from config import add_sheet, g, watch_file
 from own_types import (Auto, AutoLP4Tuple, BugError, CompValue, Dimension,
                        DisplayType, Float4Tuple, Font, FontStyle, Normal,
@@ -101,7 +101,8 @@ def process_style(tag: str, val: str, key: str, p_style: StyleComputed) -> CompV
             )
     return (
         valid
-        if (valid := attr.convert(val, p_style)) is not None or print_once("Uncomputable property found:" ,key, val)
+        if (valid := attr.convert(val, p_style)) is not None
+        or print_once("Uncomputable property found:", key, val)
         else redirect("unset")
     )
 
@@ -573,12 +574,13 @@ class CommentElement(MetaElement):
 
 
 class ImgElement(Element):
-    size: None|tuple[int, int]
-    given_size: tuple[int|None,int|None]
-    image: Media.Image|None
+    size: None | tuple[int, int]
+    given_size: tuple[int | None, int | None]
+    image: Media.Image | None
+
     def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
         # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img
-        # TODO: 
+        # TODO:
         # decoding: await the image load before displaying anything if set to sync (other is async)
         # loading: load the image as soon as possible if set to eager (right now) only load if in view if set to lazy
         # sizes and srcset: responsiveness
@@ -587,26 +589,28 @@ class ImgElement(Element):
         try:
             self.image = Media.Image(attrs["src"])
             self.given_size = (
-                int(w) if (w:=attrs.get("width")) is not None else None,
-                int(h) if (h:=attrs.get("height")) is not None else None
+                int(w) if (w := attrs.get("width")) is not None else None,
+                int(h) if (h := attrs.get("height")) is not None else None,
             )
         except (KeyError, ValueError):
             self.image = None
-            self.given_size = (None,None)
-        self.size = self.given_size if not None in self.given_size else None # type: ignore # as always mypy is too stupid
+            self.given_size = (None, None)
+        self.size = self.given_size if not None in self.given_size else None  # type: ignore # as always mypy is too stupid
 
     @staticmethod
-    def make_dimensions(given_size: tuple[int|None,int|None], intrinsic_size: tuple[int, int])->tuple[int,int]:
-        ix,iy = intrinsic_size
+    def make_dimensions(
+        given_size: tuple[int | None, int | None], intrinsic_size: tuple[int, int]
+    ) -> tuple[int, int]:
+        ix, iy = intrinsic_size
         match given_size:
             case [None, None]:
-                return ix,iy
+                return ix, iy
             case [x, None]:
                 return x, iy * x // ix
             case [None, y]:
                 return ix * y // iy, y
-            case [x,y]:
-                return x,y
+            case [x, y]:
+                return x, y
         raise ValueError(given_size)
 
     @staticmethod
@@ -618,12 +622,12 @@ class ImgElement(Element):
             return
         if self.image.is_loaded:
             self.size = self.make_dimensions(self.given_size, self.image.size)
-        w,h = self.size if self.size is not None else (x or 0 for x in self.given_size)
+        w, h = self.size if self.size is not None else (x or 0 for x in self.given_size)
         self.box = Box.Box(
             self.cstyle["box-sizing"],
             # TODO: add border, margin, padding
             width=w,
-            height=h
+            height=h,
         )
 
     def draw(self, surf, pos):
@@ -632,7 +636,6 @@ class ImgElement(Element):
         if self.size is not None and self.image.is_loaded:
             draw_surf = self.crop_image(self.image.surf, self.size)
             surf.blit(draw_surf, self.box.pos + pos)
-              
 
 
 class BrElement(Element):
