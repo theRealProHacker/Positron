@@ -82,13 +82,24 @@ def convert(
     return not_neg(value + converted)
 
 
-def mutate_tuple(tup: tuple, val, slicing: Index):
+def mutate_tuple(tup: tuple, val: Any, slicing: Index):
+    """
+    Mutate a tuple given the tuple, a slicing and the value to fill into that slicing
+    Example:
+        ```python
+        t = (1,2)
+        mutate_tuple(t, 3, 0) == (3,2)
+        ```
+    """
     l = list(tup)
     l[slicing] = val
     return tuple(l)
 
 
 class Box:
+    """
+    A Box represents the CSS-Box-Model
+    """
     __slots__ = ["t", "x", "y", "width", "height", "margin", "border", "padding"]
 
     def __init__(

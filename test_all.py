@@ -207,6 +207,7 @@ def test_selector_parsing():
 
 
 def test_boxes():
+    Box.mutate_tuple((1,2), 3, 0) == (3,2)
     box = Box.Box(
         "content-box", border=(3,) * 4, width=500, height=150, outer_width=True
     )
@@ -266,6 +267,12 @@ def test_util():
         for b, items in val.items():
             for x in items:
                 assert bool(util.check_regex(name, x)) is b
+    assert util.abs_div(-1/2) == -2
+    assert util.abs_div(3/4) == util.abs_div(4/3)
+    #just like abs(3-4) == abs(4-3)
+    def closest_to(pivot, *xs): # these are all positive numbers definitely
+        return min(xs, key = lambda x: util.abs_div(x/pivot)) # the one with the smallest distance to the pivot wins
+    closest_to(300, 150, 450) == 450
 
 async def _test_async():
     # IO

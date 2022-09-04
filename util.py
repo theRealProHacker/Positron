@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from functools import cache, partial
 from os.path import abspath, dirname
 from types import FunctionType
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Sequence
 from urllib.error import URLError
 from urllib.parse import urlparse
 
@@ -27,8 +27,9 @@ from watchdog.observers import Observer
 
 from config import all_units, g
 from own_types import (V_T, Auto, AutoLP, AutoLP4Tuple, BugError, Cache, Color,
-                       Dimension, Event, Float4Tuple, Length, OpenMode, OpenModeReading, OpenModeWriting,
-                       Percentage, Rect, Surface, Vector2, _XMLElement)
+                       Dimension, Event, Float4Tuple, Length, OpenMode,
+                       OpenModeReading, OpenModeWriting, Percentage, Rect,
+                       Surface, Vector2, _XMLElement)
 
 mimetypes.init()
 
@@ -75,15 +76,15 @@ class Calculator:
             return not_neg(perc_val * value)
         raise TypeError
 
-    def _multi(self, values: Iterable[AutoLP], *args) -> tuple[float, ...]:
+    def _multi(self, values: Iterable[AutoLP], *args):
         return tuple(self(val, *args) for val in values)
 
     # only relevant for typing
     def multi2(self, values: tuple[AutoLP, AutoLP], *args) -> tuple[float, float]:
-        return self._multi(values, *args)  # type: ignore
+        return self._multi(values, *args)
 
     def multi4(self, values: AutoLP4Tuple, *args) -> Float4Tuple:
-        return self._multi(values, *args)  # type: ignore
+        return self._multi(values, *args)
 
 
 ####################################################################
@@ -127,7 +128,7 @@ class FileWatcher(FileSystemEventHandler):
 ########################## Misc #########################
 
 
-def get_dpi():
+def get_dpi():  # TODO
     return pg.display.get_display_sizes()[0]
 
 
@@ -139,20 +140,35 @@ def make_default(value: V_T | None, default: V_T) -> V_T:
 
 
 def in_bounds(x: float, lower: float, upper: float) -> float:
+    """
+    Make `x` be between lower and upper
+    """
     x = max(lower, x)
     x = min(upper, x)
     return x
 
 
 def not_neg(x: float):
+    """
+    return the maximum of x and 0
+    """
     return max(0, x)
 
 
 def abs_div(x):
-    return 1/x if x<1 else x
+    """
+    Return the absolute of a fraction.
+    Just like `abs(x*-1)` is `(x*1)`, `abs_div(x**-1)` is `(x**1)`.
+    Or in other words just like abs is the 'distance' to 0 (the neutral element of addition) using addition,
+    abs_div is the distance to 1 (the neutral element of multiplication) using multiplication.
+    """
+    return 1 / x if x < 1 else x
 
 
 def get_tag(elem: _XMLElement) -> str:
+    """
+    Get the tag of an _XMLElement or "comment" if the element has no valid tag
+    """
     return (
         elem.tag.removeprefix("{http://www.w3.org/1999/xhtml}").lower()
         if isinstance(elem.tag, str)
@@ -160,11 +176,17 @@ def get_tag(elem: _XMLElement) -> str:
     )
 
 
-def ensure_suffix(s: str, suf: str) -> str:  # Could move to Box.py
+def ensure_suffix(s: str, suf: str) -> str:
+    """
+    Ensures that `s` definitely ends with the suffix `suf`
+    """
     return s if s.endswith(suf) else s + suf
 
 
-def all_equal(l):
+def all_equal(l: Sequence):
+    """
+    Return whether all the elements in the list are equal
+    """
     if len(l) < 2:
         return True
     x, *rest = l
@@ -174,6 +196,9 @@ def all_equal(l):
 def group_by_bool(
     l: Iterable[V_T], key: Callable[[V_T], bool]
 ) -> tuple[list[V_T], list[V_T]]:
+    """
+    Group a list into two lists depending on the bool value given by the key
+    """
     true = []
     false = []
     for x in l:
@@ -185,6 +210,9 @@ def group_by_bool(
 
 
 def find(__iterable: Iterable[V_T], key: Callable[[V_T], bool]):
+    """
+    Find the first element in the iterable that is accepted by the key
+    """
     for x in __iterable:
         if key(x):
             return x
@@ -198,8 +226,9 @@ def find(__iterable: Iterable[V_T], key: Callable[[V_T], bool]):
 @dataclass(frozen=True, slots=True)
 class File:
     """
-    A File object can be used to read and write to a file.
+    A File object can be used to read and write to a file while saving its encoding and mime-type
     """
+
     name: str
     mime_type: str | None = None
     encoding: str | None = None
@@ -249,6 +278,9 @@ def is_online() -> bool:
 
 
 def create_file(file_name: str):
+    """
+    Definitely create a new file
+    """
     try:
         with open(file_name, "x") as _:
             return file_name
@@ -340,6 +372,7 @@ async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
     # TODO: guess mime type and encoding from content if None
     return File(filename, mime_type, chardet)
 
+
 def sync_download(url: str, dir: str = save_dir) -> File:
     """
     Downloads a file from the given url as a stream into the given directory
@@ -404,12 +437,13 @@ def sync_download(url: str, dir: str = save_dir) -> File:
             return sync_download("https://" + httpurl, dir)
         with suppress(requests.exceptions.RequestException, OSError, URLError):
             return sync_download("http://" + httpurl, dir)
-        raise URLError("Could not find file or uri: "+ url)
+        raise URLError("Could not find file or uri: " + url)
     else:
-        raise URLError("Could not find file or uri: "+ url)
+        raise URLError("Could not find file or uri: " + url)
     return File(filename, mime_type, chardet)
 
-def fetch_txt(src: str)->str:
+
+def fetch_txt(src: str) -> str:
     file: File = sync_download(src)
     return file.read()
 
@@ -421,53 +455,49 @@ def fetch_txt(src: str)->str:
 
 
 _error_logfile = File("error.log", encoding="utf-8")
+
+
 @contextmanager
 def clog_error():
+    """
+    yields a context to print to the error logfile
+    """
     with _error_logfile.open("a") as file:
         with redirect_stdout(file):
             yield
 
 
 def log_error(*messages, **kwargs):
+    """
+    Log an error
+    """
     with clog_error():
         print(*messages, **kwargs)
 
 
+# print_once = cache(print)
 @cache
 def print_once(*args, **kwargs):
+    """
+    Print something only once ever
+    """
     print(*args, **kwargs)
-
-
-def print_tree(tree, indent=0):
-    if not hasattr(tree, "children") or not tree.children:
-        return print(" " * indent, f"<{tree.tag}/>")
-    print(" " * indent, f"<{tree.tag}>")
-    with suppress(AttributeError):
-        for child in tree.children:
-            print_tree(child, indent + 2)
-    print(" " * indent, f"</{tree.tag}>")
-
-
-def print_parsed_tree(tree, indent=0, with_text=False):
-    text = "with " + tree.text if with_text and tree.text else ""
-    tag = get_tag(tree)
-    if not tree:
-        return print(" " * indent, f"<{tag}/>", text)
-    print(" " * indent, f"<{tag}>", text)
-    with suppress(AttributeError):
-        for child in tree:
-            print_parsed_tree(child, indent + 2)
-    print(" " * indent, f"</{tag}>")
 
 
 ####################################################################
 
 ######################### Regexes ##################################
 def compile(patterns: Iterable[str | re.Pattern]):
+    """
+    Compile a list of patterns
+    """
     return [re.compile(p) for p in patterns]
 
 
 def get_groups(s: str, p: re.Pattern) -> list[str] | None:
+    """
+    Get the matched groups of a match
+    """
     if match := p.search(s):
         if groups := [g for g in match.groups() if g]:
             return groups
@@ -477,12 +507,11 @@ def get_groups(s: str, p: re.Pattern) -> list[str] | None:
 
 
 def re_join(*args: str) -> str:
+    """
+    Example:
+    x in ("px","%","em") -> re.match(re_join("px","%","em"), x)
+    """
     return "|".join(re.escape(x) for x in args)
-
-
-def replace_all(s: str, olds: list[str], new: str) -> str:
-    pattern = re.compile(re_join(*olds))
-    return pattern.sub(new, s)
 
 
 # Reverse regex
@@ -535,48 +564,24 @@ regexes: dict[str, re.Pattern] = {
     }.items()
 }
 
-
+# for type checking
 IsFunc = Callable[[str], re.Match | None]
 is_integer: IsFunc
 is_number: IsFunc
 
 
-def check_regex(name: str, to_check: str):
-    """
-    Checks if the given regex matches the given string and returns the match or None if it doesn't match
-    KeyError if the regex specified doesn't exist
-    """
-    return regexes[name].fullmatch(to_check.strip())
-
-
-for key, value in regexes.items():
-    globals()[f"is_{key}"] = partial(check_regex, key)
-
+globals().update(
+    {
+        f"is_{key}": lambda string: regex.fullmatch(string)
+        for key, regex in regexes.items()
+    }
+)
 ##########################################################################
 
 
 ############################# Pygame related #############################
 
 pg.init()
-
-
-def add2Rect(rect: Rect, tuple_or_rect: Float4Tuple):
-    x, y, w, h = tuple_or_rect
-    return Rect(rect.x + x, rect.y + y, rect.w + w, rect.h + h)
-
-
-def rect_lines(rect: Rect):
-    """
-    Makes bounding lines from the rect.
-    First top then bottom, left, right
-    The lines grow: line[0] <= line[1]
-    """
-    return (
-        (rect.topleft, rect.topright),
-        (rect.bottomleft, rect.bottomright),
-        (rect.topleft, rect.bottomleft),
-        (rect.topright, rect.bottomright),
-    )
 
 
 def draw_text(
@@ -622,7 +627,7 @@ class Dotted:
 
     def draw_rect(self, surf: Surface):
         rect = Rect(*self.start_pos, *self.dim)
-        for line in rect_lines(rect):
+        for line in rect.sides:
             pos = Vector2(line[0])
             dim = line[1] - pos
             Dotted(dim, self.color, self.dash_size, self.dash_width, pos).draw(surf)

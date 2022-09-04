@@ -40,6 +40,9 @@ Spec = tuple[int, int, int]
 
 
 def add_specs(t1: Spec, t2: Spec) -> Spec:
+    """
+    Cumulate two Specificities
+    """
     id1, cls1, tag1 = t1
     id2, cls2, tag2 = t2
     return (id1 + id2, cls1 + cls2, tag1 + tag2)
@@ -70,6 +73,9 @@ class Line(tuple[TextDrawItem]):
 # TODO: Get an actually acceptable font
 @cache
 def get_font(family: list[str], size: float, style: FontStyle, weight: int) -> Font:
+    """
+    Takes some font requirements and tries to find a best fitting one
+    """
     font = pg.font.match_font(
         name=family,
         italic=style.value == "italic",
@@ -123,6 +129,9 @@ def calc_inset(inset: AutoLP4Tuple, width: float, height: float) -> Float4Tuple:
 
 
 class Element:
+    """
+    The Element represents an HTML-Element
+    """
     # General
     tag: str
     attrs: dict
@@ -171,6 +180,9 @@ class Element:
         return self.display == "block"
 
     def get_height(self) -> float:
+        """
+        Gets the known height
+        """
         # -1 is a sentinel for height not set yet
         return self.box.height if self.box.height != -1 else self.parent.get_height()
 
@@ -293,6 +305,9 @@ class Element:
             self.lines = lines
 
     def layout_children(self, set_height: Callable[[float], None]):
+        """
+        Layout all the elements children (Currently flow layout)
+        """
         inner: Rect = self.box.content_box
         x_pos = inner.x
         y_cursor = inner.y
@@ -419,6 +434,9 @@ class Element:
         return f"<{self.tag}>"
 
     def style_repr(self):
+        """
+        Represents the elements style in a nice way for debugging
+        """
         out_style = pack_longhands(
             {k: f"'{_in}'->{self.cstyle[k]}" for k, _in in self.input_style.items()}
         )
@@ -584,7 +602,7 @@ class ImgElement(Element):
         # decoding: await the image load before displaying anything if set to sync (other is async)
         # loading: load the image as soon as possible if set to eager (right now) only load if in view if set to lazy
         # sizes and srcset: responsiveness
-        # usemap: refers to a map for clicks
+        # usemap: points to a map
         super().__init__(tag, attrs, parent)
         try:
             self.image = Media.Image(attrs["src"])
@@ -643,9 +661,6 @@ class BrElement(Element):
         yield TextElement("\n", self)
 
 
-font_split_regex = re.compile(r"\s*\,\s*")
-
-
 class TextElement:
     """Special element that can't be accessed from HTML directly but represents any raw text"""
 
@@ -669,6 +684,7 @@ class TextElement:
 
     def layout(self, width: float) -> None:
         pass
+        # font_split_regex = re.compile(r"\s*\,\s*")
         # style = self.parent.style
         # families = font_split_regex.split(style["font-family"]) # this algorithm should be updated
         # families = [f.removeprefix('"').removesuffix('"') for f in families]
@@ -697,12 +713,7 @@ class TextElement:
         # self.x, self.y = xcursor, ycursor
 
     def draw(self, surface: pg.surface.Surface):
-        for item in self._draw_items:
-            match item:
-                case word, pos:
-                    ...
-                case _:
-                    raise Exception(item)
+        pass
 
     def to_html(self, indent=0):
         return " " * indent + self.text
@@ -712,7 +723,9 @@ class TextElement:
 
 
 def create_element(elem: _XMLElement, parent: Element | None = None):
-    """Create an element"""
+    """
+    Create an element
+    """
     tag = get_tag(elem)
     assert tag
     text = "" if elem.text is None else elem.text.strip()
@@ -761,17 +774,6 @@ def apply_rules(elem: Element, rules: list[StyleRule]):
     )
     for c in elem.real_children:
         apply_rules(c, rules)
-
-
-EmptyElement = Element("empty", {}, HTMLElement("html", {}, None))
-EmptyElement.parent = None  # type: ignore
-
-################################### Rest is commentary in nature #########################################
-
-
-class InlineElement(Element):
-    """This is the interface of an element with display = "inline" """
-
 
 ################################# Selectors #######################################
 # https://www.w3.org/TR/selectors-3/
@@ -974,6 +976,8 @@ def parse_selector(s: str) -> Selector:
         raise BugError("Empty selector")
     if "," in s:
         return OrSelector(tuple(parse_selector(x) for x in s.split(",")))
+    elif len(_single:=s.split()) == 1:
+        return proc_single(_single[0])
     else:
         singles: list[str] = []
         # do-while-loop
@@ -1006,12 +1010,18 @@ def parse_selector(s: str) -> Selector:
 
 
 def proc_singles(groups: list[str]) -> Selector:
+    """
+    Merge several selectors into one
+    """
     if len(groups) == 1:
         return proc_single(groups[0])
     return AndSelector(tuple(proc_single(s) for s in groups))
 
 
 def proc_single(s: str) -> Selector:
+    """
+    Create a single selector from a string
+    """
     if s == "*":
         return AnySelector()
     elif s[0] == "#":

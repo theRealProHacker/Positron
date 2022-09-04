@@ -21,40 +21,45 @@ g: dict[str, Any] = {
     "window_bg": Color("white"),    # Color
     "resizable": True,              # bool
     "frameless": False,             # bool
-    "allow_screen_saver": True,
+    "allow_screen_saver": True,     # bool
     "default_font_size": 16,        # float
     # reserved
     "root": None,                   # the html element
     "file_watcher": None,           # the file watcher
     "screen": None,                 # pg.Surface
     "global_sheet": None,           # SourceSheet() # Is added in Style.py
-    "tasks": []
+    "tasks": []                     # all tasks that are started in synchronous functions
 }
 
 def reset_config():
     global g
     # TODO: split cstyles into two styles. inherited and not inherited
     g.update({
-        "lang": "",                 # str # this is set in Element.py by the HTMLElement
-        "title": "",                # str # this is set in Element.py by the title element
-        "recompute": True,          # bool 
+        "lang": "",                 # str # the document language. this is set in Element.py by the HTMLElement
+        "title": "",                # str # the document title. this is set in Element.py by the title element
+        "recompute": True,          # bool
         "reload": False,            # bool
         "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache
         "css_sheets": Cache(),      # Cache[SourceSheet] # a list of external css SourceSheets
-        "css_dirty": False,         # bool
+        "css_dirty": False,         # bool: does css need to be applied
         "css_sheet_len": 0,         # int
-        "loader_queue" : Queue(),    # Queue[tuple[str,callback]]
     })
     g["global_sheet"].clear()
 # main must reset
 
 def add_sheet(sheet: Any):
+    """
+    Add a sheet to the global css_sheets
+    """
     g["css_sheets"].add(sheet)
     g["global_sheet"] += sheet
     g["css_dirty"] = True
 
 def watch_file(file: str) -> str:
-    """Add the file to the watched files. The caller has to hold on to the file until it shouldn't be watched anymore"""
+    """
+    Add the file to the watched files. 
+    The caller has to hold on to the file until it shouldn't be watched anymore
+    """
     return g["file_watcher"].add_file(file)
 
 ################################ constant data ########################

@@ -19,7 +19,7 @@ with open(os.devnull, "w") as f, redirect_stdout(f):
 import util
 from config import g, reset_config, watch_file
 from Element import HTMLElement, apply_rules, create_element
-from J import J, SingleJ
+from J import J, SingleJ # for console
 from own_types import Surface, Vector2
 from Style import SourceSheet
 
@@ -41,6 +41,9 @@ SCREEN: Surface
 # def set_mode(mode: dict[str, Any] = {}):
 #     g.update(mode)
 def set_mode():
+    """
+    Call this after setting g manually. This will probably change to an API function
+    """
     global SCREEN, DIM, W, H, did_set_mode
     did_set_mode = True
     # Display Mode
@@ -52,17 +55,26 @@ def set_mode():
 
 
 def apply_style():
+    """
+    Apply the global SourceSheet to all elements
+    """
     g["global_sheet"] = SourceSheet.join(g["css_sheets"])
-    g["css_dirty"] = True
+    g["css_dirty"] = False
     g["css_sheet_len"] = len(g["css_sheets"])
     apply_rules(g["root"], g["global_sheet"].all_rules)
 
 
 def e(q: str):
+    """
+    Helper for the console: Try `e("p")` and you will get the first p element
+    """
     return SingleJ(q).elem
 
 
 async def Console():
+    """
+    The Console takes input asyncronously and executes it. For debugging purposes only
+    """
     while True:
         try:
             __x_______ = await aioconsole.ainput(">>> ")
@@ -112,7 +124,7 @@ async def main(file: str):
                 g["recompute"] = True
         if end:
             break
-        if g["css_dirty"] or g["css_sheet_len"] != len(g["css_sheets"]):
+        if g["css_dirty"] or g["css_sheet_len"] != len(g["css_sheets"]): # addition or subtraction (or both)
             apply_style()
             g["recompute"] = True
         if g["recompute"]:
@@ -128,6 +140,9 @@ async def main(file: str):
     running = False
 
 async def run(file: str):
+    """
+    Runs the application with mode_setting, restart and the console
+    """
     logging.info("Starting")
     if not did_set_mode:
         set_mode()
@@ -146,9 +161,5 @@ async def run(file: str):
         logging.info("Exiting")
 
 
-async def async_main():
-    await run("example.html")
-
-
 if __name__ == "__main__":
-    asyncio.run(async_main())
+    asyncio.run(run("example.html"))

@@ -95,6 +95,9 @@ def adj_corners(corners: list[V_T]) -> list[tuple[V_T, V_T]]:
 
 
 def cut_out(surf: Surface, mask: Mask):
+    """
+    Cuts out from the surface what is on the mask
+    """
     pass
 
 
@@ -121,6 +124,9 @@ def advanced_draw_box(
     widths: tuple[int, int, int, int],
     radii: tuple[tuple[int, int], ...],
 ):
+    """
+    Draw a rounded box advanced
+    """
     def draw_rect(color, rect):
         gfxdraw.box(surf, rect, color)
         # pg.draw.rect(surf, color, rect)
@@ -194,10 +200,13 @@ def draw_box(
     surf: Surface,
     box: Rect,
     bgcolor: Color,
-    colors: tuple[Color, Color, Color, Color],  # border
-    widths: Float4Tuple,  # border
-    radii: tuple[tuple[int, int], ...],  # border
+    colors: tuple[Color, Color, Color, Color],
+    widths: Float4Tuple,
+    radii: tuple[tuple[int, int], ...]
 ):
+    """
+    Draw a rounded box
+    """
     widths: tuple[int, int, int, int] = tuple(int(x) for x in widths)  # type: ignore
     if all_equal(widths) and all_equal(colors) and all(r1 == r2 for r1, r2 in radii):
         new_radii: list[int] = [r1 for r1, _ in radii]
