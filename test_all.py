@@ -235,6 +235,7 @@ def test_util():
         )
         == "123, 124, 125"
     )
+    assert util.is_integer("0")
     tests = {
         # https://developer.mozilla.org/en-US/docs/Web/CSS/integer#examples
         "integer": {
@@ -266,7 +267,7 @@ def test_util():
     for name, val in tests.items():
         for b, items in val.items():
             for x in items:
-                assert bool(util.check_regex(name, x)) is b
+                assert bool(getattr(util,f"is_{name}")(x)) is b
     assert util.abs_div(-1/2) == -2
     assert util.abs_div(3/4) == util.abs_div(4/3)
     #just like abs(3-4) == abs(4-3)

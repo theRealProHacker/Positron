@@ -569,13 +569,14 @@ IsFunc = Callable[[str], re.Match | None]
 is_integer: IsFunc
 is_number: IsFunc
 
-
-globals().update(
-    {
-        f"is_{key}": lambda string: regex.fullmatch(string)
-        for key, regex in regexes.items()
-    }
-)
+for key, regex in regexes.items():
+    globals()[f"is_{key}"] = regex.fullmatch
+# globals().update(
+#     {
+#         f"is_{key}": ()
+#         for key, regex in regexes.items()
+#     }
+# )
 ##########################################################################
 
 

@@ -982,8 +982,6 @@ def parse_selector(s: str) -> Selector:
         raise BugError("Empty selector")
     if "," in s:
         return OrSelector(tuple(parse_selector(x) for x in s.split(",")))
-    elif len(_single := s.split()) == 1:
-        return proc_single(_single[0])
     else:
         singles: list[str] = []
         # do-while-loop
