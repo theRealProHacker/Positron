@@ -51,7 +51,7 @@ class Image:
 
     async def async_load(self):
         try:
-            self.url = (await util.download(self.url, os.environ["TEMP"])).name
+            self.url = (await util.download(self.url)).name
             self.surf = await asyncio.to_thread(pg.image.load,self.url)
         except asyncio.CancelledError:
             pass
@@ -100,14 +100,17 @@ class Audio:
         self.autoplay = autoplay
         self.loop = loop
         self.unloaded = False
-        if load:
+        if autoplay or load:
             self.init_load()
         self.last_used = time.monotonic()
 
     async def async_load(self):
         try:
-            self.url = (await util.download(self.url, os.environ["TEMP"])).name
+            print("Loading audio")
+            self.url = (await util.download(self.url)).name
+            print("Loading audio")
             self.sound = await asyncio.to_thread(pg.mixer.Sound,self.url)
+            print("Loading audio")
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -129,7 +132,7 @@ class Audio:
     def stop(self):
         self.sound.stop()
 
-    def on_loaded(self, future):
+    def on_loaded(self, future: asyncio.Future):
         assert future.done()
         if self.autoplay:
             self.play()

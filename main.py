@@ -19,14 +19,14 @@ with open(os.devnull, "w") as f, redirect_stdout(f):
 import util
 from config import g, reset_config, watch_file
 from Element import HTMLElement, apply_style, create_element
-from J import J, SingleJ # for console
+from J import J, SingleJ  # for console
+import Media
 from own_types import Surface, Vector2
 
 # setup
 pg.init()
 logging.basicConfig(level=logging.INFO)
 
-did_set_mode = False
 running = False
 
 CLOCK = pg.time.Clock()
@@ -43,8 +43,7 @@ def set_mode():
     """
     Call this after setting g manually. This will probably change to an API function
     """
-    global SCREEN, DIM, W, H, did_set_mode
-    did_set_mode = True
+    global SCREEN, DIM, W, H
     # Display Mode
     W, H = DIM = Vector2((g["W"], g["H"]))
     flags = pg.SCALED | pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
@@ -100,11 +99,17 @@ async def main(file: str):
     tree: HTMLElement = create_element(parsed)
     logging.debug(tree.to_html())
     pg.display.set_caption(g["title"])
+    _icon: Media.Image | None = g["icon"]
+    if _icon is not None:
+        await _icon.loading_task
+        if _icon.surf:
+            pg.display.set_icon(_icon.surf)
+            _icon.unload()
     g["root"] = tree
     await asyncio.gather(
-        *(task for task in g["tasks"] if task.sync),
-        return_exceptions=False
+        *(task for task in g["tasks"] if task.sync), return_exceptions=False
     )
+    set_mode()
     while True:
         end = False
         for event in pg.event.get():
@@ -116,7 +121,9 @@ async def main(file: str):
                 g["recompute"] = True
         if end:
             break
-        if g["css_dirty"] or g["css_sheet_len"] != len(g["css_sheets"]): # addition or subtraction (or both)
+        if g["css_dirty"] or g["css_sheet_len"] != len(
+            g["css_sheets"]
+        ):  # addition or subtraction (or both)
             apply_style()
             g["recompute"] = True
         if g["recompute"]:
@@ -131,13 +138,12 @@ async def main(file: str):
         pg.display.flip()
     running = False
 
+
 async def run(file: str):
     """
     Runs the application with mode_setting, restart and the console
     """
     logging.info("Starting")
-    if not did_set_mode:
-        set_mode()
     if uses_aioconsole:
         task = asyncio.create_task(Console())
     try:

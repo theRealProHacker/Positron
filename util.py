@@ -334,6 +334,9 @@ async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
     # for the full duration of the function call.
     if (_url:=download_cache.get(url)) is not None and os.path.exists(_url.name): # this might not be a good idea if the file can be changed
         return _url
+    with suppress(OSError):
+        if os.path.exists(url):
+            return File(os.path.abspath(url))
     ext: str | None
     mime_type: str | None
     chardet: str | None
@@ -345,14 +348,10 @@ async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
         else:
             raise URLError("File doesn't exist", url)
     elif parse_result.scheme == "":
-        # try to find the file in the current directory
-        if os.path.exists(path := parse_result.path):
-            return File(path)
-        # if that doesn't work, then try https://
+        # try https:// then http://
         httpurl = url + ("/" if "/" not in url else "")
         with suppress(Exception):
             return await download("https://" + httpurl, dir, fast)
-        # if that doesn't work either, try http://
         with suppress(Exception):
             return await download("http://" + httpurl, dir, fast)
         raise URLError("Could not find file or uri: " + url)
@@ -366,7 +365,7 @@ async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
         content_type = [
             x.strip() for x in _content_type.split(";")
-        ]  # we throw away the extra stuff. TODO: use that extra stuff
+        ]
         chardet_bgn = "chardet="
         match content_type:
             case [mime_type]:
@@ -399,12 +398,8 @@ def sync_download(url: str, dir: str = save_dir) -> File:
     Raises RequestException, OSErrors, or URLErrors.
     """
     # TODO: Use Multiprocessing to really improve downloads
-    # TODO: guess mime type and encoding from content if None
-    # https://docs.python.org/3/library/asyncio-task.html
-    # sleep() always suspends the current task, allowing other tasks to run.
-    # Setting the delay to 0 provides an optimized path to allow other tasks to run.
-    # This can be used by long-running functions to avoid blocking the event loop
-    # for the full duration of the function call.
+    if (_url:=download_cache.get(url)) is not None and os.path.exists(_url.name): # this might not be a good idea if the file can be changed
+        return _url
     with suppress(OSError):
         if os.path.exists(url):
             return File(os.path.abspath(url))
@@ -428,7 +423,7 @@ def sync_download(url: str, dir: str = save_dir) -> File:
             # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
             content_type = [
                 x.strip() for x in _content_type.split(";")
-            ]  # we throw away the extra stuff. TODO: use that extra stuff
+            ] 
             chardet_bgn = "chardet="
             match content_type:
                 case [mime_type]:
@@ -444,7 +439,7 @@ def sync_download(url: str, dir: str = save_dir) -> File:
             raise BugError(
                 f"Couldn't guess extension for file: {url}->{name,ext}, Content-Type: {content_type}"
             )
-        filename = os.path.abspath(os.path.join(dir, name + ext))
+        filename = create_file(os.path.abspath(os.path.join(dir, name + ext)))
         with open(filename, "wb") as f:
             chunk: bytes
             for chunk in response.iter_content():

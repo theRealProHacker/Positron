@@ -594,6 +594,23 @@ class CommentElement(MetaElement):
     def __repr__(self):
         return self.to_html()
 
+class LinkElement(MetaElement):
+    tag = "link"
+
+    def __init__(self, attrs: dict[str, str], txt: str, parent: "Element"):
+        super().__init__(attrs, txt, parent)
+        # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link
+        # TODO:
+        # media
+        match attrs.get("rel"):
+            case "stylesheet" if (src:=attrs.get("href")):
+                # TODO: disabled
+                # TODO: title
+                self.src = watch_file(src)
+                add_sheet(parse_file(self.src))
+            case "icon" if (src:=attrs.get("href")):
+                # TODO: sizes
+                g["icon"] = Media.Image(src)
 
 class ImgElement(Element):
     size: None | tuple[int, int]
@@ -668,9 +685,24 @@ class ImgElement(Element):
 
 
 class AudioElement(Element):
-    def __init__(self):
-        pass
-
+    def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
+        # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/audio
+        # TODO:
+        # autoplay: right now autoplay is always on
+        # controls: both draw and event handling
+        # muted: right now muted is always off
+        # preload: probably not gonna implement fully (is only a hint)
+        # events: ...
+        super().__init__(tag, attrs, parent)
+        try:
+            self.audio = Media.Audio(
+                attrs["src"],
+                load=attrs.get("preload","auto") not in ("none", "metadata"),
+                autoplay=True,
+                loop = "loop" in attrs
+            )
+        except (KeyError, ValueError):
+            self.image = None
 
 class BrElement(Element):
     def _text_iter_desc(self):

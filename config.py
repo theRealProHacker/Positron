@@ -36,6 +36,7 @@ def reset_config():
     g.update({
         "lang": "",                 # str # the document language. this is set in Element.py by the HTMLElement
         "title": "",                # str # the document title. this is set in Element.py by the title element
+        "icon": None,               # Media.Image or None # the document icon. this is set in Element.py by the link element
         "recompute": True,          # bool
         "reload": False,            # bool
         "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache
