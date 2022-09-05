@@ -373,7 +373,8 @@ element_styles = defaultdict(
         "head": {
             "display": "none",
         },
-        "span": {"display": "inline"}
+        "span": {"display": "inline"},
+        "img": {"display":"block"},
         # "h1": {"font-size": "2em"},
         # "p": {
         #     "display": "block",

@@ -21,7 +21,6 @@ from config import g, reset_config, watch_file
 from Element import HTMLElement, apply_style, create_element
 from J import J, SingleJ # for console
 from own_types import Surface, Vector2
-from Style import SourceSheet
 
 # setup
 pg.init()
@@ -102,7 +101,10 @@ async def main(file: str):
     logging.debug(tree.to_html())
     pg.display.set_caption(g["title"])
     g["root"] = tree
-
+    await asyncio.gather(
+        *(task for task in g["tasks"] if task.sync),
+        return_exceptions=False
+    )
     while True:
         end = False
         for event in pg.event.get():
@@ -126,7 +128,7 @@ async def main(file: str):
 
         SCREEN.fill(g["window_bg"])
         tree.draw(SCREEN, (0, 0))
-        pg.display.flip()  # TODO: only update the actually changed areas
+        pg.display.flip()
     running = False
 
 async def run(file: str):
@@ -143,6 +145,8 @@ async def run(file: str):
         while g["reload"]:
             logging.info("Reloading")
             await main(file)
+    except asyncio.exceptions.CancelledError:
+        pass
     finally:
         if uses_aioconsole:
             task.cancel()
