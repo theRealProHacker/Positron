@@ -7,33 +7,11 @@ import time
 
 import pygame as pg
 
+from config import g
 from own_types import Dimension, Surface
 import util
 
-
-# class Media:
-#     def __init__(self, url: str):
-#         self.url = url
-
-#     @property
-#     def is_loaded(self)->bool:
-#         return True
-
-#     def init_load(self):
-#         return self
-    
-#     def unload(self):
-#         return self
-
-#     def draw(self, screen: Surface, pos: Dimension):
-#         pass
-
 image_cache: dict[str, "Image"] = {}
-
-def save_ram():
-    for image in image_cache.values():
-        if time.monotonic() - image.last_used > 1: # not used for more than 1 second
-            image.unload()
 
 async def prefetch_image(url):
     file = await util.download(url)
@@ -44,19 +22,23 @@ class Image:
     """
     Represents a (still) Image. Can either be in a state of loading, loaded or unloaded
     """
-    def __new__(cls, url: str, load: bool = True):
+    loading_task: util.Task
+    def __new__(cls, url: str, load: bool = True, sync: bool = False, *args, **kwargs):
         if (image := image_cache.get(url)) is None:
             image_cache[url] = image = super().__new__(cls)
-        elif load and not image.is_loaded:
+        elif load and not image.is_loaded: # the image is already in the cache but not loaded
             image.init_load()
+        elif sync: 
+            image.loading_task.sync = True
         return image
         
-    def __init__(self, url: str, load: bool = True):
+    def __init__(self, url: str, load: bool = True, sync: bool = False):
         self.url = url
         self.surf = None
-        self.unloaded = False
+        self.unloaded = True
         if load:
             self.init_load()
+            self.loading_task.sync = sync
         self.last_used = time.monotonic()
 
     @property
@@ -71,11 +53,11 @@ class Image:
         try:
             self.url = (await util.download(self.url, os.environ["TEMP"])).name
             self.surf = await asyncio.to_thread(pg.image.load,self.url)
-            return self.surf
         except asyncio.CancelledError:
             pass
         except Exception as e:
             util.log_error(e)
+            # TODO: Use fallbacks
 
     def init_load(self):
         """
@@ -83,7 +65,8 @@ class Image:
         You only need to call this if you init with `load=false` or unload the image
         """
         if not self.is_loaded:
-            self.loading_task = asyncio.create_task(self.async_load())
+            self.loading_task = util.create_task(self.async_load())
+            g["tasks"].append(self.loading_task)
         self.unloaded = False
         self.last_used = time.monotonic()
         return self
@@ -109,9 +92,44 @@ class Image:
         return f"Image({self.url})"
 
 
-# class GIF(Media):
-#     def __init__(self, path: str):
-#         self.path = path
-#         self.gif = pg.image.load(path)
-#     def draw(self, screen, pos):
-#         screen.blit(self.gif, pos)
+class Audio:
+    sound: pg.mixer.Sound
+
+    def __init__(self, url: str, load: bool = True, autoplay: bool = True, loop: bool = False):
+        self.url = url
+        self.autoplay = autoplay
+        self.loop = loop
+        self.unloaded = False
+        if load:
+            self.init_load()
+        self.last_used = time.monotonic()
+
+    async def async_load(self):
+        try:
+            self.url = (await util.download(self.url, os.environ["TEMP"])).name
+            self.sound = await asyncio.to_thread(pg.mixer.Sound,self.url)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            util.log_error(e)
+            # TODO: use fallbacks
+
+    def init_load(self):
+        self.loading_task = asyncio.create_task(self.async_load())
+        self.loading_task.add_done_callback(self.on_loaded)
+        self.unloaded = False
+        self.last_used = time.monotonic()
+        return self
+
+    def play(self):
+        self.sound.play(
+            -1 * self.loop,
+        )
+
+    def stop(self):
+        self.sound.stop()
+
+    def on_loaded(self, future):
+        assert future.done()
+        if self.autoplay:
+            self.play()

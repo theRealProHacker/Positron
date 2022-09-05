@@ -11,7 +11,8 @@ import re
 from dataclasses import dataclass
 from functools import cache, cached_property, reduce
 from itertools import chain
-from typing import Any, Callable, Iterable, Protocol, Type, Union
+from typing import (TYPE_CHECKING, Any, Callable, Iterable, Optional, Protocol,
+                    Type, Union)
 
 import pygame as pg
 
@@ -151,10 +152,12 @@ class Element:
     focus: bool = False
     hover: bool = False
 
-    def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
+    def __init__(self, tag: str, attrs: dict[str, str], parent: Optional["Element"]):
         self.tag = tag
         self.attrs = attrs
         self.children = []
+        if TYPE_CHECKING:
+            assert isinstance(parent, Element)
         self.parent = parent
         # parse element style and update default
         self.istyle = Style.parse_inline_style(attrs.get("style", ""))
@@ -439,11 +442,11 @@ class Element:
         Represents the elements style in a nice way for debugging
         """
         out_style = pack_longhands(
-            {k: f"'{_in}'->{self.cstyle[k]}" for k, _in in self.input_style.items()}
+            {k: f"{_in!r}->{self.cstyle[k]!r}" for k, _in in self.input_style.items()}
         )
         print("{")
         for item in out_style.items():
-            print(f"\t{': '.join(item)},")
+            print(f"  {': '.join(item)},")
         print("}")
 
     ############################## Helpers #####################################
@@ -600,13 +603,18 @@ class ImgElement(Element):
     def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
         # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img
         # TODO:
-        # decoding: await the image load before displaying anything if set to sync (other is async)
-        # loading: load the image as soon as possible if set to eager (right now) only load if in view if set to lazy
         # sizes and srcset: responsiveness
+        # + source element
         # usemap: points to a map
         super().__init__(tag, attrs, parent)
         try:
-            self.image = Media.Image(attrs["src"])
+            self.image = Media.Image(
+                attrs["src"],
+                load=attrs.get("loading", "eager") != "lazy",
+                sync=attrs.get("decoding", "async")
+                == "sync",  # "auto" is synonymous with "async"
+            )
+            self.image.loading_task.add_done_callback(self.on_loaded)
             self.given_size = (
                 int(w) if (w := attrs.get("width")) is not None else None,
                 int(h) if (h := attrs.get("height")) is not None else None,
@@ -615,6 +623,10 @@ class ImgElement(Element):
             self.image = None
             self.given_size = (None, None)
         self.size = self.given_size if not None in self.given_size else None  # type: ignore # as always mypy is too stupid
+
+    def on_loaded(self, future):
+        assert future.done()
+        self.size = self.make_dimensions(self.given_size, self.image.size)
 
     @staticmethod
     def make_dimensions(
@@ -639,8 +651,6 @@ class ImgElement(Element):
     def layout(self, width):
         if self.cstyle["display"] == "none" or self.image is None:
             return
-        if self.image.is_loaded:
-            self.size = self.make_dimensions(self.given_size, self.image.size)
         w, h = self.size if self.size is not None else (x or 0 for x in self.given_size)
         self.box = Box.Box(
             self.cstyle["box-sizing"],
@@ -655,6 +665,11 @@ class ImgElement(Element):
         if self.size is not None and self.image.is_loaded:
             draw_surf = self.crop_image(self.image.surf, self.size)
             surf.blit(draw_surf, self.box.pos + pos)
+
+
+class AudioElement(Element):
+    def __init__(self):
+        pass
 
 
 class BrElement(Element):
@@ -720,7 +735,15 @@ class TextElement:
         return " " * indent + self.text
 
     def __repr__(self):
-        return f"<{self.tag}>"
+        return f"<Text: '{self.text}'>"
+
+
+_special_elements: dict[str, Type[Element]] = {
+    "html": HTMLElement,
+    "img": ImgElement,
+    "audio": AudioElement,
+    "br": BrElement,
+}
 
 
 def create_element(elem: _XMLElement, parent: Element | None = None):
@@ -732,20 +755,15 @@ def create_element(elem: _XMLElement, parent: Element | None = None):
     text = "" if elem.text is None else elem.text.strip()
     new: Element
     match tag:
-        case "html":
-            new = HTMLElement(tag, elem.attrib)
         case tag if (
             meta_element := globals().get(tag.capitalize() + "Element")
         ) is not None and issubclass(meta_element, MetaElement):
             # meta_elements don't need their tag, but take their text
             new = meta_element(elem.attrib, text, parent)
-        case tag if (
-            special_elem := globals().get(tag.capitalize() + "Element")
-        ) is not None and issubclass(special_elem, Element):
-            # meta_elements don't need their tag, but take their text
+        case tag if (special_elem := _special_elements.get(tag)) is not None:
             new = special_elem(tag, elem.attrib, parent)
         case _:
-            new = Element(tag, elem.attrib, parent)  # type: ignore[arg-type]
+            new = Element(tag, elem.attrib, parent)
 
     children = [create_element(e, new) for e in elem]
     # insert Text Element at the top
@@ -775,7 +793,9 @@ def apply_style():
         # chain all matching styles and sort them by their importance
         elem.estyle = dict(
             sorted(
-                chain.from_iterable(style.items() for selector, style in rules if selector(elem)),
+                chain.from_iterable(
+                    style.items() for selector, style in rules if selector(elem)
+                ),
                 key=lambda t: Style.is_imp(t[1]),
             )
         )

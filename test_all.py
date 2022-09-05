@@ -235,7 +235,6 @@ def test_util():
         )
         == "123, 124, 125"
     )
-    assert util.is_integer("0")
     tests = {
         # https://developer.mozilla.org/en-US/docs/Web/CSS/integer#examples
         "integer": {

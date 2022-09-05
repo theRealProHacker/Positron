@@ -218,9 +218,22 @@ def find(__iterable: Iterable[V_T], key: Callable[[V_T], bool]):
             return x
 
 
+def consume_list(l: list):
+    """
+    Consume a list by removing all elements
+    """
+    while l:
+        yield l.pop()
 ####################################################################
 
 ############################## I/O #################################
+class Task(asyncio.Task):
+    def __init__(self, sync: bool = False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sync = sync
+
+def create_task(coro, sync: bool = False, **kwargs):
+    return Task(sync, coro)
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,13 +298,15 @@ def create_file(file_name: str):
         with open(file_name, "x") as _:
             return file_name
     except FileExistsError:
-        # "file (2)" -> "file (3)"
+        # "file (1)(2)" -> "file (1)(3)"
+        def lamda(groups: list[str]):
+            return str(int(groups[0])+1)
         if (
-            new_name := re.sub(
-                r"\((\d+)\)",
-                lambda x: f"({int(x.group(1)[::-1])+1})"[::-1],
-                file_name[::-1],
-            )[::-1]
+            new_name := rev_sub(
+                r"\)(\d+)\(", # regex is flipped (3)->)3(
+                file_name,
+                lamda,
+            )
         ) != file_name:
             return create_file(new_name)
         else:
@@ -300,6 +315,9 @@ def create_file(file_name: str):
 
 
 save_dir = os.environ.get("TEMP") or "."
+
+
+download_cache: dict[str, File] = {}
 
 
 async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
@@ -314,6 +332,8 @@ async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
     # Setting the delay to 0 provides an optimized path to allow other tasks to run.
     # This can be used by long-running functions to avoid blocking the event loop
     # for the full duration of the function call.
+    if (_url:=download_cache.get(url)) is not None and os.path.exists(_url.name): # this might not be a good idea if the file can be changed
+        return _url
     ext: str | None
     mime_type: str | None
     chardet: str | None
@@ -362,7 +382,7 @@ async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
         raise BugError(
             f"Couldn't guess extension for file: {url}->{name,ext}, Content-Type: {content_type}"
         )
-    filename = os.path.abspath(os.path.join(dir, name + ext))
+    filename = create_file(os.path.abspath(os.path.join(dir, name + ext)))
     with open(filename, "wb") as f:
         chunk: bytes
         for chunk in response.iter_content():
@@ -475,15 +495,7 @@ def log_error(*messages, **kwargs):
         print(*messages, **kwargs)
 
 
-# print_once = cache(print)
-@cache
-def print_once(*args, **kwargs):
-    """
-    Print something only once ever
-    """
-    print(*args, **kwargs)
-
-
+print_once = cache(print)
 ####################################################################
 
 ######################### Regexes ##################################
@@ -533,6 +545,9 @@ def rev_sub(
     repl: str | Callable[[list[str]], str],
     count: int = -1,
 ):
+    """
+    Subs a regex in reversed mode
+    """
     if isinstance(repl, str):
         _repl = repl[::-1]
     elif isinstance(repl, FunctionType):
