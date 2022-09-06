@@ -2,115 +2,161 @@
 This file includes Media classes like Image, Video or Audio
 """
 import asyncio
-import os
+import logging
 import time
+from weakref import WeakValueDictionary
 
 import pygame as pg
 
-from config import g
-from own_types import Dimension, Surface
 import util
+from own_types import Dimension, Surface
 
-image_cache: dict[str, "Image"] = {}
 
-async def prefetch_image(url):
-    file = await util.download(url)
-    # The image isn't loaded into memory
-    image_cache[url] = Image(file.name, load=False)
+surf_cache = WeakValueDictionary[str, Surface]()
 
-class Image:
+
+async def load_surf(url: str):
     """
-    Represents a (still) Image. Can either be in a state of loading, loaded or unloaded
+    Loads a surf. To save RAM surfs are cached in a surf_cache
     """
-    loading_task: util.Task
-    def __new__(cls, url: str, load: bool = True, sync: bool = False, *args, **kwargs):
-        if (image := image_cache.get(url)) is None:
-            image_cache[url] = image = super().__new__(cls)
-        elif load and not image.is_loaded: # the image is already in the cache but not loaded
-            image.init_load()
-        elif sync: 
-            image.loading_task.sync = True
-        return image
-        
-    def __init__(self, url: str, load: bool = True, sync: bool = False):
-        self.url = url
+    # TODO: be able to activate and deactivate caching
+    if (surf := surf_cache.get(url)) is None:
+        file = (await util.download(url)).name
+        surf_cache[url] = surf = await asyncio.to_thread(pg.image.load, file)
+    return surf
+
+
+class MultiImage:
+    """
+    A Image represents a single image with multiple sources
+    """
+    _surf: Surface | None
+    loading_task: util.Task | None
+
+    def __init__(
+        self,
+        urls: list[str] | str,
+        load: bool = True,
+        sync: bool = False,
+    ):
+        """
+        Initialize the image from the urls
+        sync specifies that the image should load before the page is drawn the first time
+        load specifies that the image should be loaded right away
+        """
+        self.urls = urls if isinstance(urls, list) else [urls]
+        self.url = self.urls[0]
         self.surf = None
-        self.unloaded = True
-        if load:
+        self.loading_task = None
+        if load or sync:
             self.init_load()
+            assert self.loading_task is not None
             self.loading_task.sync = sync
-        self.last_used = time.monotonic()
 
     @property
-    def is_loaded(self):
-        return self.surf is not None
+    def surf(self):
+        """
+        Getting the images surf automatically starts loading it if it isn't loaded
+        """
+        if self._surf is None:
+            self.init_load()
+        return self._surf
 
-    @property
-    def size(self):
-        return self.surf.get_size()
+    @surf.setter
+    def surf(self, surf: Surface|None):
+        self._surf = surf
 
-    async def async_load(self):
-        try:
-            self.url = (await util.download(self.url)).name
-            self.surf = await asyncio.to_thread(pg.image.load,self.url)
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            util.log_error(e)
-            # TODO: Use fallbacks
+    async def load_urls(self):
+        """
+        Continuously try loading images. If all fail returns None
+        """
+        for url in self.urls:
+            self.url = url
+            try:
+                self.surf = await load_surf(url)
+                logging.debug(f"Loaded Image: {url!r}")
+                return self.surf
+            except asyncio.CancelledError:
+                logging.debug(f"Cancelled loading image: {url!r}")
+                break
+            except Exception as e:
+                util.log_error(f"Couldn't load image: {url!r}. Reason: {str(e)}")
 
     def init_load(self):
         """
-        Start loading the image into memory. But instantly return the `Image`. 
-        You only need to call this if you init with `load=false` or unload the image
+        Initialize loading the image
         """
-        if not self.is_loaded:
-            self.loading_task = util.create_task(self.async_load())
-            g["tasks"].append(self.loading_task)
-        self.unloaded = False
-        self.last_used = time.monotonic()
-        return self
+        if not self.is_loading:
+            first_load = self.loading_task is None
+            self.loading_task = util.create_task(self.load_urls())
+            if first_load:
+                self.loading_task.add_done_callback(self._on_loaded)
 
     def unload(self):
         """
-        Unload the image from memory (to save RAM). 
-        This could for example be used when the image is not visible anymore.
+        Unloads the image by destroying 
+        the loaded image and the current loading task
         """
-        self.loading_task.cancel()
         self.surf = None
-        self.unloaded = True
-        return self
+        self.loading_task.cancel()
 
-    def draw(self, screen: Surface, pos: Dimension):
+    def _on_loaded(self, future: asyncio.Future[Surface]):
+        """
+        The default on_loaded callback. 
+        If you want to add your own callback do:
+        ```python
+        if image.is_loading:
+            image.loading_task.add_done_callback(your_callback)
+        ``` 
+        """
+        pass
+
+    def draw(self, surf: Surface, pos: Dimension):
+        """
+        Draw the image to the given surface. 
+        If the surf is unloaded, loading will automatically start
+        """
         if self.surf is not None:
-            screen.blit(self.surf, pos)
-        elif self.unloaded:
-            self.init_load()
-        self.last_used = time.monotonic()
+            surf.blit(self.surf, pos)
 
-    def __repr__(self):
-        return f"Image({self.url})"
+    @property
+    def is_loading(self):
+        """ Whether the images surf is being loaded currently """
+        return self.loading_task is not None and not self.loading_task.done()
+
+    @property
+    def is_loaded(self):
+        """ Whether the images surf is loaded and ready to draw"""
+        return self._surf is not None
+
+    @property
+    def is_unloaded(self):
+        """ Whether the images surf is unloaded (neither loading nor loaded)"""
+        return not (self.is_loaded or self.is_loading)
 
 
+# TODO: stream audio directly from the internet
+# https://stackoverflow.com/a/46782229/15046005
 class Audio:
-    sound: pg.mixer.Sound
+    sound: pg.mixer.Sound | None
+    loading_task: util.Task|None
 
-    def __init__(self, url: str, load: bool = True, autoplay: bool = True, loop: bool = False):
+    def __init__(
+        self, url: str, load: bool = True, autoplay: bool = True, loop: bool = False
+    ):
         self.url = url
         self.autoplay = autoplay
         self.loop = loop
-        self.unloaded = False
+        self.sound = None
+        self.loading_task = None
         if autoplay or load:
             self.init_load()
         self.last_used = time.monotonic()
 
     async def async_load(self):
         try:
-            print("Loading audio")
             self.url = (await util.download(self.url)).name
-            print("Loading audio")
-            self.sound = await asyncio.to_thread(pg.mixer.Sound,self.url)
-            print("Loading audio")
+            self.sound = await asyncio.to_thread(pg.mixer.Sound, self.url)
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -120,14 +166,14 @@ class Audio:
     def init_load(self):
         self.loading_task = asyncio.create_task(self.async_load())
         self.loading_task.add_done_callback(self.on_loaded)
-        self.unloaded = False
         self.last_used = time.monotonic()
         return self
 
     def play(self):
-        self.sound.play(
-            -1 * self.loop,
-        )
+        if self.is_loaded:
+            self.sound.play(
+                -1 * self.loop,
+            )
 
     def stop(self):
         self.sound.stop()
@@ -136,3 +182,18 @@ class Audio:
         assert future.done()
         if self.autoplay:
             self.play()
+
+    @property
+    def is_loading(self):
+        """ Whether the images surf is being loaded currently """
+        return self.loading_task is not None and not self.loading_task.done()
+
+    @property
+    def is_loaded(self):
+        """ Whether the images surf is loaded and ready to draw"""
+        return self.sound is not None
+
+    @property
+    def is_unloaded(self):
+        """ Whether the images surf is unloaded (neither loading nor loaded)"""
+        return not (self.is_loaded or self.is_loading)

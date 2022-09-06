@@ -87,28 +87,26 @@ async def tick(time: int):
 async def main(file: str):
     """The main function that includes the main event-loop"""
     global running
+    tree: HTMLElement 
     if running:
         raise RuntimeError("Already running")
     running = True
     reset_config()
     g["file_watcher"] = util.FileWatcher()
     file = watch_file(file)
-
     html = util.fetch_txt(file)
     parsed = html5lib.parse(html)
-    tree: HTMLElement = create_element(parsed)
+    g["root"] = tree = create_element(parsed)
     logging.debug(tree.to_html())
     pg.display.set_caption(g["title"])
-    _icon: Media.Image | None = g["icon"]
-    if _icon is not None:
-        await _icon.loading_task
-        if _icon.surf:
-            pg.display.set_icon(_icon.surf)
-            _icon.unload()
-    g["root"] = tree
+    _icon: Media.MultiImage = Media.MultiImage(g["icon_srcs"], sync=True)
     await asyncio.gather(
-        *(task for task in g["tasks"] if task.sync), return_exceptions=False
+        *filter(lambda task: task.sync, util.consume_list(g["tasks"])), return_exceptions=False
     )
+    await _icon.loading_task
+    if _icon._surf:
+        pg.display.set_icon(_icon.surf)
+        _icon.unload()
     set_mode()
     while True:
         end = False
@@ -141,7 +139,7 @@ async def main(file: str):
 
 async def run(file: str):
     """
-    Runs the application with mode_setting, restart and the console
+    Runs the application
     """
     logging.info("Starting")
     if uses_aioconsole:
@@ -152,11 +150,13 @@ async def run(file: str):
             logging.info("Reloading")
             await main(file)
     except asyncio.exceptions.CancelledError:
-        pass
+        return
     finally:
         if uses_aioconsole:
             task.cancel()
             await task
+        if True:
+            await util.delete_created_files()
         pg.quit()
         logging.info("Exiting")
 

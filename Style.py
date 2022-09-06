@@ -44,13 +44,13 @@ class itemsetter(Generic[V_T]):
 directions = ("top", "right", "bottom", "left")
 corners = ("top-left", "top-right", "bottom-right", "bottom-left")
 
+inset_keys = directions
 pad_keys = tuple(f"padding-{k}" for k in directions)
 marg_keys = tuple(f"margin-{k}" for k in directions)
 bs_keys = tuple(f"border-{k}-style" for k in directions)
 bw_keys = tuple(f"border-{k}-width" for k in directions)
 bc_keys = tuple(f"border-{k}-color" for k in directions)
 br_keys = tuple(f"border-{k}-radius" for k in corners)
-inset_keys = directions
 
 ALPGetter = T4Getter[AutoLP]
 inset_getter: ALPGetter = itemgetter(*inset_keys)  # type: ignore[assignment]
@@ -61,7 +61,6 @@ bw_getter: T4Getter[int] = itemgetter(*bw_keys)  # type: ignore[assignment]
 bc_getter: T4Getter[Color] = itemgetter(*bc_keys)  # type: ignore[assignment]
 bs_getter: T4Getter[str] = itemgetter(*bs_keys)  # type: ignore[assignment]
 br_getter: T4Getter[tuple[LengthPerc, LengthPerc]] = itemgetter(*br_keys)  # type: ignore[assignment]
-
 ####################################################################
 
 
@@ -87,7 +86,10 @@ def color(value: str, p_style):
         return p_style["color"]
     with suppress(ValueError):
         if (groups := get_groups(value, rgb_re)) is not None:
-            return Color(*map(lambda x: round(float(x)), groups))
+            rgba = [*map(float, groups)]
+            with suppress(IndexError):
+                rgba[3] *= 255
+            return Color(*map(lambda x: min(255,round(x)),rgba))
         elif (groups := get_groups(value, hex_re)) is not None:
             return Color(*map(lambda x: int(x * (2 // len(x)), 16), groups))
         return Color(value)
@@ -321,7 +323,6 @@ BorderRadiusAttr: StyleAttr[LengthPerc] = StyleAttr(
     "0", cast(dict[str, Length], {}), border_radius, inherits=False
 )
 
-
 def no_change(value: str, p_style) -> str:
     return value
 
@@ -352,6 +353,10 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
     **{key: BorderStyleAttr for key in bs_keys},
     **{key: BorderColorAttr for key in bc_keys},
     **{key: BorderRadiusAttr for key in br_keys},
+    "outline-width":BorderWidthAttr,
+    "outline-style":BorderStyleAttr,
+    "outline-color":BorderColorAttr,
+    "outline-offset":StyleAttr("0", acc=length, inherits=False)
 }
 
 abs_default_style = {

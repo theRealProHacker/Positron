@@ -1,4 +1,5 @@
 import asyncio
+import io
 import os
 from contextlib import suppress
 
@@ -10,6 +11,7 @@ from pytest import raises
 import Box
 import Element
 import J
+import rounded_box
 import Style
 import util
 from Element import (AndSelector, ClassSelector, DirectChildSelector,
@@ -224,6 +226,12 @@ def test_J():
 
 
 def test_util():
+    assert util._make_new_name("example.exe") == "example (2).exe"
+    assert util._make_new_name("example(1)(2).exe") == "example(1)(3).exe"
+    buffer = io.StringIO()
+    util.print_once("hello", file=buffer)
+    util.print_once("hello", file=buffer)
+    assert buffer.getvalue() == "hello\n"
     # Regex
     # finds the period followed by the two spaces and not by the single space.
     # But the regex has to be flipped (First the space, then the period)
@@ -273,6 +281,15 @@ def test_util():
     def closest_to(pivot, *xs): # these are all positive numbers definitely
         return min(xs, key = lambda x: util.abs_div(x/pivot)) # the one with the smallest distance to the pivot wins
     closest_to(300, 150, 450) == 450
+
+def test_rounded_box():
+    assert rounded_box.side2corners(["black", "red", "blue", "green"]) == [  # top, right, bottom, left
+        ("black", "green"),  # topleft
+        ("black", "red"),  # topright
+        ("blue", "red"),  # bottomright
+        ("blue", "green"),  # bottomleft
+    ]
+
 
 async def _test_async():
     # IO

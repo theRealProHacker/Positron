@@ -11,7 +11,7 @@ import socket
 import time
 from contextlib import contextmanager, redirect_stdout, suppress
 from dataclasses import dataclass
-from functools import cache, partial
+from functools import cache
 from os.path import abspath, dirname
 from types import FunctionType
 from typing import Any, Callable, Iterable, Sequence
@@ -26,10 +26,27 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from config import all_units, g
-from own_types import (V_T, Auto, AutoLP, AutoLP4Tuple, BugError, Cache, Color,
-                       Dimension, Event, Float4Tuple, Length, OpenMode,
-                       OpenModeReading, OpenModeWriting, Percentage, Rect,
-                       Surface, Vector2, _XMLElement)
+from own_types import (
+    V_T,
+    Auto,
+    AutoLP,
+    AutoLP4Tuple,
+    BugError,
+    Cache,
+    Color,
+    Dimension,
+    Event,
+    Float4Tuple,
+    Length,
+    OpenMode,
+    OpenModeReading,
+    OpenModeWriting,
+    Percentage,
+    Rect,
+    Surface,
+    Vector2,
+    _XMLElement,
+)
 
 mimetypes.init()
 
@@ -224,6 +241,8 @@ def consume_list(l: list):
     """
     while l:
         yield l.pop()
+
+
 ####################################################################
 
 ############################## I/O #################################
@@ -231,6 +250,7 @@ class Task(asyncio.Task):
     def __init__(self, sync: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.sync = sync
+
 
 def create_task(coro, sync: bool = False, **kwargs):
     return Task(sync, coro)
@@ -290,33 +310,53 @@ def is_online() -> bool:
     return own_adress != "127.0.0.1"
 
 
+def _make_new_name(name):
+    def lamda(groups: list[str]):
+        return f"({int(groups[0]) + 1})"
+
+    if (
+        new_name := rev_sub(
+            r"\)(\d+)\(",  # regex is flipped (3)->)3(
+            name,
+            lamda,
+            1
+        )
+    ) != name:
+        return new_name
+    else:
+        name, ext = os.path.splitext(name)
+        return f"{name} (2){ext}"
+
+
+created_files: set[str] = set()
+
+
+async def delete_created_files():
+    global created_file
+    logging.info(f"Deleting: {created_files}")
+    await asyncio.gather(
+        *(asyncio.to_thread(os.remove,file) for file in created_files)
+    )
+
+
 def create_file(file_name: str):
     """
     Definitely create a new file
     """
+    file_name = os.path.abspath(file_name)
     try:
         with open(file_name, "x") as _:
+            created_files.add(file_name)
             return file_name
     except FileExistsError:
-        # "file (1)(2)" -> "file (1)(3)"
-        def lamda(groups: list[str]):
-            return str(int(groups[0])+1)
-        if (
-            new_name := rev_sub(
-                r"\)(\d+)\(", # regex is flipped (3)->)3(
-                file_name,
-                lamda,
-            )
-        ) != file_name:
-            return create_file(new_name)
-        else:
-            name, ext = os.path.splitext(file_name)
-            return create_file(name + " (2)" + ext)
+        return create_file(_make_new_name(file_name))
 
 
 save_dir = os.environ.get("TEMP") or "."
 
 
+# TODO: actually write into here
+# IMPORTANT: only add absolute paths
 download_cache: dict[str, File] = {}
 
 
@@ -332,7 +372,9 @@ async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
     # Setting the delay to 0 provides an optimized path to allow other tasks to run.
     # This can be used by long-running functions to avoid blocking the event loop
     # for the full duration of the function call.
-    if (_url:=download_cache.get(url)) is not None and os.path.exists(_url.name): # this might not be a good idea if the file can be changed
+    if (_url := download_cache.get(url)) is not None and os.path.exists(
+        _url.name
+    ):  # this might not be a good idea if the file can be changed
         return _url
     with suppress(OSError):
         if os.path.exists(url):
@@ -363,9 +405,7 @@ async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
     # TODO: multipart with boundaries
     if (_content_type := response.headers.get("Content-Type")) is not None:
         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
-        content_type = [
-            x.strip() for x in _content_type.split(";")
-        ]
+        content_type = [x.strip() for x in _content_type.split(";")]
         chardet_bgn = "chardet="
         match content_type:
             case [mime_type]:
@@ -398,7 +438,9 @@ def sync_download(url: str, dir: str = save_dir) -> File:
     Raises RequestException, OSErrors, or URLErrors.
     """
     # TODO: Use Multiprocessing to really improve downloads
-    if (_url:=download_cache.get(url)) is not None and os.path.exists(_url.name): # this might not be a good idea if the file can be changed
+    if (_url := download_cache.get(url)) is not None and os.path.exists(
+        _url.name
+    ):  # this might not be a good idea if the file can be changed
         return _url
     with suppress(OSError):
         if os.path.exists(url):
@@ -421,9 +463,7 @@ def sync_download(url: str, dir: str = save_dir) -> File:
         # TODO: multipart with boundaries
         if (_content_type := response.headers.get("Content-Type")) is not None:
             # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
-            content_type = [
-                x.strip() for x in _content_type.split(";")
-            ] 
+            content_type = [x.strip() for x in _content_type.split(";")]
             chardet_bgn = "chardet="
             match content_type:
                 case [mime_type]:
