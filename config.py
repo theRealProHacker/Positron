@@ -1,3 +1,4 @@
+# fmt: off
 """ Any global variables are stored here"""
 from typing import Any
 from own_types import Color, Cache, FrozenDCache

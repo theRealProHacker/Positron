@@ -26,27 +26,10 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from config import all_units, g
-from own_types import (
-    V_T,
-    Auto,
-    AutoLP,
-    AutoLP4Tuple,
-    BugError,
-    Cache,
-    Color,
-    Dimension,
-    Event,
-    Float4Tuple,
-    Length,
-    OpenMode,
-    OpenModeReading,
-    OpenModeWriting,
-    Percentage,
-    Rect,
-    Surface,
-    Vector2,
-    _XMLElement,
-)
+from own_types import (K_T, V_T, Auto, AutoLP, AutoLP4Tuple, BugError, Cache,
+                       Color, Dimension, Event, Float4Tuple, Length, OpenMode,
+                       OpenModeReading, OpenModeWriting, Percentage, Rect,
+                       Surface, Vector2, _XMLElement)
 
 mimetypes.init()
 
@@ -235,12 +218,19 @@ def find(__iterable: Iterable[V_T], key: Callable[[V_T], bool]):
             return x
 
 
-def consume_list(l: list):
+def consume_list(l: list[V_T]):
     """
     Consume a list by removing all elements
     """
     while l:
-        yield l.pop()
+        yield l.pop(0)
+
+def consume_dict(d: dict[K_T, V_T]):
+    """
+    Consume a dict by removing all items
+    """
+    while d:
+        yield d.popitem()
 
 
 ####################################################################
@@ -315,12 +305,7 @@ def _make_new_name(name):
         return f"({int(groups[0]) + 1})"
 
     if (
-        new_name := rev_sub(
-            r"\)(\d+)\(",  # regex is flipped (3)->)3(
-            name,
-            lamda,
-            1
-        )
+        new_name := rev_sub(r"\)(\d+)\(", name, lamda, 1)  # regex is flipped (3)->)3(
     ) != name:
         return new_name
     else:
@@ -332,10 +317,10 @@ created_files: set[str] = set()
 
 
 async def delete_created_files():
-    global created_file
+    global created_files
     logging.info(f"Deleting: {created_files}")
     await asyncio.gather(
-        *(asyncio.to_thread(os.remove,file) for file in created_files)
+        *(asyncio.to_thread(os.remove, file) for file in created_files)
     )
 
 

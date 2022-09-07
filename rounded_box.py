@@ -1,4 +1,5 @@
 # TODO: Fix elliptic or curved borders in general
+# fmt: off
 import math
 from functools import cache
 from typing import Sequence
@@ -7,10 +8,10 @@ import numpy as np
 import pygame as pg
 from pygame import gfxdraw
 
-from own_types import (V_T, BugError, Color, Dimension, Float4Tuple,
-                       Rect, Surface, Vector2)
+from own_types import (V_T, BugError, Color, Dimension, Float4Tuple, Rect,
+                       Surface, Vector2)
 from util import all_equal
-
+# fmt: on
 
 def mul_tup(tup1: Dimension, tup2: Dimension) -> tuple[float, float]:
     x1, y1 = tup1

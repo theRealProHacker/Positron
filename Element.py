@@ -6,12 +6,13 @@ This includes:
 - Computing, layouting and drawing the Elements
 - CSS-Selectors
 """
-
-from pprint import pprint
 import re
 from dataclasses import dataclass
 from functools import cache, cached_property, reduce
 from itertools import chain
+
+# fmt: off
+from pprint import pprint
 from typing import (TYPE_CHECKING, Any, Callable, Iterable, Optional, Protocol,
                     Type, Union)
 
@@ -22,17 +23,15 @@ import Media
 import rounded_box
 import Style
 from config import add_sheet, g, watch_file
-from own_types import (Auto, AutoLP4Tuple, BugError, CompValue, Dimension,
-                       DisplayType, Float4Tuple, Font, FontStyle, Normal,
-                       NormalType, Number, Percentage, Rect, StyleComputed,
-                       StyleInput, Surface, _XMLElement)
-from Style import (SourceSheet, abs_default_style, bc_getter,
-                   br_getter, bs_getter, bw_keys, get_style, inset_getter,
-                   pack_longhands, parse_file, parse_sheet, prio_keys,
-                   style_attrs)
-from util import (Calculator, get_groups, get_tag, group_by_bool, log_error,
-                  print_once)
+from own_types import (Auto, AutoLP4Tuple, BugError, Dimension, DisplayType,
+                       Float4Tuple, Font, FontStyle, Normal, NormalType,
+                       Number, Percentage, Rect, Surface, _XMLElement)
+from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys,
+                   get_style, inset_getter, pack_longhands, parse_file,
+                   parse_sheet, prio_keys)
+from util import Calculator, get_groups, get_tag, group_by_bool, log_error
 
+# fmt: on
 """ More useful links for further development
 https://developer.mozilla.org/en-US/docs/Web/CSS/image
 """
@@ -88,33 +87,6 @@ def get_font(family: list[str], size: float, style: FontStyle, weight: int) -> F
     return font
 
 
-def process_style(tag: str, val: str, key: str, p_style: StyleComputed) -> CompValue:
-    def redirect(new_val: str):
-        return process_style(tag, new_val, key, p_style)
-
-    assert isinstance(val, str), val
-    attr = style_attrs[key]
-    ######################################## global style attributes ####################################################
-    # Best and most concise explanation I could find: https://css-tricks.com/inherit-initial-unset-revert/
-    match val:
-        case "inherit":
-            return p_style[key]
-        case "initial":
-            return redirect(attr.initial)
-        case "unset":
-            return redirect(abs_default_style[key])
-        case "revert":
-            return (
-                redirect("inherit") if attr.inherits else redirect(get_style(tag)[key])
-            )
-    return (
-        valid
-        if (valid := attr.convert(val, p_style)) is not None
-        or print_once("Uncomputable property found:", key, val)
-        else redirect("unset")
-    )
-
-
 calculator = Calculator(None)
 """
 The main shared calculator with no default percentage_val
@@ -142,7 +114,7 @@ class Element:
     # Style
     istyle: Style.Style  # inline style
     estyle: Style.Style  # external style
-    cstyle: StyleComputed  # computed_style
+    cstyle: Style.FullyComputedStyle  # computed_style
     # Layout + Draw
     box: Box.Box = Box.Box.empty()
     line_height: float
@@ -192,7 +164,7 @@ class Element:
         return self.box.height if self.box.height != -1 else self.parent.get_height()
 
     @property
-    def input_style(self) -> StyleInput:
+    def input_style(self) -> Style.ResolvedStyle:
         """The total input style. Fused from inline and external style"""
         return Style.remove_important(Style.join_styles(self.istyle, self.estyle))
 
@@ -222,10 +194,10 @@ class Element:
         input_style = get_style(self.tag) | self.input_style
         keys = sorted(input_style.keys(), key=prio_keys.__contains__, reverse=True)
         parent_style = dict(self.parent.cstyle)
-        style: StyleComputed = {}
+        style: Style.FullyComputedStyle = {}
         for width_key in keys:
             val = input_style[width_key]
-            new_val = process_style(self.tag, val, width_key, parent_style)
+            new_val = Style.compute_style(self.tag, val, width_key, parent_style)
             assert new_val is not None, BugError(
                 f"Style {width_key} was set to None. Which should never happen."
             )
@@ -239,7 +211,7 @@ class Element:
         for width_key, bstyle in zip(bw_keys, bs_getter(style)):
             if bstyle in ("none", "hidden"):
                 style[width_key] = 0
-        if style["outline-style"] in ("none","hidden"):
+        if style["outline-style"] in ("none", "hidden"):
             style["outline-width"] = 0
         # actual value calculation:
         fsize: float = style["font-size"]
@@ -413,7 +385,7 @@ class Element:
 
         # 5. draw outline
         _out_width = style["outline-width"]
-        _out_off = style["outline-offset"] + _out_width/2
+        _out_off = style["outline-offset"] + _out_width / 2
         rounded_box.draw_rounded_border(
             surf,
             border_box.inflate(2 * _out_off, 2 * _out_off),
@@ -455,9 +427,7 @@ class Element:
         out_style = pack_longhands(
             {k: f"{_in}->{self.cstyle[k]}" for k, _in in self.input_style.items()}
         )
-        pprint(
-            out_style
-        )
+        pprint(out_style)
 
     ############################## Helpers #####################################
     def iter_anc(self) -> Iterable["Element"]:
@@ -692,7 +662,9 @@ class ImgElement(Element):
         if self.cstyle["display"] == "none" or self.image is None:
             return
         if (_surf := self.image.surf) is not None:
-            draw_surf = self.crop_image(_surf, self.make_dimensions(self.given_size,_surf.get_size()))
+            draw_surf = self.crop_image(
+                _surf, self.make_dimensions(self.given_size, _surf.get_size())
+            )
             surf.blit(draw_surf, self.box.pos + pos)
 
 

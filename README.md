@@ -35,21 +35,44 @@
     - others have other default values:  
     `display: "inline"`
 - User stylesheet overrides
-- Author stylesheet overrides (--root)
 
 ## Specific stylesheets
-- [User agent stylesheet for element x](https://www.w3.org/TR/CSS2/sample.html)
-    - Example  
-        ```css
-        div {
-            display: "block"
-        }
-        ```
+- User agent stylesheet for element x  
+    https://www.w3.org/TR/CSS2/sample.html  
+    https://trac.webkit.org/browser/trunk/Source/WebCore/css/html.css  
+    https://hg.mozilla.org/mozilla-central/file/tip/layout/style/res/html.css  
+    https://www.w3schools.com/cssref/css_default_values.asp  
+    Example  
+    ```css
+    div {
+        display: "block"
+    }
+    ```
 - User stylesheet overrides
 - Author stylesheet overrides (element selectors)
 
+# CSS
 
-# Internal Attribute Specifications
+## CSS Life Cycle
+
+1. First the css sits as a string in either a css file or in a style tag (or in a style attribute but that is a different thing)
+2. Then the css becomes a list of Rules (a SourceSheets).
+    - A Rule can either be a StyleRule or an AtRule
+    - A StyleRule has a selector which corresponds to a Style.
+    - A Style is a dict of key value pairs where the key is the property name 
+    and the value is either a pre-computed value or a str
+    - This style is the same style that is used in the inline style attribute of an Element
+3. Then when css becomes dirty through addition or deletion of SourceSheets or the change of Media the css is redistributed.
+This means that all AtRules that couldn't be resolved are resolved 
+so that a SourceSheet resolves to a list of Selector-Style pairs.
+4. These Rules are applied to every Element by overwriting its e(xternal)style attribute. 
+The Styles are now resolved and don't include the important information anymore. 
+5. All elements are recomputed. In this step the elements compute all uncomputed properties 
+and then set their c(omputed)style attribute to a `FullyComputedStyle`. In this style, all values definitely comply with the Specifications below. That style is also cached inside a `FrozenDCache` for style sharing. 
+6. The elements can now use their computed style to layout and draw themselves and their surrounding elements.
+
+
+## Internal Attribute Specifications
 
 These specify the attributes with their types and constraints. Every computed type should comply with this specification. That is essential!
 > Comment: However, these feel more and more redundant now, because Style.style_attrs defines them pretty well.
@@ -98,6 +121,27 @@ These specify the attributes with their types and constraints. Every computed ty
 - line-height: `Number` or `Length` or `Percentage` or `Normal`
 - word-spacing: `Number` or `Percentage` or `Normal`
 
+## Documented differences to the specifications
+
+1. Numbers in CSS can be written with a trailing `.`  
+Example: `line-height: 12.` (Please don't do this)
+2. `rgb(r,g,b,a)` is also valid, as is `rgba(r,g,b)`
+3. `margin: 0 0 inherit inherit` is also valid and maps to 
+```css
+margin-top: 0;
+margin-left:0;
+margin-bottom: inherit;
+margin-right: inherit;
+```
+4. Also if any of the four values in `margin` were invalid, the rest would still be accepted.
+5. URLs can generally also be absolute or relative paths without having to use the `file://` syntax
+
+
+# Why Python is definitely better then JS
+From https://stackoverflow.com/a/2346626/15046005
+> technically javascript to python would be a decompiler
+
+
 # The Element class
 
 box: Box  
@@ -121,18 +165,3 @@ display: str
     Additionally, unitless numbers specified on the line-height property become the computed value, as specified. 
     The relative values that remain in the computed value become absolute when the used value is determined.
 
-
-# Documented differences to the specifications
-
-1. Numbers in CSS can be written with a trailing `.`  
-Example: `line-height: 12.` (Please don't do this)
-2. `rgb(r,g,b,a)` is also valid, as is `rgba(r,g,b)`
-3. `margin: 0 0 inherit inherit` is also valid and maps to 
-```css
-margin-top: 0;
-margin-left:0;
-margin-bottom: inherit;
-margin-right: inherit;
-```
-4. Also if any of the four values in `margin` were invalid, the rest would still be accepted.
-5. URLs can generally also be absolute or relative paths without having to use the `file://` syntax

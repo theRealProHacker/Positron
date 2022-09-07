@@ -19,10 +19,10 @@ async def load_surf(url: str):
     """
     Loads a surf. To save RAM surfs are cached in a surf_cache
     """
-    # TODO: be able to activate and deactivate caching
+    # TODO: be able to activate and deactivate surface caching
     if (surf := surf_cache.get(url)) is None:
         file = (await util.download(url)).name
-        surf_cache[url] = surf = await asyncio.to_thread(pg.image.load, file)
+        surf_cache[url] = surf = await asyncio.to_thread(pg.image.load, file)  # type: ignore[assignment]
     return surf
 
 
@@ -30,6 +30,7 @@ class MultiImage:
     """
     A Image represents a single image with multiple sources
     """
+
     _surf: Surface | None
     loading_task: util.Task | None
 
@@ -63,7 +64,7 @@ class MultiImage:
         return self._surf
 
     @surf.setter
-    def surf(self, surf: Surface|None):
+    def surf(self, surf: Surface | None):
         self._surf = surf
 
     async def load_urls(self):
@@ -94,7 +95,7 @@ class MultiImage:
 
     def unload(self):
         """
-        Unloads the image by destroying 
+        Unloads the image by destroying
         the loaded image and the current loading task
         """
         self.surf = None
@@ -102,18 +103,18 @@ class MultiImage:
 
     def _on_loaded(self, future: asyncio.Future[Surface]):
         """
-        The default on_loaded callback. 
+        The default on_loaded callback.
         If you want to add your own callback do:
         ```python
         if image.is_loading:
             image.loading_task.add_done_callback(your_callback)
-        ``` 
+        ```
         """
         pass
 
     def draw(self, surf: Surface, pos: Dimension):
         """
-        Draw the image to the given surface. 
+        Draw the image to the given surface.
         If the surf is unloaded, loading will automatically start
         """
         if self.surf is not None:
@@ -121,17 +122,17 @@ class MultiImage:
 
     @property
     def is_loading(self):
-        """ Whether the images surf is being loaded currently """
+        """Whether the images surf is being loaded currently"""
         return self.loading_task is not None and not self.loading_task.done()
 
     @property
     def is_loaded(self):
-        """ Whether the images surf is loaded and ready to draw"""
+        """Whether the images surf is loaded and ready to draw"""
         return self._surf is not None
 
     @property
     def is_unloaded(self):
-        """ Whether the images surf is unloaded (neither loading nor loaded)"""
+        """Whether the images surf is unloaded (neither loading nor loaded)"""
         return not (self.is_loaded or self.is_loading)
 
 
@@ -139,7 +140,7 @@ class MultiImage:
 # https://stackoverflow.com/a/46782229/15046005
 class Audio:
     sound: pg.mixer.Sound | None
-    loading_task: util.Task|None
+    loading_task: util.Task | None
 
     def __init__(
         self, url: str, load: bool = True, autoplay: bool = True, loop: bool = False
@@ -185,15 +186,15 @@ class Audio:
 
     @property
     def is_loading(self):
-        """ Whether the images surf is being loaded currently """
+        """Whether the images surf is being loaded currently"""
         return self.loading_task is not None and not self.loading_task.done()
 
     @property
     def is_loaded(self):
-        """ Whether the images surf is loaded and ready to draw"""
+        """Whether the images surf is loaded and ready to draw"""
         return self.sound is not None
 
     @property
     def is_unloaded(self):
-        """ Whether the images surf is unloaded (neither loading nor loaded)"""
+        """Whether the images surf is unloaded (neither loading nor loaded)"""
         return not (self.is_loaded or self.is_loading)

@@ -87,7 +87,7 @@ async def tick(time: int):
 async def main(file: str):
     """The main function that includes the main event-loop"""
     global running
-    tree: HTMLElement 
+    tree: HTMLElement
     if running:
         raise RuntimeError("Already running")
     running = True
@@ -101,8 +101,10 @@ async def main(file: str):
     pg.display.set_caption(g["title"])
     _icon: Media.MultiImage = Media.MultiImage(g["icon_srcs"], sync=True)
     await asyncio.gather(
-        *filter(lambda task: task.sync, util.consume_list(g["tasks"])), return_exceptions=False
+        *filter(lambda task: task.sync, util.consume_list(g["tasks"])),
+        return_exceptions=False
     )
+    assert _icon.loading_task
     await _icon.loading_task
     if _icon._surf:
         pg.display.set_icon(_icon.surf)
