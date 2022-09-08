@@ -1,3 +1,7 @@
+"""
+A single source of thruth for types that are used in the other modules.
+Instead of importing Rects or Vectors from pygame, import them from here. 
+"""
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import Enum as _Enum
@@ -215,16 +219,18 @@ class Length(float):
 
 ################## Sentinels ###################
 class Sentinel(Enum):
-    Auto = enum_auto()
-    Normal = enum_auto()
-
+    Auto = "auto"
+    Normal = "normal"
+    _None = "none"
 
 # Type Aliases
 AutoType = Literal[Sentinel.Auto]
 NormalType = Literal[Sentinel.Normal]
+_NoneType = Literal[Sentinel._None]
 
 Auto: AutoType = Sentinel.Auto
 Normal: NormalType = Sentinel.Normal
+_None: _NoneType = Sentinel._None
 
 #################################################
 

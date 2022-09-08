@@ -94,8 +94,11 @@ The main shared calculator with no default percentage_val
 
 
 def calc_inset(inset: AutoLP4Tuple, width: float, height: float) -> Float4Tuple:
-    return calculator.multi2(inset[:2], 0, height) + calculator.multi2(
-        inset[2:], 0, width
+    """
+    Calculates the inset data
+    """
+    return calculator.multi2(inset[Box._vertical], 0, height) + calculator.multi2(
+        inset[Box._horizontal], 0, width
     )
 
 

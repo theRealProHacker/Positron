@@ -114,7 +114,7 @@ def test_style_computing():
     assert Style.color("#fff", {}) == Style.color("#ffffff", {}) == Color("white")
     assert Style.color("#000", {}) == Style.color("#000000", {}) == Color("black")
 
-    assert Style.split("solid rgb(11, 18, 147) 3px") == [
+    assert Style.split_value("solid rgb(11, 18, 147) 3px") == [
         "solid",
         "rgb(11,18,147)",
         "3px",
@@ -124,7 +124,7 @@ def test_style_computing():
     # TODO
     with raises(AssertionError):
         assert (
-            Style.split(
+            Style.split_value(
                 """oblique 10px 'Courier New' , Courier      
         , monospace;"""
             )

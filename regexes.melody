@@ -128,6 +128,23 @@ let .rgb = {
   ")";
 }
 
+// url
+let .url {
+  either {
+    "http";
+    "https";
+    "file";
+    // "ftp";
+    // "data";
+  }
+}
+let .url_func = {
+  "url";
+  "(";
+  .url;
+  ")";
+}
+
 // decimal
 let .decimal {
   option of `[+-]`;

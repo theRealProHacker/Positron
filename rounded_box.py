@@ -1,4 +1,3 @@
-# TODO: Fix elliptic or curved borders in general
 # fmt: off
 import math
 from functools import cache

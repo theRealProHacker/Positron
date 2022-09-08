@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from functools import cache
 from itertools import chain
 from operator import itemgetter
+from types import NoneType
 from typing import (Any, Generic, Iterable, Literal, Mapping, Protocol, TypeVar, Union,
                     overload)
 
@@ -24,7 +25,8 @@ from util import (dec_re, fetch_txt, get_groups, group_by_bool, log_error,
 
 # Typing
 class CompStr(str):
-    pass
+    def __repr__(self) -> str:
+        return f"CompStr({self})"
 
 
 CompValue = Any  # | float | Percentage | Sentinel | FontStyle | Color | CompStr but not a normal str
@@ -71,6 +73,32 @@ def ensure_comp(x: V_T)->V_T:
 def ensure_comp(x)->CompValue:
     return CompStr(x) if is_real_str(x) else x
 
+
+def split_value(s: str) -> list[str]:
+    """
+    This function is for splitting css values that include functions
+    """
+    rec = True
+    result = []
+    curr_string = ""
+    brackets = 0
+    for c in s:
+        is_w = re.match(r"\s", c)
+        if rec and not brackets and is_w:
+            rec = False
+            result.append(curr_string)
+            curr_string = ""
+        if not is_w:
+            rec = True
+            curr_string += c
+        if c == "(":
+            brackets += 1
+        elif c == ")":
+            assert brackets
+            brackets -= 1
+    if rec:
+        result.append(curr_string)
+    return result
 #################### Itemgetters/setters ###########################
 
 # https://stackoverflow.com/questions/54785148/destructuring-dicts-and-objects-in-python
@@ -120,7 +148,7 @@ class Acceptor(Protocol[CompValue_T]):
     def __call__(self, value: str, p_style: FullyComputedStyle) -> None | CompValue_T:
         ...
 
-
+url_re = re.compile(r"url\(\)")
 # https://regexr.com/3ag5b
 hex_re = re.compile(r"#([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})")
 # Melody
@@ -136,6 +164,11 @@ def split_units(attr: str) -> tuple[float, str]:
     match = split_units_pattern.fullmatch(attr.strip())
     num, unit = match.groups()  # type: ignore # Raises AttributeError
     return float(num), unit
+
+
+def background_image(value: str, p_style):
+    arr = split_value(value)
+
 
 
 def color(value: str, p_style):
@@ -319,7 +352,7 @@ class StyleAttr(Generic[CompValue_T]):
         return f"StyleAttr(initial={self.initial}, kws={self.kws}, accept={self.accept.__name__}, inherits={self.inherits})"
 
     def set2dict(self, s: set[StrSent]) -> Mapping[str, CompValue_T | StrSent]:
-        return {x if isinstance(x, str) else x.name.lower(): x for x in s}
+        return {x if isinstance(x, str) else x.value: x for x in s}
 
     def accept(
         self, value: str, p_style: FullyComputedStyle
@@ -333,6 +366,7 @@ class StyleAttr(Generic[CompValue_T]):
 # we don't want copies of these (memory) + better readibility
 auto: dict[str, AutoType] = {"auto": Auto}
 normal: dict[str, NormalType] = {"normal": Normal}
+none: dict[str, NoneType]
 
 AALP = StyleAttr(
     "auto",
@@ -734,33 +768,6 @@ def is_valid(name: str, value: str) -> None | str | CompValue:
     return False
 
 
-def split(s: str) -> list[str]:
-    """
-    This function is for splitting css values that include functions
-    """
-    rec = True
-    result = []
-    curr_string = ""
-    brackets = 0
-    for c in s:
-        is_w = re.match(r"\s", c)
-        if rec and not brackets and is_w:
-            rec = False
-            result.append(curr_string)
-            curr_string = ""
-        if not is_w:
-            rec = True
-            curr_string += c
-        if c == "(":
-            brackets += 1
-        elif c == ")":
-            assert brackets
-            brackets -= 1
-    if rec:
-        result.append(curr_string)
-    return result
-
-
 def process_dir(value: list[str]):
     """
     Takes a split direction shorthand and returns the 4 resulting values
@@ -779,7 +786,7 @@ def process_property(key: str, value: str) -> dict[str, str]|CompValue|str:
     # We do a little style hickup here by using assertions instead of normal raises or Error type returns,
     # but I think that is fine
     # TODO: font
-    arr = split(value)
+    arr = split_value(value)
     if key == "all":
         assert len(arr) == 1
         assert value in global_values, "'all' can only set global values eg. 'all: unset'"
