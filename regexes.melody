@@ -98,50 +98,30 @@ either {
 // }
 // <end>;
 
-// rgb and rgba
-// dec_re from util.py
-let .decimal = {
-  `{dec_re}`;
-}
-let .rgb = {
-  "rgb";
-  option of "a";
-  "(";
-  capture{
-    .decimal;
-  }
-  ",";
-  capture{
-    .decimal;
-  }
-  ",";
-  capture{
-    .decimal;
-  }
-  option of match {
-    ",";
-    capture{
-      .decimal;
-    }
-    option of ",";
-  }
-  ")";
-}
 
 // url
-let .url {
+let .httpurl {
   either {
     "http";
     "https";
-    "file";
-    // "ftp";
-    // "data";
   }
+  "://";
+  some of <word>;
+  any of match {
+    ".";
+    some of <word>;
+  }
+  "/"
 }
 let .url_func = {
   "url";
   "(";
-  .url;
+  either{
+    .httpurl;
+    // .fileurl;
+    // .path;
+    // .dataurl;
+  }
   ")";
 }
 

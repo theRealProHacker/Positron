@@ -13,7 +13,7 @@ from itertools import chain
 
 # fmt: off
 from pprint import pprint
-from typing import (TYPE_CHECKING, Any, Callable, Iterable, Optional, Protocol,
+from typing import (TYPE_CHECKING, Any, Callable, Iterable, Optional, Protocol, Sequence,
                     Type, Union)
 
 import pygame as pg
@@ -23,9 +23,9 @@ import Media
 import rounded_box
 import Style
 from config import add_sheet, g, watch_file
-from own_types import (Auto, AutoLP4Tuple, BugError, Dimension, DisplayType,
+from own_types import (Auto, AutoLP4Tuple, BugError, Color, Dimension, DisplayType, Drawable,
                        Float4Tuple, Font, FontStyle, Normal, NormalType,
-                       Number, Percentage, Rect, Surface, _XMLElement)
+                       Number, Percentage, Radii, Rect, Surface, _XMLElement)
 from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys,
                    get_style, inset_getter, pack_longhands, parse_file,
                    parse_sheet, prio_keys)
@@ -97,8 +97,9 @@ def calc_inset(inset: AutoLP4Tuple, width: float, height: float) -> Float4Tuple:
     """
     Calculates the inset data
     """
-    return calculator.multi2(inset[Box._vertical], 0, height) + calculator.multi2(
-        inset[Box._horizontal], 0, width
+    top, right, bottom, left = inset
+    return calculator.multi2((top, bottom), 0, height) + calculator.multi2(
+        (right, left), 0, width
     )
 
 
@@ -348,28 +349,42 @@ class Element:
         # setup
         draw_box = self.box.copy()
         draw_box.pos += pos
-        border_box = draw_box.border_box
-        drawing_border = any(draw_box.border)
-        radii = tuple(
+        border_rect = draw_box.border_box
+        radii: Radii = tuple(
             (
-                int(calculator(brx, perc_val=border_box.width)),
-                int(calculator(bry, perc_val=border_box.height)),
+                int(calculator(brx, perc_val=border_rect.width)),
+                int(calculator(bry, perc_val=border_rect.height)),
             )
             for brx, bry in br_getter(style)
         )
+        # TODO: only recreate the background image if necessary
+        # either because a style attribute changed that affects the background image
+        # or because a background image finished loading
+
         # https://web.dev/howbrowserswork/#the-painting-order
-        # 1.+3. draw background and border:
-        if not drawing_border:
-            pg.draw.rect(surf, style["background-color"], border_box)
-        else:
-            rounded_box.draw_box(
-                surf,
-                border_box,
-                style["background-color"],
-                bc_getter(style),
-                draw_box.border,
-                radii,
+        # 1.+2. draw background-color and background-image
+        bg_imgs: Sequence[Drawable] = style["background-image"]
+        bg_color: Color = style["background-color"]
+        if not bg_imgs: # draw only the background-color
+            rounded_box.draw_rounded_background(
+                surf, border_rect, bg_color, radii
             )
+        else:
+            bg_size = border_rect.size
+            bg_surf = Surface(bg_size, pg.SRCALPHA)
+            bg_surf.fill(bg_color)
+            for drawable in bg_imgs:
+                drawable.draw(bg_surf, (0,0))
+            rounded_box.round_surf(
+                bg_surf,
+                bg_size,
+                radii
+            )
+            surf.blit(bg_surf, border_rect.topleft)
+        # 3. draw border
+        rounded_box.draw_rounded_border(
+            surf, border_rect, bc_getter(style), draw_box.border, radii
+        )
         # 4. draw children
         if self.layout_type == "block":
             for c in self.real_children:
@@ -391,7 +406,7 @@ class Element:
         _out_off = style["outline-offset"] + _out_width / 2
         rounded_box.draw_rounded_border(
             surf,
-            border_box.inflate(2 * _out_off, 2 * _out_off),
+            border_rect.inflate(2 * _out_off, 2 * _out_off),
             colors=(style["outline-color"],) * 4,
             widths=(_out_width,) * 4,
             radii=radii,
@@ -600,7 +615,7 @@ class LinkElement(MetaElement):
 class ImgElement(Element):
     size: None | tuple[int, int]
     given_size: tuple[int | None, int | None]
-    image: Media.MultiImage | None
+    image: Media.Image | None
 
     def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
         # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img
@@ -610,7 +625,7 @@ class ImgElement(Element):
         super().__init__(tag, attrs, parent)
         # urls = [] # TODO: actually fetch the images from the srcset and sizes
         try:
-            self.image = Media.MultiImage(
+            self.image = Media.Image(
                 attrs["src"],
                 load=attrs.get("loading", "eager") != "lazy",
                 # "auto" is synonymous with "async"

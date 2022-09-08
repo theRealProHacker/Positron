@@ -109,14 +109,14 @@ def test_style_computing():
     assert Style.style_attrs["color"].accept("rgb(120,120,120)", {}) == Color(
         *(120,) * 3
     )
-    assert Style.color("rgba(120,120,120,1)", {}) == Color(*(120,) * 3, 255)
+    assert Style.color("rgba(120, 120, 120, 1)", {}) == Color(*(120,) * 3, 255)
     assert Style.color("currentcolor", {"color": Color("blue")}) == Color("blue")
     assert Style.color("#fff", {}) == Style.color("#ffffff", {}) == Color("white")
     assert Style.color("#000", {}) == Style.color("#000000", {}) == Color("black")
 
     assert Style.split_value("solid rgb(11, 18, 147) 3px") == [
         "solid",
-        "rgb(11,18,147)",
+        "rgb(11, 18, 147)",
         "3px",
     ]
     with raises(KeyError):
@@ -146,13 +146,13 @@ def test_style_computing():
     # https://developer.mozilla.org/en-US/docs/Web/CSS/margin#syntax
     assert Style.process_dir(["1em"]) == ["1em", "1em", "1em", "1em"]
     assert Style.process_dir("5% auto".split()) == ["5%", "auto", "5%", "auto"]
-    assert Style.process_property("margin", "1em auto 2em") == {
+    assert dict(Style.process_property("margin", "1em auto 2em")) == {
         "margin-top": "1em",
         "margin-right": "auto",
         "margin-bottom": "2em",
         "margin-left": "auto",
     }
-    assert Style.process_property("margin", "2px 1em 0 auto") == {
+    assert dict(Style.process_property("margin", "2px 1em 0 auto")) == {
         "margin-top": "2px",
         "margin-right": "1em",
         "margin-bottom": "0",
@@ -167,7 +167,7 @@ def test_style_computing():
     border-bottom-right-radius: 1em 5em;
     border-bottom-left-radius:  1em 5em;
     """
-    assert Style.process_property("border-radius", "1em/5em") == {
+    assert dict(Style.process_property("border-radius", "1em/5em")) == {
         "border-top-left-radius": "1em 5em",
         "border-top-right-radius": "1em 5em",
         "border-bottom-right-radius": "1em 5em",
@@ -176,7 +176,7 @@ def test_style_computing():
     assert Style.is_valid("border-width", "medium") is not None
     assert Style.is_valid("border-style", "solid") is not None
     assert Style.is_valid("border-color", "black") is not None
-    assert Style.process_property("border", "solid") == {"border-style": Style.CompStr("solid")}
+    assert dict(Style.process_property("border", "solid")) == {"border-style": Style.CompStr("solid")}
     assert Style.process_property("width", "15px") == Length(15)
 
 

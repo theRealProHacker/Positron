@@ -21,6 +21,7 @@ g: dict[str, Any] = {
     "frameless": False,             # bool
     "allow_screen_saver": True,     # bool
     "default_font_size": 16,        # float
+    "zoom": 1,                      # float
     # reserved
     "root": None,                   # the html element
     "file_watcher": None,           # the file watcher

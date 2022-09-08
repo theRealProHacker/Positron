@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from functools import cache
 from itertools import chain
 from operator import itemgetter
-from types import NoneType
 from typing import (Any, Generic, Iterable, Literal, Mapping, Protocol, TypeVar, Union,
                     overload)
 
@@ -15,7 +14,8 @@ import tinycss
 
 from config import (abs_border_width, abs_font_size, abs_font_weight,
                     abs_length_units, g, rel_font_size)
-from own_types import (CO_T, V_T, Auto, AutoLP, AutoType, Color,
+import Media
+from own_types import (CO_T, V_T, Auto, AutoLP, AutoType, BugError, Color, Drawable,
                        FontStyle, Length, LengthPerc, Normal, NormalType,
                        Number, Percentage, Sentinel, Str4Tuple, StrSent,
                        frozendict)
@@ -29,15 +29,15 @@ class CompStr(str):
         return f"CompStr({self})"
 
 
-CompValue = Any  # | float | Percentage | Sentinel | FontStyle | Color | CompStr but not a normal str
+CompValue = Any  # | float | Percentage | Sentinel | FontStyle | Color | tuple[Drawable, ...] | CompStr but not a normal str
 # A Value is the actual value together with whether the value is set as important
 InputValue = tuple[str, bool]
 Value = tuple[str | CompValue, bool]
 InputProperty = tuple[str, InputValue]
 Property = tuple[str, Value]
-InputStyle = dict[str, InputValue]
+InputStyle = list[InputProperty]
 Style = dict[str, Value]
-ResolvedStyle = dict[str, str | CompValue] # Style without important
+ResolvedStyle = dict[str, str | CompValue]  # Style without important
 FullyComputedStyle = Mapping[str, CompValue]
 StyleRule = tuple[str, Style]
 """
@@ -47,9 +47,8 @@ p {
     color: red !important;
 } -> ('p', {'color': ('red', 'True')})
 """
-StyleSheet = dict[str, Style]
 
-Media = tuple[int, int]  # just the window size right now
+MediaValue = tuple[int, int]  # just the window size right now
 Rule = Union["AtRule", "StyleRule"]
 
 
@@ -62,15 +61,18 @@ def is_real_str(x):
     """
     return isinstance(x, str) and not isinstance(x, CompStr)
 
-@overload
-def ensure_comp(x: str)->CompStr: # type: ignore
-    ...
 
 @overload
-def ensure_comp(x: V_T)->V_T:
+def ensure_comp(x: str) -> CompStr:  # type: ignore
     ...
 
-def ensure_comp(x)->CompValue:
+
+@overload
+def ensure_comp(x: V_T) -> V_T:
+    ...
+
+
+def ensure_comp(x) -> CompValue:
     return CompStr(x) if is_real_str(x) else x
 
 
@@ -91,6 +93,8 @@ def split_value(s: str) -> list[str]:
         if not is_w:
             rec = True
             curr_string += c
+        elif brackets:
+            curr_string += c
         if c == "(":
             brackets += 1
         elif c == ")":
@@ -99,6 +103,8 @@ def split_value(s: str) -> list[str]:
     if rec:
         result.append(curr_string)
     return result
+
+
 #################### Itemgetters/setters ###########################
 
 # https://stackoverflow.com/questions/54785148/destructuring-dicts-and-objects-in-python
@@ -148,12 +154,24 @@ class Acceptor(Protocol[CompValue_T]):
     def __call__(self, value: str, p_style: FullyComputedStyle) -> None | CompValue_T:
         ...
 
-url_re = re.compile(r"url\(\)")
+
+def css_func(value: str, name: str) -> list[str] | None:
+    if value.startswith(name + "(") and value.endswith(")"):
+        return re.split(r"\s*,\s*", value.removeprefix(name + "(").removesuffix(")"))
+
+
+def remove_quotes(value: str):
+    for quote in ("'", '"'):
+        if (
+            len(new_val := value.removeprefix(quote).removesuffix(quote))
+            == len(value) - 2
+        ):
+            return new_val
+    return new_val
+
+
 # https://regexr.com/3ag5b
 hex_re = re.compile(r"#([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})")
-# Melody
-rgb_re = re.compile(rf"rgba?\(({dec_re}),({dec_re}),({dec_re})(?:,({dec_re}),?)?\)")
-
 split_units_pattern = re.compile(rf"({dec_re})(\w+|%)")
 
 
@@ -166,21 +184,29 @@ def split_units(attr: str) -> tuple[float, str]:
     return float(num), unit
 
 
-def background_image(value: str, p_style):
+def background_image(value: str, p_style) -> tuple[Drawable, ...]:
+    # TODO: element, gradients, and more
     arr = split_value(value)
-
+    result: list[Drawable] = []
+    for v in arr:
+        if args := css_func(v, "url"):
+            result.append(Media.Image([remove_quotes(args[0])]))
+        else:
+            raise NotImplementedError("background-image only supports urls right now")
+    return tuple(result)
 
 
 def color(value: str, p_style):
     if value == "currentcolor":
         return p_style["color"]
     with suppress(ValueError):
-        if (groups := get_groups(value, rgb_re)) is not None:
-            rgba = [*map(float, groups)]
-            with suppress(IndexError):
-                rgba[3] *= 255
-            return Color(*map(lambda x: min(255, round(x)), rgba))
-        elif (groups := get_groups(value, hex_re)) is not None:
+        if args := css_func(value, "rgb"):
+            r, g, b = map(float, args)
+            return Color(*map(round, (r, g, b)))
+        elif args := css_func(value, "rgba"):
+            r, g, b, a = map(float, args)
+            return Color(*map(round, (r, g, b, a*255)))
+        elif groups := get_groups(value.lower(), hex_re):
             return Color(*map(lambda x: int(x * (2 // len(x)), 16), groups))
         return Color(value)
 
@@ -339,6 +365,7 @@ class StyleAttr(Generic[CompValue_T]):
     ):
         """
         If the kws are a set then they are automatically converted into a dict
+        Inherits as specified or if the acceptor is length_percentage
         """
         self.initial = initial
         self.kws = self.set2dict(kws) if isinstance(kws, set) else kws
@@ -366,7 +393,6 @@ class StyleAttr(Generic[CompValue_T]):
 # we don't want copies of these (memory) + better readibility
 auto: dict[str, AutoType] = {"auto": Auto}
 normal: dict[str, NormalType] = {"normal": Normal}
-none: dict[str, NoneType]
 
 AALP = StyleAttr(
     "auto",
@@ -423,6 +449,7 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
     "word-spacing": StyleAttr("normal", normal, length_percentage, True),
     "display": StyleAttr("inline", {"inline", "block", "none"}),
     "background-color": StyleAttr("transparent", acc=color),
+    "background-image": StyleAttr("none", {"none": tuple()}, background_image, False),
     "width": AALP,
     "height": AALP,
     "position": StyleAttr(
@@ -440,12 +467,12 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
     "outline-offset": StyleAttr("0", acc=length, inherits=False),
 }
 
-abs_default_style: ResolvedStyle = {
+abs_default_style: dict[str, str] = {
     k: "inherit" if v.inherits else v.initial for k, v in style_attrs.items()
 }
 """ The default style for a value (just like "unset") """
 
-element_styles: dict[str, ResolvedStyle] = defaultdict(
+element_styles: dict[str, dict[str, str]] = defaultdict(
     dict,
     {
         "html": {
@@ -510,7 +537,7 @@ class MediaRule(AtRule):
         self.media = media
         self.rules = rules
 
-    def matches(self, media: "Media"):
+    def matches(self, media: "MediaValue"):
         """Whether a MediaRule matches a Media"""
         return True  # TODO
 
@@ -538,11 +565,7 @@ IMPORTANT = " !important"
 
 
 def parse_important(s: str) -> InputValue:
-    return (
-        (s[: -len(IMPORTANT)], True)
-        if s.endswith(IMPORTANT)
-        else (s, False)
-    )
+    return (s[: -len(IMPORTANT)], True) if s.endswith(IMPORTANT) else (s, False)
 
 
 @overload
@@ -572,7 +595,7 @@ def add_important(style: ResolvedStyle, imp: bool) -> Style:
     return {k: (v, imp) for k, v in style.items()}
 
 
-def get_media() -> Media:
+def get_media() -> MediaValue:
     return g["W"], g["H"]
 
 
@@ -582,7 +605,7 @@ class SourceSheet(list[Rule]):
     Represents a sheet from a source file.
     """
 
-    _last_media_rules: tuple[Media, list[StyleRule]] | None = None
+    _last_media_rules: tuple[MediaValue, list[StyleRule]] | None = None
 
     @property
     def all_rules(self) -> list[StyleRule]:
@@ -635,11 +658,11 @@ def parse_inline_style(s: str) -> Style:
     """
     if not s:
         return {}
-    data = s.removeprefix("{").removesuffix("}").strip().lower().split(";")
+    data = s.removeprefix("{").removesuffix("}").strip().split(";")
     pre_parsed = [
-        (_split[0], parse_important(_split[1]))
+        (_split[0], parse_important(":".join(_split[1:])))
         for value in data
-        if len(_split := tuple(key.strip() for key in value.split(":"))) == 2
+        if len(_split := tuple(key.strip() for key in value.split(":"))) >= 2
         or log_error(f"CSS: Invalid style declaration ({value})")
     ]
     return process(pre_parsed)
@@ -659,7 +682,7 @@ def parse_sheet(source: str) -> SourceSheet:
     """
     Parses a whole css sheet
     """
-    tiny_sheet: tinycss.css21.Stylesheet = Parser.parse_stylesheet(source.lower())
+    tiny_sheet: tinycss.css21.Stylesheet = Parser.parse_stylesheet(source)
     return SourceSheet(handle_rule(rule) for rule in tiny_sheet.rules)
 
 
@@ -729,20 +752,23 @@ smart_shorthands = {
 }
 
 # we cache resolvable initial values
-initial_value_cache: dict[str, str|CompValue] = {
+initial_value_cache: dict[str, str | CompValue] = {
     # we could put stuff in here that we know about
     # For example border-style: CompStr("none")
 }
 
-@overload
-def is_valid(name: str, value: GlobalValue)-> str|CompValue:
-    ...
 
 @overload
-def is_valid(name: str, value: str) -> None | str | CompValue:
+def is_valid(key: str, value: GlobalValue) -> str | CompValue:
     ...
 
-def is_valid(name: str, value: str) -> None | str | CompValue:
+
+@overload
+def is_valid(key: str, value: str) -> None | str | CompValue:
+    ...
+
+
+def is_valid(key: str, value: str) -> None | str | CompValue:
     """
     Checks whether the given CSS property is valid
     If this returns None the CSS property is invalid
@@ -750,20 +776,22 @@ def is_valid(name: str, value: str) -> None | str | CompValue:
     or at least return a (maybe further resolved) input value (a str)
     """
     global initial_value_cache, abs_default_style, style_attrs, dir_shorthands
-    if value in ("inherit", "revert"):
+    if value == "inherit":
         return value
-    elif (attr := style_attrs.get(name)) is not None:
+    elif (attr := style_attrs.get(key)) is not None:
         if value == "initial":
-            if (new_value := initial_value_cache.get(name)) is None:
-                new_value = initial_value_cache[name] = is_valid(name, attr.initial)
+            if (new_value := initial_value_cache.get(key)) is None:
+                new_value = initial_value_cache[key] = is_valid(key, attr.initial)
             return new_value
         elif value == "unset":
-            return abs_default_style[name]
+            return is_valid(key, abs_default_style[key])
+        elif value == "revert":
+            return "inherit" if attr.inherits else "revert"
         with suppress(KeyError):
             return attr.accept(value, p_style={})
         # TODO: probably add a check that the KeyError was really raised on the p_style, if not raise a BugError
         return value
-    elif (keys := dir_shorthands.get(name)) is not None:
+    elif (keys := dir_shorthands.get(key)) is not None:
         return is_valid(keys[0], value)
     return False
 
@@ -776,12 +804,13 @@ def process_dir(value: list[str]):
     assert _len <= 4, f"Too many values: {len(value)}/4"
     return value + value[1:2] if _len == 3 else value * (4 // _len)
 
+
 # IDEA: cache this
-def process_property(key: str, value: str) -> dict[str, str]|CompValue|str:
+def process_property(key: str, value: str) -> list[tuple[str, str]] | CompValue | str:
     """
     Processes a single Property
     If this returns a single value it is final
-    If this returns a dict all keys should be reprocessed
+    If this returns a list all keys should be reprocessed
     """
     # We do a little style hickup here by using assertions instead of normal raises or Error type returns,
     # but I think that is fine
@@ -789,43 +818,44 @@ def process_property(key: str, value: str) -> dict[str, str]|CompValue|str:
     arr = split_value(value)
     if key == "all":
         assert len(arr) == 1
-        assert value in global_values, "'all' can only set global values eg. 'all: unset'"
-        return dict.fromkeys(style_attrs,value) # dict[str, str] -> will be reprocessed
+        assert (
+            value in global_values
+        ), "'all' can only set global values eg. 'all: unset'"
+        return [(key, value) for key in style_attrs]
     elif key == "border-radius" and "/" in value:
         x_y = re.split(r"\s*/\s*", value, 1)
-        return dict( # dict[str, str] -> will be reprocessed
+        return list(
             zip(
                 br_keys,
                 (
                     f"{x} {y}"
-                    for x,y in zip(*map(lambda s: process_dir(s.split()), x_y))
+                    for x, y in zip(*map(lambda s: process_dir(s.split()), x_y))
                 ),
             )
         )
     elif (keys := dir_shorthands.get(key)) is not None:
-        return dict(zip(keys, process_dir(arr))) # dict[str, str] -> will be reprocessed
+        return list(zip(keys, process_dir(arr)))
     elif (shorthand := smart_shorthands.get(key)) is not None:
         assert len(arr) <= len(
             shorthand
         ), f"Too many values: {len(arr)}, max {len(shorthand)}"
-        if len(arr) == 1 and (global_value:=arr[0]) in global_values:
+        if len(arr) == 1 and (global_value := arr[0]) in global_values:
             return dict.fromkeys(shorthand, global_value)
         _shorthand = shorthand.copy()
-        result = {}
+        result: list[tuple[str, str]] = []
         for sub_value in arr:
             for k in _shorthand:
                 if is_valid(k, sub_value) is not None:
                     break
-            else: # no-break
+            else:  # no-break
                 raise AssertionError(f"Invalid value found in shorthand 'sub_value'")
             _shorthand.remove(k)
-            result[k] = sub_value
-        return result # dict[str, str] -> will be reprocessed
+            result.append((k, sub_value))
+        return result
     else:
         assert key in style_attrs, "Unknown Property"
-        value = " ".join(arr)
-        assert (new_val := is_valid(key, value)) is not False, "Invalid Value"
-        return value if new_val is True else new_val # str or CompVal
+        assert (new_val := is_valid(key, value)) is not None, "Invalid Value"
+        return new_val
 
 
 def process_input(d: list[tuple[str, str]]):
@@ -833,33 +863,32 @@ def process_input(d: list[tuple[str, str]]):
     Unpacks shorthands and filters and reports invalid declarations
     """
     done: dict[str, CompValue] = {}
-    todo: dict[str, str] = dict(d)
+    todo: list[tuple[str, str]] = d
     while todo:
         _todo = todo
-        todo = {}
-        for k,v in _todo.items():
+        todo = []
+        for k, v in _todo:
             try:
                 processed = process_property(k, v)
-                if isinstance(processed, dict):
-                    todo.update(processed)
+                if isinstance(processed, list):
+                    todo.extend(processed)
                 else:
                     done[k] = processed
+            except BugError:
+                raise
             except AssertionError as e:
                 reason = e.args[0] if e.args else "Invalid Property"
                 log_error(f"CSS: {reason} ({k}: {v})")
     return done
 
 
-
-def process(d: list[InputProperty] | InputStyle) -> Style:
+def process(d: InputStyle) -> Style:
     """
-    Take a list of InputProperties or an InputStyle and process it into a Style
+    Take an InputStyle and process it into a Style
     """
     imp, nimp = map(
         lambda x: process_input(remove_important(x)),
-        group_by_bool(
-            (d if isinstance(d, list) else d.items()), lambda t: is_imp(t[1])
-        )
+        group_by_bool(d, lambda t: is_imp(t[1])),
     )
     return add_important(nimp, False) | add_important(imp, True)
 
@@ -881,8 +910,10 @@ def compute_style(
         case "inherit":
             return p_style[key]
         case "initial":
+            raise BugError("This case shouldn't happen")
             return redirect(attr.initial)
         case "unset":
+            raise BugError("This case shouldn't happen")
             return redirect(abs_default_style[key])
         case "revert":
             return (
