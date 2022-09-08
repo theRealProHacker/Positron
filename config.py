@@ -1,7 +1,6 @@
+# fmt: off
 """ Any global variables are stored here"""
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
-from queue import Queue
 from own_types import Color, Cache, FrozenDCache
 
 # This problem is proof that typing in python doesn't work
@@ -36,6 +35,7 @@ def reset_config():
     g.update({
         "lang": "",                 # str # the document language. this is set in Element.py by the HTMLElement
         "title": "",                # str # the document title. this is set in Element.py by the title element
+        "icon_srcs":[],             # list[str] specified icon srcs
         "recompute": True,          # bool
         "reload": False,            # bool
         "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache

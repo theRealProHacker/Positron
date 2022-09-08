@@ -19,14 +19,14 @@ with open(os.devnull, "w") as f, redirect_stdout(f):
 import util
 from config import g, reset_config, watch_file
 from Element import HTMLElement, apply_style, create_element
-from J import J, SingleJ # for console
+from J import J, SingleJ  # for console
+import Media
 from own_types import Surface, Vector2
 
 # setup
 pg.init()
 logging.basicConfig(level=logging.INFO)
 
-did_set_mode = False
 running = False
 
 CLOCK = pg.time.Clock()
@@ -43,8 +43,7 @@ def set_mode():
     """
     Call this after setting g manually. This will probably change to an API function
     """
-    global SCREEN, DIM, W, H, did_set_mode
-    did_set_mode = True
+    global SCREEN, DIM, W, H
     # Display Mode
     W, H = DIM = Vector2((g["W"], g["H"]))
     flags = pg.SCALED | pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
@@ -88,23 +87,29 @@ async def tick(time: int):
 async def main(file: str):
     """The main function that includes the main event-loop"""
     global running
+    tree: HTMLElement
     if running:
         raise RuntimeError("Already running")
     running = True
     reset_config()
     g["file_watcher"] = util.FileWatcher()
     file = watch_file(file)
-
     html = util.fetch_txt(file)
     parsed = html5lib.parse(html)
-    tree: HTMLElement = create_element(parsed)
+    g["root"] = tree = create_element(parsed)
     logging.debug(tree.to_html())
     pg.display.set_caption(g["title"])
-    g["root"] = tree
+    _icon: Media.MultiImage = Media.MultiImage(g["icon_srcs"], sync=True)
     await asyncio.gather(
-        *(task for task in g["tasks"] if task.sync),
+        *filter(lambda task: task.sync, util.consume_list(g["tasks"])),
         return_exceptions=False
     )
+    assert _icon.loading_task
+    await _icon.loading_task
+    if _icon._surf:
+        pg.display.set_icon(_icon.surf)
+        _icon.unload()
+    set_mode()
     while True:
         end = False
         for event in pg.event.get():
@@ -116,7 +121,9 @@ async def main(file: str):
                 g["recompute"] = True
         if end:
             break
-        if g["css_dirty"] or g["css_sheet_len"] != len(g["css_sheets"]): # addition or subtraction (or both)
+        if g["css_dirty"] or g["css_sheet_len"] != len(
+            g["css_sheets"]
+        ):  # addition or subtraction (or both)
             apply_style()
             g["recompute"] = True
         if g["recompute"]:
@@ -131,13 +138,12 @@ async def main(file: str):
         pg.display.flip()
     running = False
 
+
 async def run(file: str):
     """
-    Runs the application with mode_setting, restart and the console
+    Runs the application
     """
     logging.info("Starting")
-    if not did_set_mode:
-        set_mode()
     if uses_aioconsole:
         task = asyncio.create_task(Console())
     try:
@@ -146,11 +152,13 @@ async def run(file: str):
             logging.info("Reloading")
             await main(file)
     except asyncio.exceptions.CancelledError:
-        pass
+        return
     finally:
         if uses_aioconsole:
             task.cancel()
             await task
+        if True:
+            await util.delete_created_files()
         pg.quit()
         logging.info("Exiting")
 

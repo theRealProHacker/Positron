@@ -1,4 +1,5 @@
 import asyncio
+import io
 import os
 from contextlib import suppress
 
@@ -10,11 +11,20 @@ from pytest import raises
 import Box
 import Element
 import J
+import rounded_box
 import Style
 import util
-from Element import (AndSelector, ClassSelector, DirectChildSelector,
-                     HasAttrSelector, IdSelector, TagSelector, parse_selector,
-                     rel_p, sngl_p)
+from Element import (
+    AndSelector,
+    ClassSelector,
+    DirectChildSelector,
+    HasAttrSelector,
+    IdSelector,
+    TagSelector,
+    parse_selector,
+    rel_p,
+    sngl_p,
+)
 from own_types import Auto, Color, FrozenDCache, Length, Rect
 
 # https://stackoverflow.com/a/70016047/15046005
@@ -24,19 +34,12 @@ pytest_plugins = ("pytest_asyncio",)
 def test_joint():
     style = Style.remove_important(Style.parse_inline_style("""margin: 0 auto"""))
     assert style == {
-        "margin-top": "0",
-        "margin-right": "auto",
-        "margin-bottom": "0",
-        "margin-left": "auto",
-    }
-    comp_style = {k: Element.process_style("test", v, k, {}) for k, v in style.items()}
-    assert comp_style == {
-        "margin-top": Length(0),
+        "margin-top": Length(0.0),
         "margin-right": Auto,
-        "margin-bottom": Length(0),
+        "margin-bottom": Length(0.0),
         "margin-left": Auto,
     }
-    margin = Style.mrg_getter(comp_style)
+    margin = Style.mrg_getter(style)
     assert margin[Box._horizontal] == (Auto, Auto)
     assert margin[Box._vertical] == (Length(0), Length(0))
 
@@ -47,7 +50,7 @@ def test_joint():
         """
         )
     )
-    comp_style = {k: Element.process_style("test", v, k, {}) for k, v in style.items()}
+    comp_style = {k: Style.compute_style("test", v, k, {}) for k, v in style.items()}
     box, set_height = Box.make_box(900, comp_style, 900, 600)
     assert set_height == util.noop  # height is defined
     mrg_r_l = (900 - 200 - 3 * 2 - 10 * 2) / 2
@@ -103,8 +106,10 @@ def test_style_computing():
     assert Style.length("3px", {}) == Length(3)
 
     assert Style.color("rgb(120,120,120)", {}) == Color(*(120,) * 3)
-    assert Style.style_attrs["color"].accept("rgb(120,120,120)", {}) == Color(*(120,) * 3)
-    assert Style.color("rgba(120,120,120,120)", {}) == Color(*(120,) * 4)
+    assert Style.style_attrs["color"].accept("rgb(120,120,120)", {}) == Color(
+        *(120,) * 3
+    )
+    assert Style.color("rgba(120,120,120,1)", {}) == Color(*(120,) * 3, 255)
     assert Style.color("currentcolor", {"color": Color("blue")}) == Color("blue")
     assert Style.color("#fff", {}) == Style.color("#ffffff", {}) == Color("white")
     assert Style.color("#000", {}) == Style.color("#000000", {}) == Color("black")
@@ -114,6 +119,8 @@ def test_style_computing():
         "rgb(11,18,147)",
         "3px",
     ]
+    with raises(KeyError):
+        Style.style_attrs["width"].accept("3em",{})
     # TODO
     with raises(AssertionError):
         assert (
@@ -166,10 +173,11 @@ def test_style_computing():
         "border-bottom-right-radius": "1em 5em",
         "border-bottom-left-radius": "1em 5em",
     }
-    assert Style.is_valid("border-width", "medium")
-    assert Style.is_valid("border-style", "solid")
-    assert Style.is_valid("border-color", "black")
-    assert Style.process_property("border", "solid") == {"border-style": "solid"}
+    assert Style.is_valid("border-width", "medium") is not None
+    assert Style.is_valid("border-style", "solid") is not None
+    assert Style.is_valid("border-color", "black") is not None
+    assert Style.process_property("border", "solid") == {"border-style": Style.CompStr("solid")}
+    assert Style.process_property("width", "15px") == Length(15)
 
 
 def test_selector_parsing():
@@ -181,15 +189,6 @@ def test_selector_parsing():
 
     assert Element.matches("p > ", rel_p) == ("p", ">")
 
-    selector = parse_selector("a#hello.dark[target]")
-    assert selector == AndSelector(
-        (
-            TagSelector("a"),
-            IdSelector("hello"),
-            ClassSelector("dark"),
-            HasAttrSelector("target"),
-        )
-    )
     selector = parse_selector("div > a#hello.dark[target]")
     assert selector == DirectChildSelector(
         (
@@ -207,7 +206,7 @@ def test_selector_parsing():
 
 
 def test_boxes():
-    Box.mutate_tuple((1,2), 3, 0) == (3,2)
+    Box.mutate_tuple((1, 2), 3, 0) == (3, 2)
     box = Box.Box(
         "content-box", border=(3,) * 4, width=500, height=150, outer_width=True
     )
@@ -224,6 +223,19 @@ def test_J():
 
 
 def test_util():
+    assert util.in_bounds(3, 4, 5) == 4
+    assert util.ensure_suffix("test-box", "-box") == "test-box"
+    assert util.ensure_suffix("test", "-box") == "test-box"
+    l = [*range(10)]
+    for i, x in enumerate(util.consume_list(l)):
+        assert x == i
+        assert len(l) == 9-i
+    assert util._make_new_name("example.exe") == "example (2).exe"
+    assert util._make_new_name("example(1)(2).exe") == "example(1)(3).exe"
+    buffer = io.StringIO()
+    util.print_once("hello", file=buffer)
+    util.print_once("hello", file=buffer)
+    assert buffer.getvalue() == "hello\n"
     # Regex
     # finds the period followed by the two spaces and not by the single space.
     # But the regex has to be flipped (First the space, then the period)
@@ -266,25 +278,36 @@ def test_util():
     for name, val in tests.items():
         for b, items in val.items():
             for x in items:
-                assert bool(getattr(util,f"is_{name}")(x)) is b
-    assert util.abs_div(-1/2) == -2
-    assert util.abs_div(3/4) == util.abs_div(4/3)
-    #just like abs(3-4) == abs(4-3)
-    def closest_to(pivot, *xs): # these are all positive numbers definitely
-        return min(xs, key = lambda x: util.abs_div(x/pivot)) # the one with the smallest distance to the pivot wins
+                assert bool(getattr(util, f"is_{name}")(x)) is b
+    assert util.abs_div(-1 / 2) == -2
+    assert util.abs_div(3 / 4) == util.abs_div(4 / 3)
+    # just like abs(3-4) == abs(4-3)
+    def closest_to(pivot, *xs):  # these are all positive numbers definitely
+        return min(
+            xs, key=lambda x: util.abs_div(x / pivot)
+        )  # the one with the smallest distance to the pivot wins
+
     closest_to(300, 150, 450) == 450
+
+
+def test_rounded_box():
+    assert rounded_box.side2corners(
+        ["black", "red", "blue", "green"]
+    ) == [  # top, right, bottom, left
+        ("black", "green"),  # topleft
+        ("black", "red"),  # topright
+        ("blue", "red"),  # bottomright
+        ("blue", "green"),  # bottomleft
+    ]
+
 
 async def _test_async():
     # IO
-    expected_path = util.abspath("google.html")
-    with suppress(requests.exceptions.ConnectionError):
-        actual_path = await util.download("https://www.google.com/", dir=".")
-        os.remove(actual_path)
-        assert actual_path == expected_path
-    result = "Result"
-    def inner():
-        return result
-    assert await asyncio.to_thread(inner) == result
+    with pytest.raises(Exception) if not util.is_online() else suppress(requests.exceptions.ConnectionError):
+        path = await util.download("https://www.google.com/", dir=".")
+    with suppress(OSError):
+        os.remove(path)
+    assert path == util.abspath("google.html")
 
 
 def test_image_element():

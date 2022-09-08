@@ -6,11 +6,13 @@ This includes:
 - Computing, layouting and drawing the Elements
 - CSS-Selectors
 """
-
 import re
 from dataclasses import dataclass
 from functools import cache, cached_property, reduce
 from itertools import chain
+
+# fmt: off
+from pprint import pprint
 from typing import (TYPE_CHECKING, Any, Callable, Iterable, Optional, Protocol,
                     Type, Union)
 
@@ -21,17 +23,15 @@ import Media
 import rounded_box
 import Style
 from config import add_sheet, g, watch_file
-from own_types import (Auto, AutoLP4Tuple, BugError, CompValue, Dimension,
-                       DisplayType, Float4Tuple, Font, FontStyle, Normal,
-                       NormalType, Number, Percentage, Rect, StyleComputed,
-                       StyleInput, Surface, _XMLElement)
-from Style import (SourceSheet, StyleRule, abs_default_style, bc_getter,
-                   br_getter, bs_getter, bw_keys, get_style, inset_getter,
-                   pack_longhands, parse_file, parse_sheet, prio_keys,
-                   style_attrs)
-from util import (Calculator, get_groups, get_tag, group_by_bool, log_error,
-                  print_once)
+from own_types import (Auto, AutoLP4Tuple, BugError, Dimension, DisplayType,
+                       Float4Tuple, Font, FontStyle, Normal, NormalType,
+                       Number, Percentage, Rect, Surface, _XMLElement)
+from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys,
+                   get_style, inset_getter, pack_longhands, parse_file,
+                   parse_sheet, prio_keys)
+from util import Calculator, get_groups, get_tag, group_by_bool, log_error
 
+# fmt: on
 """ More useful links for further development
 https://developer.mozilla.org/en-US/docs/Web/CSS/image
 """
@@ -75,7 +75,7 @@ class Line(tuple[TextDrawItem]):
 @cache
 def get_font(family: list[str], size: float, style: FontStyle, weight: int) -> Font:
     """
-    Takes some font requirements and tries to find a best fitting one
+    Takes some font requirements and tries to find the most fitting
     """
     font = pg.font.match_font(
         name=family,
@@ -85,33 +85,6 @@ def get_font(family: list[str], size: float, style: FontStyle, weight: int) -> F
     font: Font = Font(font, int(size))
     font.italic = style.value == "oblique"
     return font
-
-
-def process_style(tag: str, val: str, key: str, p_style: StyleComputed) -> CompValue:
-    def redirect(new_val: str):
-        return process_style(tag, new_val, key, p_style)
-
-    assert isinstance(val, str), val
-    attr = style_attrs[key]
-    ######################################## global style attributes ####################################################
-    # Best and most concise explanation I could find: https://css-tricks.com/inherit-initial-unset-revert/
-    match val:
-        case "inherit":
-            return p_style[key]
-        case "initial":
-            return redirect(attr.initial)
-        case "unset":
-            return redirect(abs_default_style[key])
-        case "revert":
-            return (
-                redirect("inherit") if attr.inherits else redirect(get_style(tag)[key])
-            )
-    return (
-        valid
-        if (valid := attr.convert(val, p_style)) is not None
-        or print_once("Uncomputable property found:", key, val)
-        else redirect("unset")
-    )
 
 
 calculator = Calculator(None)
@@ -141,7 +114,7 @@ class Element:
     # Style
     istyle: Style.Style  # inline style
     estyle: Style.Style  # external style
-    cstyle: StyleComputed  # computed_style
+    cstyle: Style.FullyComputedStyle  # computed_style
     # Layout + Draw
     box: Box.Box = Box.Box.empty()
     line_height: float
@@ -191,7 +164,7 @@ class Element:
         return self.box.height if self.box.height != -1 else self.parent.get_height()
 
     @property
-    def input_style(self) -> StyleInput:
+    def input_style(self) -> Style.ResolvedStyle:
         """The total input style. Fused from inline and external style"""
         return Style.remove_important(Style.join_styles(self.istyle, self.estyle))
 
@@ -221,10 +194,10 @@ class Element:
         input_style = get_style(self.tag) | self.input_style
         keys = sorted(input_style.keys(), key=prio_keys.__contains__, reverse=True)
         parent_style = dict(self.parent.cstyle)
-        style: StyleComputed = {}
+        style: Style.FullyComputedStyle = {}
         for width_key in keys:
             val = input_style[width_key]
-            new_val = process_style(self.tag, val, width_key, parent_style)
+            new_val = Style.compute_style(self.tag, val, width_key, parent_style)
             assert new_val is not None, BugError(
                 f"Style {width_key} was set to None. Which should never happen."
             )
@@ -238,6 +211,8 @@ class Element:
         for width_key, bstyle in zip(bw_keys, bs_getter(style)):
             if bstyle in ("none", "hidden"):
                 style[width_key] = 0
+        if style["outline-style"] in ("none", "hidden"):
+            style["outline-width"] = 0
         # actual value calculation:
         fsize: float = style["font-size"]
         lh: float | NormalType | Percentage = style["line-height"]
@@ -372,8 +347,15 @@ class Element:
         draw_box.pos += pos
         border_box = draw_box.border_box
         drawing_border = any(draw_box.border)
+        radii = tuple(
+            (
+                int(calculator(brx, perc_val=border_box.width)),
+                int(calculator(bry, perc_val=border_box.height)),
+            )
+            for brx, bry in br_getter(style)
+        )
         # https://web.dev/howbrowserswork/#the-painting-order
-        # 1.+ 3. draw background and border:
+        # 1.+3. draw background and border:
         if not drawing_border:
             pg.draw.rect(surf, style["background-color"], border_box)
         else:
@@ -383,13 +365,7 @@ class Element:
                 style["background-color"],
                 bc_getter(style),
                 draw_box.border,
-                tuple(
-                    (
-                        int(calculator(brx, perc_val=border_box.width)),
-                        int(calculator(bry, perc_val=border_box.height)),
-                    )
-                    for brx, bry in br_getter(style)
-                ),
+                radii,
             )
         # 4. draw children
         if self.layout_type == "block":
@@ -408,8 +384,15 @@ class Element:
             raise BugError(f"Wrong layout_type ({self.layout_type})")
 
         # 5. draw outline
-        # TODO
-        pass
+        _out_width = style["outline-width"]
+        _out_off = style["outline-offset"] + _out_width / 2
+        rounded_box.draw_rounded_border(
+            surf,
+            border_box.inflate(2 * _out_off, 2 * _out_off),
+            colors=(style["outline-color"],) * 4,
+            widths=(_out_width,) * 4,
+            radii=radii,
+        )
 
     def delete(self):
         pass
@@ -442,12 +425,9 @@ class Element:
         Represents the elements style in a nice way for debugging
         """
         out_style = pack_longhands(
-            {k: f"{_in!r}->{self.cstyle[k]!r}" for k, _in in self.input_style.items()}
+            {k: f"{_in}->{self.cstyle[k]}" for k, _in in self.input_style.items()}
         )
-        print("{")
-        for item in out_style.items():
-            print(f"  {': '.join(item)},")
-        print("}")
+        pprint(out_style)
 
     ############################## Helpers #####################################
     def iter_anc(self) -> Iterable["Element"]:
@@ -595,26 +575,44 @@ class CommentElement(MetaElement):
         return self.to_html()
 
 
+class LinkElement(MetaElement):
+    tag = "link"
+
+    def __init__(self, attrs: dict[str, str], txt: str, parent: "Element"):
+        super().__init__(attrs, txt, parent)
+        # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link
+        # TODO:
+        # media
+        match attrs.get("rel"):
+            case "stylesheet" if (src := attrs.get("href")):
+                # TODO: disabled
+                # TODO: title
+                self.src = watch_file(src)
+                add_sheet(parse_file(self.src))
+            case "icon" if (src := attrs.get("href")):
+                # TODO: sizes
+                g["icon_srcs"].append(src)
+
+
 class ImgElement(Element):
     size: None | tuple[int, int]
     given_size: tuple[int | None, int | None]
-    image: Media.Image | None
+    image: Media.MultiImage | None
 
     def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
         # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img
         # TODO:
-        # sizes and srcset: responsiveness
-        # + source element
+        # source element
         # usemap: points to a map
         super().__init__(tag, attrs, parent)
+        # urls = [] # TODO: actually fetch the images from the srcset and sizes
         try:
-            self.image = Media.Image(
+            self.image = Media.MultiImage(
                 attrs["src"],
                 load=attrs.get("loading", "eager") != "lazy",
-                sync=attrs.get("decoding", "async")
-                == "sync",  # "auto" is synonymous with "async"
+                # "auto" is synonymous with "async"
+                sync=attrs.get("decoding", "async") == "sync",
             )
-            self.image.loading_task.add_done_callback(self.on_loaded)
             self.given_size = (
                 int(w) if (w := attrs.get("width")) is not None else None,
                 int(h) if (h := attrs.get("height")) is not None else None,
@@ -622,11 +620,6 @@ class ImgElement(Element):
         except (KeyError, ValueError):
             self.image = None
             self.given_size = (None, None)
-        self.size = self.given_size if not None in self.given_size else None  # type: ignore # as always mypy is too stupid
-
-    def on_loaded(self, future):
-        assert future.done()
-        self.size = self.make_dimensions(self.given_size, self.image.size)
 
     @staticmethod
     def make_dimensions(
@@ -646,12 +639,18 @@ class ImgElement(Element):
 
     @staticmethod
     def crop_image(surf: Surface, to_size: Dimension):
+        """
+        Makes an image fit the `to_size`
+        """
+        # TODO: don't just scale but also cut out, because scaling destroys the image
+        if surf.get_size() == to_size:
+            pass
         return pg.transform.scale(surf, to_size)
 
     def layout(self, width):
         if self.cstyle["display"] == "none" or self.image is None:
             return
-        w, h = self.size if self.size is not None else (x or 0 for x in self.given_size)
+        w, h = (x or 0 for x in self.given_size)
         self.box = Box.Box(
             self.cstyle["box-sizing"],
             # TODO: add border, margin, padding
@@ -662,14 +661,32 @@ class ImgElement(Element):
     def draw(self, surf, pos):
         if self.cstyle["display"] == "none" or self.image is None:
             return
-        if self.size is not None and self.image.is_loaded:
-            draw_surf = self.crop_image(self.image.surf, self.size)
+        if (_surf := self.image.surf) is not None:
+            draw_surf = self.crop_image(
+                _surf, self.make_dimensions(self.given_size, _surf.get_size())
+            )
             surf.blit(draw_surf, self.box.pos + pos)
 
 
 class AudioElement(Element):
-    def __init__(self):
-        pass
+    def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
+        # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/audio
+        # TODO:
+        # autoplay: right now autoplay is always on
+        # controls: both draw and event handling
+        # muted: right now muted is always off
+        # preload: probably not gonna implement fully (is only a hint)
+        # events: ...
+        super().__init__(tag, attrs, parent)
+        try:
+            self.audio = Media.Audio(
+                attrs["src"],
+                load=attrs.get("preload", "auto") not in ("none", "metadata"),
+                autoplay=True,
+                loop="loop" in attrs,
+            )
+        except (KeyError, ValueError):
+            self.image = None
 
 
 class BrElement(Element):

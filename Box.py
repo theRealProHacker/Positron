@@ -3,11 +3,14 @@ from functools import partial
 from itertools import chain
 from typing import Any, Callable, Iterable, Mapping
 
+# fmt: off
 import own_types as _o  # Just for dotted access to Auto in match
 from own_types import (Auto, AutoLP, Dimension, Float4Tuple, Index, Number,
-                       Rect, StyleComputed, Vector2)
-from Style import bw_getter, directions, mrg_getter, pad_getter
+                       Rect, Vector2)
+from Style import (FullyComputedStyle, bw_getter, directions, mrg_getter,
+                   pad_getter)
 from util import Calculator, ensure_suffix, noop, not_neg
+# fmt: on
 
 l = [("border", "padding"), ("margin",)]
 box_types = [
@@ -100,6 +103,7 @@ class Box:
     """
     A Box represents the CSS-Box-Model
     """
+
     __slots__ = ["t", "x", "y", "width", "height", "margin", "border", "padding"]
 
     def __init__(
@@ -226,7 +230,10 @@ class Box:
 
 
 def make_box(
-    given_width: float, style: StyleComputed, parent_width: float, parent_height: float
+    given_width: float,
+    style: FullyComputedStyle,
+    parent_width: float,
+    parent_height: float,
 ) -> tuple[Box, Callable[[float], None]]:
     """
     Makes a box from input.

@@ -1,12 +1,13 @@
 from contextlib import suppress
-
 from dataclasses import dataclass
 from enum import Enum as _Enum
 from enum import auto as enum_auto
 from functools import reduce
 from operator import or_
+# fmt: off
 from typing import (Any, Generator, Generic, Hashable, Iterable, Literal,
                     Mapping, TypeVar, Union)
+# fmt: on
 from weakref import WeakValueDictionary
 from xml.etree.ElementTree import Element as _XMLElement
 
@@ -24,11 +25,29 @@ class BugError(AssertionError):
     """A type of error that should never occur. If it occurs it needs to be fixed."""
 
 
+# Aliases
+##########################################################################
+
+Number = int, float  # for isinstance(x, Number)
+
+
+Dimension = Union[tuple[float, float], "Vector2"]
+Index = int | slice
+
+DisplayType = Literal["inline", "block", "none"]
+StrSent = Union[str, "Sentinel"]
+LengthPerc = Union["Length", "Percentage"]
+AutoLP = Union["AutoType", "Length", "Percentage"]
+AutoLP4Tuple = tuple[AutoLP, AutoLP, AutoLP, AutoLP]
+Float4Tuple = tuple[float, float, float, float]
+Str4Tuple = tuple[str, str, str, str]
+
 K_T = TypeVar("K_T", bound=Hashable)
 V_T = TypeVar("V_T")
+CO_T = TypeVar("CO_T", covariant=True)
+
+
 ############################ Some Classes ##############################
-
-
 class Enum(_Enum):
     def __repr__(self):
         return f"{self.__class__.__name__}.{self.name}"
@@ -44,7 +63,7 @@ class frozendict(_frozendict):
 
 class ReadChain(Mapping[K_T, V_T]):
     """A Read-Only ChainMap"""
-    
+
     def __init__(self, *maps: Mapping[K_T, V_T]):
         self.maps = maps  # immutable maps
 
@@ -99,9 +118,6 @@ class ReadChain(Mapping[K_T, V_T]):
     def parents(self):
         "New ReadChain from maps[1:]."
         return self.__class__(*self.maps[1:])
-
-
-Dimension = Union[tuple[float, float], "Vector2"]
 
 
 class Vector2(_Vector2):
@@ -213,13 +229,8 @@ Normal: NormalType = Sentinel.Normal
 #################################################
 
 ############################# WeakRefCache ###############################
-
-
-class weakstr(str):
-    pass
-
-
-redirect: dict[type, type] = {str: weakstr}
+# used for weak referencing strings. TODO: Check whether that actually makes sense
+redirect: dict[type, type] = {str: type("weakstr", (str,), {})}
 
 
 class Cache(
@@ -259,25 +270,6 @@ class FrozenDCache(Cache[frozendict]):
         frz = frozendict(d)
         return super().add(frz)
 
-
-##########################################################################
-
-
-Index = int | slice
-StyleInput = dict[str, str]
-CompValue = Any  # | float | Percentage | Sentinel| FontStyle | Color | str
-StyleComputed = Mapping[str, CompValue]
-
-Number = int, float
-
-DisplayType = Literal["inline", "block", "none"]
-LengthPerc = Length | Percentage
-AutoLP = Length | Percentage | AutoType
-AutoLP4Tuple = tuple[AutoLP, AutoLP, AutoLP, AutoLP]
-Float4Tuple = tuple[float, float, float, float]
-# SNP = Sentinel | float | Percentage
-# SNP_T = TypeVar("SNP_T", bound=SNP, covariant=True)
-# SNP4Tuple = tuple[SNP, SNP, SNP, SNP]
 
 ######################### Copied from _typeshed ############################
 
