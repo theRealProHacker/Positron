@@ -155,7 +155,7 @@ class Acceptor(Protocol[CompValue_T]):
         ...
 
 
-def css_func(value: str, name: str) -> list[str] | None:
+def css_func(value: str, name: str):
     if value.startswith(name + "(") and value.endswith(")"):
         return re.split(r"\s*,\s*", value.removeprefix(name + "(").removesuffix(")"))
 
