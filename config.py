@@ -1,4 +1,3 @@
-# fmt: off
 """ Any global variables are stored here"""
 from typing import Any
 from own_types import Color, Cache, FrozenDCache
@@ -12,7 +11,7 @@ from own_types import Color, Cache, FrozenDCache
 # So we would end up in one big file where every change had to be noted in different places all over a 1000s of lines long file
 # My advice to anyone trying to use typing in python: shoot yourself before it's too late
 
-
+# fmt: off
 g: dict[str, Any] = {
     # User settable
     "W": 900,                       # int
@@ -22,6 +21,7 @@ g: dict[str, Any] = {
     "frameless": False,             # bool
     "allow_screen_saver": True,     # bool
     "default_font_size": 16,        # float
+    "zoom": 1,                      # float
     # reserved
     "root": None,                   # the html element
     "file_watcher": None,           # the file watcher
@@ -45,7 +45,7 @@ def reset_config():
         "tasks": []                 # list of tasks that are started in synchronous functions
     })
     g["global_sheet"].clear()
-# main must reset
+# fmt: on
 
 def add_sheet(sheet: Any):
     """

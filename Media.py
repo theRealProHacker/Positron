@@ -25,10 +25,9 @@ async def load_surf(url: str):
         surf_cache[url] = surf = await asyncio.to_thread(pg.image.load, file)  # type: ignore[assignment]
     return surf
 
-
-class MultiImage:
+class Image:
     """
-    A Image represents a single image with multiple sources
+    Represents a single image with multiple sources
     """
 
     _surf: Surface | None

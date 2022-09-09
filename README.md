@@ -17,6 +17,9 @@
 - [Firefox Source Structure](https://firefox-source-docs.mozilla.org/contributing/directory_structure.html)
 
 # Thoughts
+## Use less RegEx
+Many consider regular expressions to be the best thing if it comes to text processing. 
+However, it often makes more sense to use other tools like `str.removesuffix()` or `str.split()`/`re.split()`
 ## Feature Ideas
 - https://web.archive.org/web/20110210133151/http://refactormycode.com/codes/333-sanitize-html
 - animated GIF support (https://yeahexp.com/how-to-insert-animated-gif-into-pygame/)
@@ -103,6 +106,7 @@ These specify the attributes with their types and constraints. Every computed ty
     - To: `Color`
 - display: keyword
 - background-color: `Color`
+- background-image: `tuple[Drawable, ...]`
 - width: 
     - From: `auto` or `length-percentage`
     - To: `Length` (>=0) or `Auto` or `Percentage`
@@ -125,7 +129,6 @@ These specify the attributes with their types and constraints. Every computed ty
 
 1. Numbers in CSS can be written with a trailing `.`  
 Example: `line-height: 12.` (Please don't do this)
-2. `rgb(r,g,b,a)` is also valid, as is `rgba(r,g,b)`
 3. `margin: 0 0 inherit inherit` is also valid and maps to 
 ```css
 margin-top: 0;

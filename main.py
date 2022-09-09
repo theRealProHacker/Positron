@@ -99,7 +99,7 @@ async def main(file: str):
     g["root"] = tree = create_element(parsed)
     logging.debug(tree.to_html())
     pg.display.set_caption(g["title"])
-    _icon: Media.MultiImage = Media.MultiImage(g["icon_srcs"], sync=True)
+    _icon: Media.Image = Media.Image(g["icon_srcs"], sync=True)
     await asyncio.gather(
         *filter(lambda task: task.sync, util.consume_list(g["tasks"])),
         return_exceptions=False

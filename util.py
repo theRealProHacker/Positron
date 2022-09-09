@@ -18,6 +18,7 @@ from typing import Any, Callable, Iterable, Sequence
 from urllib.error import URLError
 from urllib.parse import urlparse
 
+import numpy as np
 import pygame as pg
 import pygame.freetype as freetype
 import requests
@@ -25,11 +26,13 @@ import tldextract
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
+# fmt: off
 from config import all_units, g
 from own_types import (K_T, V_T, Auto, AutoLP, AutoLP4Tuple, BugError, Cache,
                        Color, Dimension, Event, Float4Tuple, Length, OpenMode,
                        OpenModeReading, OpenModeWriting, Percentage, Rect,
                        Surface, Vector2, _XMLElement)
+# fmt: on
 
 mimetypes.init()
 
@@ -224,6 +227,7 @@ def consume_list(l: list[V_T]):
     """
     while l:
         yield l.pop(0)
+
 
 def consume_dict(d: dict[K_T, V_T]):
     """
@@ -618,6 +622,10 @@ for key, regex in regexes.items():
 ############################# Pygame related #############################
 
 pg.init()
+
+# https://stackoverflow.com/questions/40094938/numpy-how-i-can-determine-if-all-elements-of-numpy-array-are-equal-to-a-number
+def surf_opaque(surf: Surface):
+    return np.all(pg.surfarray.array_alpha(surf) == 255)
 
 
 def draw_text(

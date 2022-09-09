@@ -1,12 +1,15 @@
+"""
+A single source of thruth for types that are used in the other modules.
+Instead of importing Rects or Vectors from pygame, import them from here. 
+"""
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import Enum as _Enum
-from enum import auto as enum_auto
 from functools import reduce
 from operator import or_
 # fmt: off
 from typing import (Any, Generator, Generic, Hashable, Iterable, Literal,
-                    Mapping, TypeVar, Union)
+                    Mapping, Protocol, TypeVar, Union)
 # fmt: on
 from weakref import WeakValueDictionary
 from xml.etree.ElementTree import Element as _XMLElement
@@ -15,7 +18,6 @@ import pygame as pg
 from frozendict import FrozenOrderedDict as _frozendict
 from pygame.event import Event
 from pygame.font import Font
-from pygame.mask import Mask
 from pygame.math import Vector2 as _Vector2
 from pygame.rect import Rect as _Rect
 from pygame.surface import Surface
@@ -41,6 +43,7 @@ AutoLP = Union["AutoType", "Length", "Percentage"]
 AutoLP4Tuple = tuple[AutoLP, AutoLP, AutoLP, AutoLP]
 Float4Tuple = tuple[float, float, float, float]
 Str4Tuple = tuple[str, str, str, str]
+Radii = tuple[tuple[int, int], ...] # actually we know that these are definitely exactly 4, but we don't care
 
 K_T = TypeVar("K_T", bound=Hashable)
 V_T = TypeVar("V_T")
@@ -48,6 +51,10 @@ CO_T = TypeVar("CO_T", covariant=True)
 
 
 ############################ Some Classes ##############################
+class Drawable(Protocol):
+    def draw(self, surf: Surface, pos: Dimension):
+        pass
+    
 class Enum(_Enum):
     def __repr__(self):
         return f"{self.__class__.__name__}.{self.name}"
@@ -215,16 +222,18 @@ class Length(float):
 
 ################## Sentinels ###################
 class Sentinel(Enum):
-    Auto = enum_auto()
-    Normal = enum_auto()
-
+    Auto = "auto"
+    Normal = "normal"
+    # None_ = "none"
 
 # Type Aliases
 AutoType = Literal[Sentinel.Auto]
 NormalType = Literal[Sentinel.Normal]
+# NoneType_ = Literal[Sentinel.None_]
 
 Auto: AutoType = Sentinel.Auto
 Normal: NormalType = Sentinel.Normal
+# None_: NoneType_ = Sentinel.None_
 
 #################################################
 
