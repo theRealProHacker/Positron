@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from enum import Enum as _Enum
 from functools import reduce
 from operator import or_
+
 # fmt: off
 from typing import (Any, Generator, Generic, Hashable, Iterable, Literal,
                     Mapping, Protocol, TypeVar, Union)
@@ -43,7 +44,9 @@ AutoLP = Union["AutoType", "Length", "Percentage"]
 AutoLP4Tuple = tuple[AutoLP, AutoLP, AutoLP, AutoLP]
 Float4Tuple = tuple[float, float, float, float]
 Str4Tuple = tuple[str, str, str, str]
-Radii = tuple[tuple[int, int], ...] # actually we know that these are definitely exactly 4, but we don't care
+Radii = tuple[
+    tuple[int, int], ...
+]  # actually we know that these are definitely exactly 4, but we don't care
 
 K_T = TypeVar("K_T", bound=Hashable)
 V_T = TypeVar("V_T")
@@ -54,7 +57,8 @@ CO_T = TypeVar("CO_T", covariant=True)
 class Drawable(Protocol):
     def draw(self, surf: Surface, pos: Dimension):
         pass
-    
+
+
 class Enum(_Enum):
     def __repr__(self):
         return f"{self.__class__.__name__}.{self.name}"
@@ -179,14 +183,84 @@ class Rect(_Rect):
 class Percentage:
     value: float
 
-    def __mul__(self, other: float) -> float:
-        return other * self.value * 0.01
+    def __add__(self, other: "Percentage") -> "Percentage":
+        if not isinstance(other, Percentage):
+            raise ValueError
+        return Percentage(self.value + other.value)
 
-    def __rmul__(self, other: float) -> float:
-        return other * self.value * 0.01
+    def __sub__(self, other: "Percentage") -> "Percentage":
+        if not isinstance(other, Percentage):
+            raise ValueError
+        return Percentage(self.value - other.value)
+
+    def resolve(self, other: float):
+        if not isinstance(other, Number):
+            raise ValueError
+        return self.value * other * 0.01
+
+    def __mul__(self, other: float) -> "Percentage":
+        if not isinstance(other, Number):
+            raise ValueError
+        return Percentage(self.value * other)
+
+    def __rmul__(self, other: float) -> "Percentage":
+        if not isinstance(other, Number):
+            raise ValueError
+        return Percentage(self.value * other)
+
+    def __div__(self, other: float) -> "Percentage":
+        if not isinstance(other, Number):
+            raise ValueError
+        return Percentage(self.value / other)
+
+    def __float__(self):
+        return self.value
 
     def __repr__(self):
         return str(self.value).removesuffix(".0") + "%"
+
+
+@dataclass(frozen=True)
+class Length:
+    value: float
+
+    def __add__(self, other: "Length")->"Length":
+        if not isinstance(other, Length):
+            raise ValueError
+        return Length(self.value + float(other))
+
+    def __sub__(self, other: "Length")->"Length":
+        if not isinstance(other, Length):
+            raise ValueError
+        return Length(self.value - float(other))
+
+    def __mul__(self, other: float)->"Length":
+        if not isinstance(other, Number):
+            if self.value == 0:
+                return Length(0)
+            raise ValueError
+        return Length(self.value * other)
+
+    def __rmul__(self, other: float)->"Length":
+        if not isinstance(other, Number):
+            if self.value == 0:
+                return Length(0)
+            raise ValueError
+        return Length(self.value * other)
+
+    def __div__(self, other: float)->"Length":
+        if not isinstance(other, Number):
+            raise ValueError
+        return Length(self.value / other)
+
+    def __int__(self):
+        return int(self.value)
+
+    def __float__(self):
+        return self.value
+
+    def __repr__(self):
+        return f"Length({self.value})"
 
 
 @dataclass(frozen=True)
@@ -213,9 +287,9 @@ class Color(pg.Color):
         return f"Color{super().__repr__()}"
 
 
-class Length(float):
-    def __repr__(self):
-        return f"Length({super().__repr__()})"
+class CompStr(str):
+    def __repr__(self) -> str:
+        return f"CompStr({self})"
 
 
 ################################################
@@ -225,6 +299,7 @@ class Sentinel(Enum):
     Auto = "auto"
     Normal = "normal"
     # None_ = "none"
+
 
 # Type Aliases
 AutoType = Literal[Sentinel.Auto]

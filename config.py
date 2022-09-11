@@ -47,6 +47,7 @@ def reset_config():
     g["global_sheet"].clear()
 # fmt: on
 
+
 def add_sheet(sheet: Any):
     """
     Add a sheet to the global css_sheets
@@ -55,12 +56,14 @@ def add_sheet(sheet: Any):
     g["global_sheet"] += sheet
     g["css_dirty"] = True
 
+
 def watch_file(file: str) -> str:
     """
-    Add the file to the watched files. 
+    Add the file to the watched files.
     The caller has to hold on to the file until it shouldn't be watched anymore
     """
     return g["file_watcher"].add_file(file)
+
 
 ################################ constant data ########################
 
@@ -132,4 +135,27 @@ abs_length_units = {
     "in": 96,
     "pc": 16,
     "pt": 4 / 3,
+}
+rel_length_units = {
+    "cap",
+    "ch",
+    "em",
+    "ex",
+    "ic",
+    "lh",
+    "rem",
+    "rlh",
+    "vh",
+    "vw",
+    "vmax",
+    "vmin",
+    "vb",
+    "vi",
+    "px",
+    "cm",
+    "mm",
+    "Q",
+    "in",
+    "pc",
+    "pt",
 }
