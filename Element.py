@@ -170,7 +170,7 @@ class Element:
     @property
     def input_style(self) -> Style.ResolvedStyle:
         """The total input style. Fused from inline and external style"""
-        return {k: v[0] for k, v in Style.join_styles(self.istyle, self.estyle).items()}
+        return Style.remove_importantd(Style.join_styles(self.istyle, self.estyle))
 
     ####################################  Main functions ######################################################
     @cache

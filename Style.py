@@ -277,10 +277,10 @@ literal_map = {
 literal_re = re.compile(re_join(*literal_map))
 
 
-class Calc(Acceptor[CalcValue_T | BinOp], GeneralParser):
-    _accepts: frozenset[CalcValue_T]
-    default_type: CalcValue_T|None
-    def __init__(self, *types: CalcValue_T):
+class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
+    _accepts: frozenset[CalcType]
+    default_type: CalcType|None
+    def __init__(self, *types):
         self._accepts = frozenset(types)
         try:
             self.default_type = next(iter(self._accepts.difference(no_type_types)))
@@ -301,7 +301,7 @@ class Calc(Acceptor[CalcValue_T | BinOp], GeneralParser):
             _type = units_map[unit]
             if not self.accepts_type(_type):
                 return None
-        if _type in (float, Percentage):
+        if _type in no_type_types:
             return _type(number)
         elif _type is Length:
             return _length((number, unit), p_style)
@@ -336,7 +336,7 @@ class Calc(Acceptor[CalcValue_T | BinOp], GeneralParser):
                     return None  # found no valid character
             try:
                 if self.accepts_type(
-                    get_type(rv := self.parse(stack))
+                    get_type(rv := self.parse(stack)) # type: ignore
                 ):  # run-time type checking
                     return rv
             except (ValueError, IndexError, ZeroDivisionError):
