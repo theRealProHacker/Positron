@@ -509,7 +509,8 @@ def font_size(value: str, p_style):
     if value in rel_font_size:
         return p_size * 1.2 ** rel_font_size[value]
     else:
-        rv = length_percentage(value, p_style)
+        if (rv := length_percentage(value, p_style)) is None:
+            return None
         return calculator(rv, perc_val=p_size)
 
 
@@ -596,11 +597,8 @@ def _length(dimension: tuple[float, str], p_style):
     return Length(rv)
 
 
-length = Calc(Length)
-length_percentage = Calc(Length, Percentage)
-if TYPE_CHECKING:
-    length = cast(Acceptor[Length], length)
-    length_percentage = cast(Acceptor[LengthPerc], length_percentage)
+length = cast(Acceptor[Length], Calc(Length))
+length_percentage = cast(Acceptor[LengthPerc], Calc(Length, Percentage))
 
 
 def border_radius(value: str, p_style):
