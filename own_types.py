@@ -224,31 +224,31 @@ class Percentage:
 class Length:
     value: float
 
-    def __add__(self, other: "Length")->"Length":
+    def __add__(self, other: "Length") -> "Length":
         if not isinstance(other, Length):
             raise ValueError
         return Length(self.value + float(other))
 
-    def __sub__(self, other: "Length")->"Length":
+    def __sub__(self, other: "Length") -> "Length":
         if not isinstance(other, Length):
             raise ValueError
         return Length(self.value - float(other))
 
-    def __mul__(self, other: float)->"Length":
+    def __mul__(self, other: float) -> "Length":
         if not isinstance(other, Number):
             if self.value == 0:
                 return Length(0)
             raise ValueError
         return Length(self.value * other)
 
-    def __rmul__(self, other: float)->"Length":
+    def __rmul__(self, other: float) -> "Length":
         if not isinstance(other, Number):
             if self.value == 0:
                 return Length(0)
             raise ValueError
         return Length(self.value * other)
 
-    def __div__(self, other: float)->"Length":
+    def __div__(self, other: float) -> "Length":
         if not isinstance(other, Number):
             raise ValueError
         return Length(self.value / other)

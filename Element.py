@@ -28,7 +28,7 @@ from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color, Dimension,
                        Number, Percentage, Radii, Rect, Surface, _XMLElement)
 from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys,
                    get_style, inset_getter, pack_longhands, parse_file,
-                   parse_sheet, prio_keys)
+                   parse_sheet, prio_keys, calculator)
 from util import get_groups, get_tag, group_by_bool, log_error
 
 # fmt: on
@@ -87,7 +87,6 @@ def get_font(family: list[str], size: float, style: FontStyle, weight: int) -> F
     return font
 
 
-calculator = Style.Calculator()
 """
 The main shared calculator with no default percentage_val
 """
@@ -214,9 +213,9 @@ class Element:
         """
         for bw_key, bstyle in zip(bw_keys, bs_getter(style)):
             if bstyle in ("none", "hidden"):
-                style[bw_key] = 0
+                style[bw_key] = Length(0)
         if style["outline-style"] in ("none", "hidden"):
-            style["outline-width"] = 0
+            style["outline-width"] = Length(0)
         # fonts
         fsize: float = style["font-size"]
         self.font = get_font(
@@ -390,7 +389,7 @@ class Element:
             raise BugError(f"Wrong layout_type ({self.layout_type})")
 
         # 5. draw outline
-        _out_width: int = style["outline-width"]
+        _out_width = int(calculator(style["outline-width"]))
         _out_off: float = style["outline-offset"].value + _out_width / 2
         rounded_box.draw_rounded_border(
             surf,
@@ -433,7 +432,8 @@ class Element:
         out_style = pack_longhands(
             {k: f"{_in}->{self.cstyle[k]}" for k, _in in self.input_style.items()}
         )
-        pprint(out_style)
+        for k, v in out_style.items():
+            print(f"{k}: {v}")
 
     ############################## Helpers #####################################
     def iter_anc(self) -> Iterable["Element"]:
@@ -1022,7 +1022,7 @@ class InvalidSelector(ValueError):
 def parse_selector(s: str) -> Selector:
     s = start = s.strip()
     if not s:
-        raise BugError("Empty selector")
+        raise InvalidSelector("Empty selector")
     if "," in s:
         return OrSelector(tuple(parse_selector(x) for x in s.split(",")))
     else:

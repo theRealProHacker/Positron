@@ -6,11 +6,11 @@ import re
 from abc import ABC
 from collections import defaultdict, deque
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import astuple, dataclass
 from functools import cache, partial
 from itertools import chain, islice
 from operator import itemgetter, add, sub, mul, truediv
-from typing import (Any, Callable, Generic, Iterable, Literal, Mapping, Protocol, Type, TypeVar, Union,
+from typing import (TYPE_CHECKING, Any, Callable, Generic, Iterable, Literal, Mapping, Protocol, Type, TypeVar, Union, cast,
                     overload)
 
 import tinycss
@@ -41,13 +41,6 @@ ResolvedStyle = dict[str, str | CompValue]
 Style = dict[str, Value]
 FullyComputedStyle = Mapping[str, CompValue]
 StyleRule = tuple[str, Style]
-"""
-A Style with a Selector (as a String)
-Example:
-p {
-    color: red !important;
-} -> ('p', {'color': ('red', 'True')})
-"""
 
 MediaValue = tuple[int, int]  # just the window size right now
 Rule = Union["AtRule", "StyleRule"]
@@ -142,7 +135,7 @@ inset_getter: ALPGetter = itemgetter(*inset_keys)   # type: ignore[assignment]
 mrg_getter: ALPGetter = itemgetter(*marg_keys)      # type: ignore[assignment]
 pad_getter: ALPGetter = itemgetter(*pad_keys)       # type: ignore[assignment]
 
-bw_getter: T4Getter[int] = itemgetter(*bw_keys)     # type: ignore[assignment]
+bw_getter: ALPGetter = itemgetter(*bw_keys)         # type: ignore[assignment]
 bc_getter: T4Getter[Color] = itemgetter(*bc_keys)   # type: ignore[assignment]
 bs_getter: T4Getter[str] = itemgetter(*bs_keys)     # type: ignore[assignment]
 br_getter: T4Getter[tuple[LengthPerc, LengthPerc]] = itemgetter(*br_keys)  # type: ignore[assignment]
@@ -177,9 +170,18 @@ def remove_quotes(value: str):
     return value
 
 
+def split_units(attr: str) -> tuple[float, str]:
+    """Split a dimension or percentage into a tuple of number and the "unit" """
+    if attr == "0":
+        return (0, "")
+    match = dim_pattern.fullmatch(attr.strip())
+    num, unit = match.groups()  # type: ignore # Raises AttributeError
+    return float(num), unit
+
+
 CalcTypes = Percentage, Length, Number
 CalcType = Union[Type[Length], Type[Percentage], Type[float]]
-no_type_types = frozenset({Percentage,*Number})
+no_type_types = frozenset({Percentage, *Number})
 CalcValue = Percentage | Length | float  # TODO: add Angle and more
 CalcValue_T = TypeVar("CalcValue_T", bound=CalcValue)
 Operator = Callable[[CalcValue, CalcValue], CalcValue]
@@ -214,6 +216,9 @@ class AddOp(BinOp):
             else get_type(self.right)
         )
 
+    def __hash__(self):
+        return hash(astuple(self))
+
 
 @dataclass
 class MulOp(BinOp):
@@ -227,6 +232,9 @@ class MulOp(BinOp):
             if (ltype := get_type(self.left)) is not Number
             else get_type(self.right)
         )
+
+    def __hash__(self):
+        return hash(astuple(self))
 
 
 _ParseResult = CalcValue | BinOp
@@ -279,7 +287,8 @@ literal_re = re.compile(re_join(*literal_map))
 
 class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
     _accepts: frozenset[CalcType]
-    default_type: CalcType|None
+    default_type: CalcType | None
+
     def __init__(self, *types):
         self._accepts = frozenset(types)
         try:
@@ -293,7 +302,7 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
     def acc(self, value: str, p_style):
         try:
             number, unit = split_units(value)
-        except ValueError:
+        except AttributeError:
             return None
         if not unit and self.default_type is not None:
             _type = self.default_type
@@ -336,7 +345,7 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
                     return None  # found no valid character
             try:
                 if self.accepts_type(
-                    get_type(rv := self.parse(stack)) # type: ignore
+                    get_type(rv := self.parse(stack))  # type: ignore
                 ):  # run-time type checking
                     return rv
             except (ValueError, IndexError, ZeroDivisionError):
@@ -390,13 +399,69 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
         return t[0]
 
 
-def split_units(attr: str) -> tuple[float, str]:
-    """Split a dimension or percentage into a tuple of number and the "unit" """
-    if attr == "0":
-        return (0, "")
-    match = dim_pattern.fullmatch(attr.strip())
-    num, unit = match.groups()  # type: ignore # Raises AttributeError
-    return float(num), unit
+################## Element Calculation ######################
+@dataclass
+class Calculator:
+    """
+    A calculator is for calculating the values of AlP attributes (width, height, border-width, etc.)
+    It only needs the AlP value, a percentage value and an auto value. If latter are None then they will raise an Exception
+    if a Percentage or Auto are encountered respectively
+    """
+
+    default_perc_val: float | None = None
+
+    def __call__(
+        self,
+        value: AutoLP | BinOp | float,
+        auto_val: float | None = None,
+        perc_val: float | None = None,
+    ) -> float:
+        """
+        This helper function takes a value, an auto_val
+        and the perc_value and returns a Number
+        if the value is Auto then the auto_value is returned
+        if the value is a Length that is returned
+        if the value is a Percentage the Percentage is multiplied with the perc_value
+        """
+        if isinstance(value, float):
+            return value
+        elif value is Auto:
+            assert auto_val is not None, BugError("This attribute cannot be Auto")
+            return auto_val
+        elif isinstance(value, Length):
+            return value.value
+        elif isinstance(value, Percentage):
+            perc_val = make_default(perc_val, self.default_perc_val)
+            assert perc_val is not None, BugError(
+                "This attribute cannot be a percentage"
+            )
+            return value.resolve(perc_val)
+        elif isinstance(value, BinOp):
+            new_value = type(value)(
+                self(value.left, auto_val, perc_val),
+                value.op,
+                self(value.right, auto_val, perc_val),
+            )
+            rv = new_value.resolve()
+            assert isinstance(rv, float), BugError(
+                f"Calculator couldn't resolve BinOp, {value}, {auto_val}, {perc_val}"
+            )
+            return rv
+        raise TypeError
+
+    def _multi(self, values: Iterable[AutoLP], *args):
+        return tuple(self(val, *args) for val in values)
+
+    # only relevant for typing
+    def multi2(self, values: tuple[AutoLP, AutoLP], *args) -> tuple[float, float]:
+        return self._multi(values, *args)
+
+    def multi4(self, values: AutoLP4Tuple, *args) -> Float4Tuple:
+        return self._multi(values, *args)
+
+
+calculator = Calculator()
+####################################################################
 
 
 def no_change(value: str, p_style) -> str:
@@ -431,7 +496,7 @@ def color(value: str, p_style):
 
 
 def number(value: str, p_style):
-    if not re.match(dec_re, value):  # Just to avoid non decimal input
+    if not number_pattern.fullmatch(value):  # Just to avoid non decimal input
         return None
     with suppress(ValueError):
         return float(value)
@@ -444,7 +509,8 @@ def font_size(value: str, p_style):
     if value in rel_font_size:
         return p_size * 1.2 ** rel_font_size[value]
     else:
-        return length_percentage(value, p_style, p_size)
+        rv = length_percentage(value, p_style)
+        return calculator(rv, perc_val=p_size)
 
 
 def font_weight(value: str, p_style):
@@ -530,20 +596,11 @@ def _length(dimension: tuple[float, str], p_style):
     return Length(rv)
 
 
-def length(value: str, p_style):
-    with suppress(AttributeError):
-        return _length(split_units(value), p_style)
-
-
-def length_percentage(value: str, p_style, mult: float | None = None):
-    with suppress(AttributeError):
-        num, unit = split_units(value)
-        if (
-            unit == "%"
-        ):  # this resolves the Percentage automatically if it can already be resolved
-            return Percentage(num) if mult is None else Length(mult * num * 0.01)
-        else:
-            return _length((num, unit), p_style)
+length = Calc(Length)
+length_percentage = Calc(Length, Percentage)
+if TYPE_CHECKING:
+    length = cast(Acceptor[Length], length)
+    length_percentage = cast(Acceptor[LengthPerc], length_percentage)
 
 
 def border_radius(value: str, p_style):
@@ -583,7 +640,7 @@ class StyleAttr(Generic[CompValue_T]):
         initial: str,
         kws: set[StrSent] | Mapping[str, CompValue_T] = {},
         acc: Acceptor[CompValue_T] = noop,
-        inherits: bool = None,
+        inherits: bool = False,
     ):
         """
         If the kws are a set then they are automatically converted into a dict
@@ -592,10 +649,7 @@ class StyleAttr(Generic[CompValue_T]):
         self.initial = initial
         self.kws = self.set2dict(kws) if isinstance(kws, set) else kws
         self.acc = acc
-        inherits = acc is not length_percentage if inherits is None else inherits
-        self.inherits = (
-            inherits if inherits is not None else acc is not length_percentage
-        )
+        self.inherits = inherits
 
     def set2dict(
         self, s: set[StrSent]
@@ -621,17 +675,10 @@ normal: dict[str, AutoType] = {"normal": Auto}  # normal is internally mapped to
 AALP = StyleAttr(
     "auto",
     auto,
-    Calc(Length, Percentage),
+    length_percentage,
 )
 
-BorderWidthAttr: StyleAttr[int] = StyleAttr(
-    "medium",
-    abs_border_width,
-    lambda value, p_style: int(x)
-    if (x := length_percentage(value, p_style)) is not None
-    else None,
-    inherits=False,
-)
+BorderWidthAttr: StyleAttr[Length] = StyleAttr("medium", abs_border_width, length)
 BorderStyleAttr: StyleAttr[str] = StyleAttr(
     "none",
     {
@@ -646,30 +693,25 @@ BorderStyleAttr: StyleAttr[str] = StyleAttr(
         "inset",
         "outset",
     },
-    inherits=False,
 )
-BorderColorAttr: StyleAttr[Color] = StyleAttr("currentcolor", acc=color, inherits=False)
-BorderRadiusAttr: StyleAttr[LengthPerc] = StyleAttr(
-    "0", acc=border_radius, inherits=False
-)
+BorderColorAttr: StyleAttr[Color] = StyleAttr("currentcolor", acc=color)
+BorderRadiusAttr: StyleAttr[LengthPerc] = StyleAttr("0", acc=border_radius)
 
 
 prio_keys = {"color", "font-size"}  # currentcolor and 1em for example
 
 
 style_attrs: dict[str, StyleAttr[CompValue]] = {
-    "color": StyleAttr("canvastext", acc=color),
-    "font-weight": StyleAttr("normal", abs_font_weight, font_weight),
-    "font-family": StyleAttr("Arial", acc=no_change),
-    "font-size": StyleAttr("medium", acc=font_size),
-    "font-style": StyleAttr("normal", acc=font_style),
-    "line-height": StyleAttr(
-        "normal", normal, combine_accs(number, length_percentage), True
-    ),
+    "color": StyleAttr("canvastext", acc=color, inherits=True),
+    "font-weight": StyleAttr("normal", abs_font_weight, font_weight, inherits=True),
+    "font-family": StyleAttr("Arial", acc=no_change, inherits=True),
+    "font-size": StyleAttr("medium", acc=font_size, inherits=True),
+    "font-style": StyleAttr("normal", acc=font_style, inherits=True),
+    "line-height": StyleAttr("normal", normal, Calc(Number, Length, Percentage), True),
     "word-spacing": StyleAttr("normal", normal, length_percentage, True),
     "display": StyleAttr("inline", {"inline", "block", "none"}),
     "background-color": StyleAttr("transparent", acc=color),
-    "background-image": StyleAttr("none", {"none": tuple()}, background_image, False),
+    "background-image": StyleAttr("none", {"none": tuple()}, background_image),
     "width": AALP,
     "height": AALP,
     "position": StyleAttr(
@@ -684,7 +726,7 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
     "outline-width": BorderWidthAttr,
     "outline-style": BorderStyleAttr,
     "outline-color": BorderColorAttr,
-    "outline-offset": StyleAttr("0", acc=length, inherits=False),
+    "outline-offset": StyleAttr("0", acc=length),
 }
 
 abs_default_style: dict[str, str] = {
@@ -703,6 +745,9 @@ element_styles: dict[str, dict[str, str]] = defaultdict(
         "head": {
             "display": "none",
         },
+        "body": {
+            "display": "block",
+        },
         "span": {"display": "inline"},
         "img": {"display": "block"},
         "h1": {
@@ -712,11 +757,11 @@ element_styles: dict[str, dict[str, str]] = defaultdict(
             "margin-right": "0",
             "margin-left": "0",
         },
-        # "p": {
-        #     "display": "block",
-        #     "margin-top": "1em",
-        #     "margin-bottom": "1em",
-        # },
+        "p": {
+            "display": "block",
+            "margin-top": "1em",
+            "margin-bottom": "1em",
+        },
     },
 )
 
@@ -1147,67 +1192,6 @@ def compute_style(
             except KeyError:
                 print_once("Uncomputable property found:", key, val)
                 return redirect("unset")
-
-
-################## Element Calculation ######################
-@dataclass
-class Calculator:
-    """
-    A calculator is for calculating the values of AlP attributes (width, height, border-width, etc.)
-    It only needs the AlP value, a percentage value and an auto value. If latter are None then they will raise an Exception
-    if a Percentage or Auto are encountered respectively
-    """
-
-    default_perc_val: float | None = None
-
-    def __call__(
-        self,
-        value: AutoLP | BinOp | float,
-        auto_val: float | None = None,
-        perc_val: float | None = None,
-    ) -> float:
-        """
-        This helper function takes a value, an auto_val
-        and the perc_value and returns a Number
-        if the value is Auto then the auto_value is returned
-        if the value is a Length that is returned
-        if the value is a Percentage the Percentage is multiplied with the perc_value
-        """
-        if isinstance(value, float):
-            return value
-        elif value is Auto:
-            assert auto_val is not None, BugError("This attribute cannot be Auto")
-            return auto_val
-        elif isinstance(value, Length):
-            return value.value
-        elif isinstance(value, Percentage):
-            perc_val = make_default(perc_val, self.default_perc_val)
-            assert perc_val is not None, BugError(
-                "This attribute cannot be a percentage"
-            )
-            return value.resolve(perc_val)
-        elif isinstance(value, BinOp):
-            value.left = self(value.left, auto_val, perc_val)
-            value.right = self(value.right, auto_val, perc_val)
-            rv = value.resolve()
-            assert isinstance(rv, float), BugError(
-                f"Calculator couldn't resolve BinOp, {value}, {auto_val}, {perc_val}"
-            )
-            return rv
-        raise TypeError
-
-    def _multi(self, values: Iterable[AutoLP], *args):
-        return tuple(self(val, *args) for val in values)
-
-    # only relevant for typing
-    def multi2(self, values: tuple[AutoLP, AutoLP], *args) -> tuple[float, float]:
-        return self._multi(values, *args)
-
-    def multi4(self, values: AutoLP4Tuple, *args) -> Float4Tuple:
-        return self._multi(values, *args)
-
-
-####################################################################
 
 
 def pack_longhands(d: ResolvedStyle | FullyComputedStyle) -> ResolvedStyle:

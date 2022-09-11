@@ -124,12 +124,16 @@ These specify the attributes with their types and constraints. Every computed ty
 - box-sizing: `content-box` or `border-box`
 - margin(tbrl): `Length` or `Auto` or `Percentage`
 - padding(tbrl): `Length` or `Auto` or `Percentage`
-- border-width(tbrl) and outline-width: `int`
-- border-style(tbrl) and outline-style: `str` (https://drafts.csswg.org/css-backgrounds/#border-style)
+- border-width(tbrl) and outline-width: `Length`
+- border-style(tbrl) and outline-style: `CompStr` (https://drafts.csswg.org/css-backgrounds/#border-style)
 - border-color(tbrl) and outline-color: `Color`
 - border-radius: `Length` or `Percentage`
-- line-height: `Number` or `Length` or `Percentage` or `Auto`
-- word-spacing: `Number` or `Percentage` or `Auto`
+- line-height: 
+    - From: `number`, `length-percentage`, `normal`
+    - To: `Number` or `Length` or `Percentage` or `Auto`
+- word-spacing: 
+    - From: `length-percentage`, `normal`
+    - To: `Length` or `Percentage` or `Auto`
 
 ## Documented differences to the specifications
 
