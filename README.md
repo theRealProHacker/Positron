@@ -1,5 +1,7 @@
 # Simple comments
 
+[![Join the chat at https://gitter.im/Positron-Contributors/community](https://badges.gitter.im/Positron-Contributors/community.svg)](https://gitter.im/Positron-Contributors/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 # Sources (MVPs)
 - [MDN](developer.mozilla.org)
 - [The official HTML specifications](html.spec.whatwg.org)
