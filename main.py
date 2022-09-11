@@ -78,12 +78,6 @@ async def Console():
             print("Console error:", e)
 
 
-async def tick(time: int):
-    """Await the next tick. In this spare time all async tasks can be run."""
-    # https://youtu.be/GpqAQxH1Afc?t=833
-    await asyncio.to_thread(CLOCK.tick, time)
-
-
 async def main(file: str):
     """The main function that includes the main event-loop"""
     global running
@@ -131,7 +125,8 @@ async def main(file: str):
             tree.layout()
             g["recompute"] = False
 
-        await tick(30)
+        # Await the next tick. In this spare time all async tasks can be run. 
+        await asyncio.to_thread(CLOCK.tick, g["FPS"])
 
         SCREEN.fill(g["window_bg"])
         tree.draw(SCREEN, (0, 0))
