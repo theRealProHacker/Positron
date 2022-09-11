@@ -119,7 +119,7 @@ class Box:
     ):
         self.t = box_sizing(t)
         self.margin = margin
-        self.border = border
+        self.border = tuple(map(int, map(not_neg, border)))
         self.padding = padding
         self.x, self.y = pos
         self.width = (
@@ -261,7 +261,9 @@ def make_box(
     box_sizing: str = style["box-sizing"]
 
     padding = calc.multi4(pad_getter(style), 0)
-    border = bw_getter(style)
+    border = calc.multi4(
+        bw_getter(style), None, None
+    )  # doesn't allow auto or percentage
     if style["width"] is Auto:
         margin = calc.multi4(mrg_getter(style), 0)
         width = given_width  # outer width

@@ -1,6 +1,6 @@
 """ Any global variables are stored here"""
 from typing import Any
-from own_types import Color, Cache, FrozenDCache
+from own_types import Color, Cache, FrozenDCache, Length
 
 # This problem is proof that typing in python doesn't work
 # For typing GlobalDict needs access to Element (a Protocol doesn't make sense, because the Protocol would just be
@@ -87,9 +87,9 @@ abs_font_weight = {
 # border-width
 abs_border_width = {
     # copied from firefox
-    "thin": 1,
-    "medium": 3,
-    "thick": 5,
+    "thin": Length(1),
+    "medium": Length(3),
+    "thick": Length(5),
 }
 # units
 all_units = {
@@ -151,11 +151,4 @@ rel_length_units = {
     "vmin",
     "vb",
     "vi",
-    "px",
-    "cm",
-    "mm",
-    "Q",
-    "in",
-    "pc",
-    "pt",
 }
