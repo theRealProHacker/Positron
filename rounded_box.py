@@ -12,6 +12,7 @@ from own_types import (V_T, BugError, Color, Dimension, Float4Tuple, Radii, Rect
 from util import all_equal
 # fmt: on
 
+
 def mul_tup(tup1: Dimension, tup2: Dimension) -> tuple[float, float]:
     x1, y1 = tup1
     x2, y2 = tup2
@@ -105,7 +106,7 @@ def draw_rounded_border(
     box: Rect,
     colors: tuple[Color, Color, Color, Color],
     widths: Float4Tuple,
-    radii: tuple[tuple[int, int], ...],
+    radii: Radii,
 ):
     """
     Draw a rounded border
@@ -181,9 +182,7 @@ def draw_rounded_border(
             draw_rect(color, Rect.from_span(startpoint, stoppoint + counter * width))
 
 
-def draw_rounded_background(
-    surf: Surface, box: Rect, bgcolor: Color, radii: tuple[tuple[int, int], ...]
-):
+def draw_rounded_background(surf: Surface, box: Rect, bgcolor: Color, radii: Radii):
     """
     Draw just a solid color background
     """
@@ -239,11 +238,11 @@ def draw_rounded_background(
         )
 
 
-def round_surf(surf: Surface, size: Dimension, radii: tuple[tuple[int, int], ...]):
+def round_surf(surf: Surface, size: Dimension, radii: Radii):
     """
     Clip the surface on the box with the given radii
     """
-    box = Rect(0,0, *size)
+    box = Rect(0, 0, *size)
     if not any(any(t) for t in radii):
         return surf
     size = surf.get_size()

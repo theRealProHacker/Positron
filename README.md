@@ -20,12 +20,15 @@
 - [Firefox Source Structure](https://firefox-source-docs.mozilla.org/contributing/directory_structure.html)
 
 # Thoughts
+Somehow move `Selectors` out of `Element` because they don't really belong there
 ## Use less RegEx
 Many consider regular expressions to be the best thing if it comes to text processing. 
-However, it often makes more sense to use other tools like `str.removesuffix()` or `str.split()`/`re.split()`
+However, it often makes more sense to use other tools like `str.removesuffix()` or `str.split()`/`re.split()`  
+Or use a `GeneralParser` that is an easy way to tokenize a string.
 ## Feature Ideas
 - https://web.archive.org/web/20110210133151/http://refactormycode.com/codes/333-sanitize-html
 - animated GIF support (https://yeahexp.com/how-to-insert-animated-gif-into-pygame/)
+- `@when` and `@else` in CSS: https://css-tricks.com/proposal-for-css-when/
 
 ## Problems that this project is currently facing
 1. Unicode and font selection
@@ -121,12 +124,12 @@ These specify the attributes with their types and constraints. Every computed ty
 - box-sizing: `content-box` or `border-box`
 - margin(tbrl): `Length` or `Auto` or `Percentage`
 - padding(tbrl): `Length` or `Auto` or `Percentage`
-- border-width(tbrl): `int`
-- border-style(tbrl): `str` (https://drafts.csswg.org/css-backgrounds/#border-style)
-- border-color(tbrl): `Color`
+- border-width(tbrl) and outline-width: `int`
+- border-style(tbrl) and outline-style: `str` (https://drafts.csswg.org/css-backgrounds/#border-style)
+- border-color(tbrl) and outline-color: `Color`
 - border-radius: `Length` or `Percentage`
-- line-height: `Number` or `Length` or `Percentage` or `Normal`
-- word-spacing: `Number` or `Percentage` or `Normal`
+- line-height: `Number` or `Length` or `Percentage` or `Auto`
+- word-spacing: `Number` or `Percentage` or `Auto`
 
 ## Documented differences to the specifications
 

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from functools import cache
 from os.path import abspath, dirname
 from types import FunctionType
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence, overload
 from urllib.error import URLError
 from urllib.parse import urlparse
 
@@ -28,10 +28,10 @@ from watchdog.observers import Observer
 
 # fmt: off
 from config import all_units, g
-from own_types import (K_T, V_T, Auto, AutoLP, AutoLP4Tuple, BugError, Cache,
-                       Color, Dimension, Event, Float4Tuple, Length, OpenMode,
-                       OpenModeReading, OpenModeWriting, Percentage, Rect,
+from own_types import (CO_T, K_T, V_T, BugError, Cache, Color, Dimension,
+                       Event, OpenMode, OpenModeReading, OpenModeWriting, Rect,
                        Surface, Vector2, _XMLElement)
+
 # fmt: on
 
 mimetypes.init()
@@ -40,57 +40,6 @@ mimetypes.init()
 def noop(*args, **kws):
     """A no operation function"""
     return None
-
-
-################## Element Calculation ######################
-@dataclass
-class Calculator:
-    """
-    A calculator is for calculating the values of AlP attributes (width, height, border-width, etc.)
-    It only needs the AlP value, a percentage value and an auto value. If latter are None then they will raise an Exception
-    if a Percentage or Auto are encountered respectively
-    """
-
-    default_perc_val: float | None
-
-    def __call__(
-        self,
-        value: AutoLP,
-        auto_val: float | None = None,
-        perc_val: float | None = None,
-    ) -> float:
-        """
-        This helper function takes a value, an auto_val
-        and the perc_value and returns a Number
-        if the value is Auto then the auto_value is returned
-        if the value is a Length that is returned
-        if the value is a Percentage the Percentage is multiplied with the perc_value
-        """
-        perc_val = make_default(perc_val, self.default_perc_val)
-        if value is Auto:
-            assert auto_val is not None, BugError("This attribute cannot be Auto")
-            return auto_val
-        elif isinstance(value, Length):
-            return not_neg(value)
-        elif isinstance(value, Percentage):
-            assert perc_val is not None, BugError(
-                "This attribute cannot be a percentage"
-            )
-            return not_neg(perc_val * value)
-        raise TypeError
-
-    def _multi(self, values: Iterable[AutoLP], *args):
-        return tuple(self(val, *args) for val in values)
-
-    # only relevant for typing
-    def multi2(self, values: tuple[AutoLP, AutoLP], *args) -> tuple[float, float]:
-        return self._multi(values, *args)
-
-    def multi4(self, values: AutoLP4Tuple, *args) -> Float4Tuple:
-        return self._multi(values, *args)
-
-
-####################################################################
 
 
 ########################## FileWatcher #############################
@@ -221,6 +170,15 @@ def find(__iterable: Iterable[V_T], key: Callable[[V_T], bool]):
             return x
 
 
+def find_index(__iterable: Iterable[V_T], key: Callable[[V_T], bool]):
+    """
+    Find the first element in the iterable that is accepted by the key
+    """
+    for i, x in enumerate(__iterable):
+        if key(x):
+            return i
+
+
 def consume_list(l: list[V_T]):
     """
     Consume a list by removing all elements
@@ -235,6 +193,21 @@ def consume_dict(d: dict[K_T, V_T]):
     """
     while d:
         yield d.popitem()
+
+
+# tuple mutations
+def tup_replace(
+    t: tuple[CO_T, ...], slice_: int | tuple[int, int], elem: Any
+) -> tuple[CO_T, ...]:
+    """
+    Replace the part of the tuple given by slice with elem
+    """
+    if isinstance(slice_, int):
+        return *t[:slice_], elem, *t[slice_:]
+    elif isinstance(slice_, tuple):
+        start, stop = slice_
+        return *t[:start], elem, *t[stop:]
+    return
 
 
 ####################################################################
@@ -279,23 +252,6 @@ class File:
     def write(self, mode: OpenModeWriting = "w", *args, **kwargs):
         with self.open(mode, *args, **kwargs) as f:
             return f.write()
-
-
-# @contextmanager
-# def open_temp(path: str, *args, **kwargs):
-#     with open(os.path.join(os.environ["TEMP"], path), *args, **kwargs) as f:
-#         yield f
-
-# @contextmanager
-# def random_file(file_ending: str)->TextIOWrapper:
-#     file_name = hex(random.randrange(2**10))[2:]+file_ending
-#     # file_name = ''.join(str(random.randrange(0,10)) for _ in range(8))+file_ending
-#     try:
-#         with open_temp(file_name, "x") as f:
-#             yield f
-#     except FileExistsError:
-#         with random_file(file_ending) as f:
-#             yield f
 
 
 def is_online() -> bool:
@@ -492,12 +448,6 @@ def fetch_txt(src: str) -> str:
     return file.read()
 
 
-# def readf(path: str):
-#     with open(path, "r", encoding="utf-8") as file:
-#         return file.read()
-# use File(path).read() instead
-
-
 _error_logfile = File("error.log", encoding="utf-8")
 
 
@@ -511,25 +461,12 @@ def clog_error():
             yield
 
 
-def log_error(*messages, **kwargs):
-    """
-    Log an error
-    """
-    with clog_error():
-        print(*messages, **kwargs)
-
-
+log_error = clog_error()(print)
 print_once = cache(print)
+log_error_once = cache(log_error)
 ####################################################################
 
 ######################### Regexes ##################################
-def compile(patterns: Iterable[str | re.Pattern]):
-    """
-    Compile a list of patterns
-    """
-    return [re.compile(p) for p in patterns]
-
-
 def get_groups(s: str, p: re.Pattern) -> list[str] | None:
     """
     Get the matched groups of a match
@@ -551,9 +488,16 @@ def re_join(*args: str) -> str:
 
 
 # Reverse regex
-"""
+r"""
 Search or replace in the regex from the end of the string.
 The given regex will not be reversed TODO: implement this
+To reverse a regex we need to understand which tokens belong together
+Examples:
+\d -> \d
+\d*->\d*
+or
+(?:\d+) -> (?:\d+)
+...
 """
 
 
@@ -610,12 +554,41 @@ is_number: IsFunc
 
 for key, regex in regexes.items():
     globals()[f"is_{key}"] = regex.fullmatch
-# globals().update(
-#     {
-#         f"is_{key}": ()
-#         for key, regex in regexes.items()
-#     }
-# )
+
+
+class GeneralParser:
+    """
+    Really this is a lexer.
+    It consumes parts of its x and can then convert these into tokens
+    """
+
+    x: str
+
+    def __init__(self, x: str):
+        self.x = x
+
+    @overload
+    def consume(self, s: str) -> bool:
+        ...
+
+    @overload
+    def consume(self, s: re.Pattern[str]) -> str:
+        ...
+
+    def consume(self, s: str | re.Pattern[str]):
+        if isinstance(s, str) and self.x.startswith(s):
+            self.x = self.x[len(s) :]
+            return True
+        elif isinstance(s, re.Pattern):
+            if match := s.match(self.x):
+                slice_ = match.span()[1]
+                result, self.x = self.x[:slice_], self.x[slice_:]
+                return result
+            else:
+                return ""
+        return False
+
+
 ##########################################################################
 
 

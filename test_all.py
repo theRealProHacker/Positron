@@ -1,5 +1,7 @@
-import asyncio
+# fmt: off
 import io
+import math
+from operator import sub
 import os
 from contextlib import suppress
 
@@ -14,40 +16,38 @@ import J
 import rounded_box
 import Style
 import util
-from Element import (
-    AndSelector,
-    ClassSelector,
-    DirectChildSelector,
-    HasAttrSelector,
-    IdSelector,
-    TagSelector,
-    parse_selector,
-    rel_p,
-    sngl_p,
-)
-from own_types import Auto, Color, FrozenDCache, Length, Rect
+from Element import (AndSelector, ClassSelector, DirectChildSelector,
+                     HasAttrSelector, IdSelector, TagSelector, parse_selector,
+                     rel_p, sngl_p)
+from own_types import Auto, Color, FrozenDCache, Length, Percentage, Rect
 
+# fmt: on
 # https://stackoverflow.com/a/70016047/15046005
 pytest_plugins = ("pytest_asyncio",)
 
 
 def test_joint():
-    style = Style.remove_important(Style.parse_inline_style("""margin: 0 auto"""))
+    style = Style.remove_importantd(
+        Style.parse_inline_style("""margin: calc(100%-30px) auto""")
+    )
     assert style == {
-        "margin-top": Length(0.0),
+        "margin-top": Style.AddOp(Style.Percentage(100), sub, Length(30)),
         "margin-right": Auto,
-        "margin-bottom": Length(0.0),
+        "margin-bottom": Style.AddOp(Style.Percentage(100), sub, Length(30)),
         "margin-left": Auto,
     }
     margin = Style.mrg_getter(style)
     assert margin[Box._horizontal] == (Auto, Auto)
-    assert margin[Box._vertical] == (Length(0), Length(0))
+    assert Style.Calculator().multi2(margin[Box._vertical], 0, 300) == (
+        300 - 30,
+        300 - 30,
+    )
 
-    style = Style.remove_important(
+    style = Style.remove_importantd(
         Style.parse_inline_style(
             """
-        margin: 20px auto;padding:10px;border:solid medium;width:200px;height:200px;box-sizing: border-box
-        """
+            margin: 20px auto;padding:10px;border:solid medium;width:200px;height:200px;box-sizing: border-box
+            """
         )
     )
     comp_style = {k: Style.compute_style("test", v, k, {}) for k, v in style.items()}
@@ -97,52 +97,58 @@ def test_cache():
 
 
 def test_style_computing():
+    # Helpers
+    assert Style.tup_replace((1, 2, 2, 2, 4), (2, 4), 3) == (1, 2, 3, 4)
+    assert Style.match_bracket("3px+(5*12px))+(5px+6px)") == len("3px+(5*12px))") - 1
+    assert Style.css_func("rgb(255, 255, 255)", "rgb") == ["255", "255", "255"]
     assert Style.split_units("3px") == (3, "px")
     assert Style.split_units("0") == (0, "")
     assert Style.split_units("70%") == (70, "%")
     with pytest.raises(AttributeError):
         Style.split_units("blue")
-
-    assert Style.length("3px", {}) == Length(3)
-
-    assert Style.color("rgb(120,120,120)", {}) == Color(*(120,) * 3)
-    assert Style.style_attrs["color"].accept("rgb(120,120,120)", {}) == Color(
-        *(120,) * 3
-    )
-    assert Style.color("rgba(120, 120, 120, 1)", {}) == Color(*(120,) * 3, 255)
-    assert Style.color("currentcolor", {"color": Color("blue")}) == Color("blue")
-    assert Style.color("#fff", {}) == Style.color("#ffffff", {}) == Color("white")
-    assert Style.color("#000", {}) == Style.color("#000000", {}) == Color("black")
-
     assert Style.split_value("solid rgb(11, 18, 147) 3px") == [
         "solid",
         "rgb(11, 18, 147)",
         "3px",
     ]
+
+    # Acceptors
+    assert Style.color("rgba(120, 120, 120, 1)", {}) == Color(*(120,) * 3, 255)
+    assert Style.color("currentcolor", {"color": Color("blue")}) == Color("blue")
+    assert Style.color("#fff", {}) == Style.color("#ffffff", {}) == Color("white")
+
+    assert Style.length("3px", {}) == Length(3)
+    # Calc
+    assert Style.AddOp(Percentage(100), sub, Length(30)).get_type() == Length
+    length_calc = Style.Calc(Length)
+    assert length_calc("3px", {}) == Length(3)
+    assert length_calc("calc(3px)", {}) == Length(3)
+    assert length_calc("calc(3*5)", {}) is None
+    assert length_calc("calc(3px*calc(5+3))", {}) == Length(24)
+    assert length_calc("calc(pi*(1+e)*1px)", {}) == Length(math.pi + math.e * math.pi)
+    lp_calc = Style.Calc(Length, Percentage)
+    assert lp_calc("calc(100%-30px)", {}) == Style.AddOp(
+        Percentage(100), sub, Length(30)
+    )
+
     with raises(KeyError):
-        Style.style_attrs["width"].accept("3em",{})
+        Style.style_attrs["width"].accept("3em", {})  # em accesses font-size
     # TODO
     with raises(AssertionError):
-        assert (
-            Style.split_value(
-                """oblique 10px 'Courier New' , Courier      
-        , monospace;"""
-            )
-            == [
-                "oblique",
-                "10px",
-                "'Courier New',Courier,monospace",
-            ]
-        )
+        assert Style.split_value(
+            """oblique 10px 'Courier New' , Courier , monospace"""
+        ) == [
+            "oblique",
+            "10px",
+            "'Courier New' , Courier , monospace",
+        ]
 
-    # TODO: Add some more complex tests
-    assert Style.remove_important(
-        Style.join_styles({"color": ("red", False)}, {"color": ("blue", False)})
-    ) == {"color": "red"}
-    assert Style.remove_important(
-        Style.join_styles({"color": ("red", False)}, {"color": ("blue", True)})
-    ) == {"color": "blue"}
-
+    assert Style.is_valid("border-width", "medium") is not None
+    assert Style.is_valid("border-style", "solid") is not None
+    assert Style.is_valid("border-color", "black") is not None
+    assert dict(Style.process_property("border", "solid")) == {
+        "border-style": Style.CompStr("solid")
+    }
     # https://developer.mozilla.org/en-US/docs/Web/CSS/margin#syntax
     assert Style.process_dir(["1em"]) == ["1em", "1em", "1em", "1em"]
     assert Style.process_dir("5% auto".split()) == ["5%", "auto", "5%", "auto"]
@@ -173,10 +179,7 @@ def test_style_computing():
         "border-bottom-right-radius": "1em 5em",
         "border-bottom-left-radius": "1em 5em",
     }
-    assert Style.is_valid("border-width", "medium") is not None
-    assert Style.is_valid("border-style", "solid") is not None
-    assert Style.is_valid("border-color", "black") is not None
-    assert dict(Style.process_property("border", "solid")) == {"border-style": Style.CompStr("solid")}
+    # precalculates values that are definitely always the same
     assert Style.process_property("width", "15px") == Length(15)
 
 
@@ -229,7 +232,7 @@ def test_util():
     l = [*range(10)]
     for i, x in enumerate(util.consume_list(l)):
         assert x == i
-        assert len(l) == 9-i
+        assert len(l) == 9 - i
     assert util._make_new_name("example.exe") == "example (2).exe"
     assert util._make_new_name("example(1)(2).exe") == "example(1)(3).exe"
     buffer = io.StringIO()
@@ -303,7 +306,9 @@ def test_rounded_box():
 
 async def _test_async():
     # IO
-    with pytest.raises(Exception) if not util.is_online() else suppress(requests.exceptions.ConnectionError):
+    with pytest.raises(Exception) if not util.is_online() else suppress(
+        requests.exceptions.ConnectionError
+    ):
         path = await util.download("https://www.google.com/", dir=".")
     with suppress(OSError):
         os.remove(path)
