@@ -23,13 +23,13 @@ import Media
 import rounded_box
 import Style
 from config import add_sheet, g, watch_file
-from own_types import (Auto, AutoLP4Tuple, BugError, Color, Dimension, DisplayType, Drawable,
-                       Float4Tuple, Font, FontStyle, Normal, NormalType,
+from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color, Dimension, DisplayType, Drawable,
+                       Float4Tuple, Font, FontStyle, Length,
                        Number, Percentage, Radii, Rect, Surface, _XMLElement)
 from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys,
                    get_style, inset_getter, pack_longhands, parse_file,
                    parse_sheet, prio_keys)
-from util import Calculator, get_groups, get_tag, group_by_bool, log_error
+from util import get_groups, get_tag, group_by_bool, log_error
 
 # fmt: on
 """ More useful links for further development
@@ -87,7 +87,7 @@ def get_font(family: list[str], size: float, style: FontStyle, weight: int) -> F
     return font
 
 
-calculator = Calculator(None)
+calculator = Style.Calculator()
 """
 The main shared calculator with no default percentage_val
 """
@@ -170,7 +170,7 @@ class Element:
     @property
     def input_style(self) -> Style.ResolvedStyle:
         """The total input style. Fused from inline and external style"""
-        return Style.remove_important(Style.join_styles(self.istyle, self.estyle))
+        return Style.remove_importantd(Style.join_styles(self.istyle, self.estyle))
 
     ####################################  Main functions ######################################################
     @cache
@@ -199,63 +199,57 @@ class Element:
         keys = sorted(input_style.keys(), key=prio_keys.__contains__, reverse=True)
         parent_style = dict(self.parent.cstyle)
         style: Style.FullyComputedStyle = {}
-        for width_key in keys:
-            val = input_style[width_key]
-            new_val = Style.compute_style(self.tag, val, width_key, parent_style)
+        for key in keys:
+            val = input_style[key]
+            new_val = Style.compute_style(self.tag, val, key, parent_style)
             assert new_val is not None, BugError(
-                f"Style {width_key} was set to None. Which should never happen."
+                f"Style {key} was set to None. Which should never happen."
             )
-            style[width_key] = new_val
-            if width_key in prio_keys:
-                parent_style[width_key] = new_val
+            style[key] = new_val
+            if key in prio_keys:
+                parent_style[key] = new_val
         # corrections
         """ mdn border-width: 
         absolute length or 0 if border-style is none or hidden
         """
-        for width_key, bstyle in zip(bw_keys, bs_getter(style)):
+        for bw_key, bstyle in zip(bw_keys, bs_getter(style)):
             if bstyle in ("none", "hidden"):
-                style[width_key] = 0
+                style[bw_key] = 0
         if style["outline-style"] in ("none", "hidden"):
             style["outline-width"] = 0
-        # actual value calculation:
+        # fonts
         fsize: float = style["font-size"]
-        lh: float | NormalType | Percentage = style["line-height"]
-        wspace = style["word-spacing"]
-        wspace: float | Percentage = Percentage(100) if wspace is Normal else wspace
         self.font = get_font(
             style["font-family"], fsize, style["font-style"], style["font-weight"]
         )
+        # https://developer.mozilla.org/en-US/docs/Web/CSS/line-height#values
+        lh: AutoType | float | Length | Percentage = style["line-height"]
         self.line_height = (
-            lh
+            lh * fsize
             if isinstance(lh, Number)
-            else 1.5 * fsize
-            if lh is Normal
-            else lh * fsize
+            else calculator(lh, auto_val=1.5 * fsize, perc_val=fsize)
         )
-        self.word_spacing = (
-            wspace
-            if isinstance(wspace, Number)
-            else self.font.size(" ")[0]
-            if wspace is Normal
-            else self.font.size(" ")[0] * wspace
-        )
+        # https://developer.mozilla.org/en-US/docs/Web/CSS/word-spacing#values
+        wspace = style["word-spacing"]
+        wspace: float | Percentage = Percentage(100) if wspace is Auto else wspace
+        d_ws = self.font.size(" ")[0]
+        self.word_spacing = (calculator(wspace, 0, d_ws)) + d_ws
         self.cstyle = g["cstyles"].add(style)
         for child in self.children:
             child.compute()
 
-    def layout(self, width: float) -> None:  # !
+    def layout(self, width: float) -> None:
         """
         Layout an element. Gets the width it has available
         """
+        self.layout_type = self.display
         if self.display == "none":
-            self.layout_type = "none"
             return
         style = self.cstyle
         self.box, set_height = Box.make_box(
             width, style, self.parent.box.width, self.parent.get_height()
         )
         if any(c.display == "block" for c in self.children):
-            self.layout_type = "block"
             self.layout_children(set_height)
         else:
             # with word-wrap but not between words if they are too long
@@ -365,21 +359,15 @@ class Element:
         # 1.+2. draw background-color and background-image
         bg_imgs: Sequence[Drawable] = style["background-image"]
         bg_color: Color = style["background-color"]
-        if not bg_imgs: # draw only the background-color
-            rounded_box.draw_rounded_background(
-                surf, border_rect, bg_color, radii
-            )
+        if not bg_imgs:  # draw only the background-color
+            rounded_box.draw_rounded_background(surf, border_rect, bg_color, radii)
         else:
             bg_size = border_rect.size
             bg_surf = Surface(bg_size, pg.SRCALPHA)
             bg_surf.fill(bg_color)
             for drawable in bg_imgs:
-                drawable.draw(bg_surf, (0,0))
-            rounded_box.round_surf(
-                bg_surf,
-                bg_size,
-                radii
-            )
+                drawable.draw(bg_surf, (0, 0))
+            rounded_box.round_surf(bg_surf, bg_size, radii)
             surf.blit(bg_surf, border_rect.topleft)
         # 3. draw border
         rounded_box.draw_rounded_border(
@@ -402,8 +390,8 @@ class Element:
             raise BugError(f"Wrong layout_type ({self.layout_type})")
 
         # 5. draw outline
-        _out_width = style["outline-width"]
-        _out_off = style["outline-offset"] + _out_width / 2
+        _out_width: int = style["outline-width"]
+        _out_off: float = style["outline-offset"].value + _out_width / 2
         rounded_box.draw_rounded_border(
             surf,
             border_rect.inflate(2 * _out_off, 2 * _out_off),

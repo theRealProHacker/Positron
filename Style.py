@@ -1,47 +1,48 @@
+# Style computing is not thread safe and doesn't need to be. Maybe add a global lock?
 # fmt: off
+import abc
+import math
 import re
 from abc import ABC
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
-from functools import cache
-from itertools import chain
-from operator import itemgetter
-from typing import (Any, Generic, Iterable, Literal, Mapping, Protocol, TypeVar, Union,
+from functools import cache, partial
+from itertools import chain, islice
+from operator import itemgetter, add, sub, mul, truediv
+from typing import (Any, Callable, Generic, Iterable, Literal, Mapping, Protocol, Type, TypeVar, Union,
                     overload)
 
 import tinycss
 
 from config import (abs_border_width, abs_font_size, abs_font_weight,
-                    abs_length_units, g, rel_font_size)
+                    abs_length_units, g, rel_font_size, rel_length_units)
 import Media
-from own_types import (CO_T, V_T, Auto, AutoLP, AutoType, BugError, Color, Drawable,
-                       FontStyle, Length, LengthPerc, Normal, NormalType,
+from own_types import (CO_T, V_T, Auto, AutoLP, AutoLP4Tuple, AutoType, BugError, Color, Drawable, Float4Tuple,
+                       FontStyle, Length, LengthPerc,
                        Number, Percentage, Sentinel, Str4Tuple, StrSent,
-                       frozendict)
-from util import (dec_re, fetch_txt, get_groups, group_by_bool, log_error,
-                  noop, print_once)
+                       frozendict, CompStr)
+from util import (GeneralParser, dec_re, fetch_txt, find, find_index, get_groups, group_by_bool, log_error, make_default,
+                  noop, print_once, re_join, tup_replace)
 # fmt: on
 
 # Typing
-class CompStr(str):
-    def __repr__(self) -> str:
-        return f"CompStr({self})"
-
 
 CompValue = Any  # | float | Percentage | Sentinel | FontStyle | Color | tuple[Drawable, ...] | CompStr but not a normal str
+
 # A Value is the actual value together with whether the value is set as important
+# A Property corresponds to a css-property with a name and a value
 InputValue = tuple[str, bool]
-Value = tuple[str | CompValue, bool]
 InputProperty = tuple[str, InputValue]
-Property = tuple[str, Value]
 InputStyle = list[InputProperty]
+Value = tuple[str | CompValue, bool]
+Property = tuple[str, Value]
+ResolvedStyle = dict[str, str | CompValue]
 Style = dict[str, Value]
-ResolvedStyle = dict[str, str | CompValue]  # Style without important
 FullyComputedStyle = Mapping[str, CompValue]
 StyleRule = tuple[str, Style]
 """
-A style with a selector
+A Style with a Selector (as a String)
 Example:
 p {
     color: red !important;
@@ -50,7 +51,6 @@ p {
 
 MediaValue = tuple[int, int]  # just the window size right now
 Rule = Union["AtRule", "StyleRule"]
-
 
 CompValue_T = TypeVar("CompValue_T", bound=CompValue, covariant=True)
 
@@ -62,24 +62,27 @@ def is_real_str(x):
     return isinstance(x, str) and not isinstance(x, CompStr)
 
 
-@overload
-def ensure_comp(x: str) -> CompStr:  # type: ignore
-    ...
+def ensure_comp(x: CompValue_T | str) -> CompValue_T | CompStr:
+    return CompStr(x) if isinstance(x, str) else x
 
 
-@overload
-def ensure_comp(x: V_T) -> V_T:
-    ...
-
-
-def ensure_comp(x) -> CompValue:
-    return CompStr(x) if is_real_str(x) else x
+def match_bracket(s: Iterable):
+    """
+    Searchs for a matching bracket
+    If not found then returns None else it returns the index of the matching bracket
+    """
+    brackets = 0
+    for i, c in enumerate(s):
+        if c == ")":  # closing bracket
+            if not brackets:
+                return i
+            else:
+                brackets -= 1
+        elif c == "(":  # opening bracket
+            brackets += 1
 
 
 def split_value(s: str) -> list[str]:
-    """
-    This function is for splitting css values that include functions
-    """
     rec = True
     result = []
     curr_string = ""
@@ -151,37 +154,253 @@ br_getter: T4Getter[tuple[LengthPerc, LengthPerc]] = itemgetter(*br_keys)  # typ
 
 
 class Acceptor(Protocol[CompValue_T]):
+    """
+    An Acceptor is a Callable that takes a value as a str and a FullyComputedStyle and returns a ComputedValue
+    If the Acceptor returns None then the value is invalid
+    If the Acceptor raises a KeyError then the value might be valid
+    but depends on a value in p_style that doesn't exist
+    """
+
     def __call__(self, value: str, p_style: FullyComputedStyle) -> None | CompValue_T:
         ...
 
 
 def css_func(value: str, name: str):
     if value.startswith(name + "(") and value.endswith(")"):
-        return re.split(r"\s*,\s*", value.removeprefix(name + "(").removesuffix(")"))
+        return re.split(r"\s*,\s*", value[len(name) + 1 : -1])
 
 
 def remove_quotes(value: str):
     for quote in ("'", '"'):
-        if (
-            len(new_val := value.removeprefix(quote).removesuffix(quote))
-            == len(value) - 2
-        ):
-            return new_val
-    return new_val
+        if value.startswith(quote) and value.endswith(quote):
+            return value[1:-1]
+    return value
+
+
+CalcTypes = Percentage, Length, Number
+CalcType = Union[Type[Length], Type[Percentage], Type[float]]
+no_type_types = frozenset({Percentage,*Number})
+CalcValue = Percentage | Length | float  # TODO: add Angle and more
+CalcValue_T = TypeVar("CalcValue_T", bound=CalcValue)
+Operator = Callable[[CalcValue, CalcValue], CalcValue]
+
+
+@dataclass
+class BinOp(abc.ABC):
+    left: CalcValue
+    op: Operator
+    right: CalcValue
+
+    def resolve(self) -> "_ParseResult":
+        try:
+            return self.op(self.left, self.right)
+        except ValueError:
+            return self
+
+    def get_type(self) -> str:
+        pass
+
+
+@dataclass
+class AddOp(BinOp):
+    left: CalcValue
+    op: Operator
+    right: CalcValue
+
+    def get_type(self):
+        return (
+            ltype
+            if (ltype := get_type(self.left)) is not Percentage
+            else get_type(self.right)
+        )
+
+
+@dataclass
+class MulOp(BinOp):
+    left: CalcValue
+    op: Operator
+    right: CalcValue
+
+    def get_type(self):
+        return (
+            ltype
+            if (ltype := get_type(self.left)) is not Number
+            else get_type(self.right)
+        )
+
+
+_ParseResult = CalcValue | BinOp
+_ParseResult_T = TypeVar("_ParseResult_T", bound=_ParseResult)
+
+
+def get_type(x: _ParseResult) -> CalcType:
+    """
+    Returns Number, Percentage or Length
+    """
+    if isinstance(x, (MulOp, AddOp)):
+        return x.get_type()
+    for type_ in CalcTypes:
+        if isinstance(x, type_):  # type: ignore
+            return type_  # type: ignore
+    raise BugError(f"Cannot determine type of {x}")
 
 
 # https://regexr.com/3ag5b
 hex_re = re.compile(r"#([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})")
-split_units_pattern = re.compile(rf"({dec_re})(\w+|%)")
+number_pattern = re.compile(dec_re)
+units_map: dict[str, CalcType] = {
+    "%": Percentage,
+    **{k: Length for k in chain(abs_length_units, rel_length_units)},
+}
+unit_re = re_join(*units_map)
+units_pattern = re.compile(unit_re)
+dim_pattern = re.compile(rf"({dec_re})({unit_re})")
+# operators
+_is_high = lambda x: x in ("*", "/")
+_is_low = lambda x: x in ("+", "-")
+op_map: dict[str, Operator] = {
+    "+": add,
+    "-": sub,
+    "*": mul,
+    "/": truediv,
+}
+op_re = re.compile(re_join(*op_map))
+# calc literals
+literal_map = {
+    "pi": math.pi,
+    "e": math.e,
+    # I don't understand why you would need these. Like, you're not gonna make an element with a font-size of NaN or -infinity
+    "infinity": float("inf"),
+    "-infinity": float("-inf"),
+    "NaN": float("nan"),
+}
+literal_re = re.compile(re_join(*literal_map))
+
+
+class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
+    _accepts: frozenset[CalcType]
+    default_type: CalcType|None
+    def __init__(self, *types):
+        self._accepts = frozenset(types)
+        try:
+            self.default_type = next(iter(self._accepts.difference(no_type_types)))
+        except StopIteration:
+            self.default_type = None
+
+    def accepts_type(self, x):
+        return x in self._accepts
+
+    def acc(self, value: str, p_style):
+        try:
+            number, unit = split_units(value)
+        except ValueError:
+            return None
+        if not unit and self.default_type is not None:
+            _type = self.default_type
+        else:
+            _type = units_map[unit]
+            if not self.accepts_type(_type):
+                return None
+        if _type in no_type_types:
+            return _type(number)
+        elif _type is Length:
+            return _length((number, unit), p_style)
+
+    def __call__(self, value: str, p_style: FullyComputedStyle):
+        acc = partial(self.acc, p_style=p_style)
+        if args := css_func(value, "calc"):
+            # lexer
+            self.x = args[0]
+            stack = deque[str | CalcValue_T | float | BinOp]()
+            while self.x:
+                start_x = self.x
+                if self.consume("(") or self.consume("calc("):
+                    stack.append("(")
+                elif self.consume(")"):
+                    stack.append(")")
+                elif dimension := self.consume(dim_pattern):
+                    if (result := acc(dimension)) is not None:
+                        stack.append(result)
+                    else:
+                        return None
+                # operator has priority over dimension if the last value was a dimension
+                if operator := self.consume(op_re):
+                    stack.append(operator)
+                elif literal := self.consume(literal_re):
+                    stack.append(literal_map[literal])
+                elif number := self.consume(number_pattern):
+                    stack.append(float(number))
+                elif self.consume(re.compile(r"\s+")):
+                    pass
+                elif start_x == self.x:
+                    return None  # found no valid character
+            try:
+                if self.accepts_type(
+                    get_type(rv := self.parse(stack)) # type: ignore
+                ):  # run-time type checking
+                    return rv
+            except (ValueError, IndexError, ZeroDivisionError):
+                return None
+        else:
+            return acc(value)
+
+    def parse(self, d: Iterable[str | _ParseResult_T]) -> _ParseResult_T:
+        """
+        Parses the tokens
+        Raises ValueError, IndexError or ZeroDivisionError on failure
+        """
+        # parser
+        t: tuple[str | _ParseResult_T, ...] = tuple(d)
+        while "(" in t or ")" in t:
+            start_i = t.index("(")
+            end_i = match_bracket(islice(iter(t), start_i + 1, None)) + start_i + 1
+            t = tup_replace(t, (start_i, end_i + 1), self.parse(t[start_i + 1 : end_i]))
+        while (op_i := find_index(t, _is_high)) is not None:
+            slice_ = op_i - 1, op_i + 2
+            l_val, op, r_val = t[slice(*slice_)]
+            if (
+                not isinstance(op, str)
+                or isinstance(l_val, str)
+                or isinstance(r_val, str)
+            ):
+                raise ValueError
+            t = tup_replace(
+                t, slice_, MulOp(left=l_val, op=op_map[op], right=r_val).resolve()  # type: ignore
+            )
+        while (op_i := find_index(t, _is_low)) is not None:
+            slice_ = op_i - 1, op_i + 2
+            l_val, op, r_val = t[slice(*slice_)]
+            if (
+                not isinstance(op, str)
+                or isinstance(l_val, str)
+                or isinstance(r_val, str)
+            ):
+                raise ValueError
+            l_type, r_type = type(l_val), type(r_val)
+            if not l_type is r_type and not (
+                l_type is Percentage or r_type is Percentage
+            ):
+                raise ValueError
+            t = tup_replace(
+                t, slice_, AddOp(left=l_val, op=op_map[op], right=r_val).resolve()  # type: ignore
+            )
+        assert len(t) == 1 and not isinstance(t[0], str), BugError(
+            f"calc_parsing failed, {d}->{t}"
+        )
+        return t[0]
 
 
 def split_units(attr: str) -> tuple[float, str]:
     """Split a dimension or percentage into a tuple of number and the "unit" """
     if attr == "0":
         return (0, "")
-    match = split_units_pattern.fullmatch(attr.strip())
+    match = dim_pattern.fullmatch(attr.strip())
     num, unit = match.groups()  # type: ignore # Raises AttributeError
     return float(num), unit
+
+
+def no_change(value: str, p_style) -> str:
+    return value
 
 
 def background_image(value: str, p_style) -> tuple[Drawable, ...]:
@@ -192,7 +411,7 @@ def background_image(value: str, p_style) -> tuple[Drawable, ...]:
         if args := css_func(v, "url"):
             result.append(Media.Image([remove_quotes(args[0])]))
         else:
-            raise NotImplementedError("background-image only supports urls right now")
+            log_error("background-image only supports urls right now", v)
     return tuple(result)
 
 
@@ -205,14 +424,15 @@ def color(value: str, p_style):
             return Color(*map(round, (r, g, b)))
         elif args := css_func(value, "rgba"):
             r, g, b, a = map(float, args)
-            return Color(*map(round, (r, g, b, a*255)))
+            return Color(*map(round, (r, g, b, a * 255)))
         elif groups := get_groups(value.lower(), hex_re):
             return Color(*map(lambda x: int(x * (2 // len(x)), 16), groups))
         return Color(value)
 
 
 def number(value: str, p_style):
-    # This is so much simpler than actually doing regex matches and then still parsing as a float
+    if not re.match(dec_re, value):  # Just to avoid non decimal input
+        return None
     with suppress(ValueError):
         return float(value)
 
@@ -318,8 +538,10 @@ def length(value: str, p_style):
 def length_percentage(value: str, p_style, mult: float | None = None):
     with suppress(AttributeError):
         num, unit = split_units(value)
-        if unit == "%":
-            return Percentage(num) if mult is None else Length(mult * Percentage(num))
+        if (
+            unit == "%"
+        ):  # this resolves the Percentage automatically if it can already be resolved
+            return Percentage(num) if mult is None else Length(mult * num * 0.01)
         else:
             return _length((num, unit), p_style)
 
@@ -352,7 +574,7 @@ def combine_accs(acc1: Acceptor[T1], acc2: Acceptor[T2]) -> Acceptor[T1 | T2]:
 @dataclass
 class StyleAttr(Generic[CompValue_T]):
     initial: str
-    kws: Mapping[str, StrSent | CompValue_T]
+    kws: Mapping[str, Sentinel | CompStr | CompValue_T]
     acc: Acceptor[CompValue_T]
     inherits: bool
 
@@ -375,29 +597,31 @@ class StyleAttr(Generic[CompValue_T]):
             inherits if inherits is not None else acc is not length_percentage
         )
 
-    def __repr__(self) -> str:
-        return f"StyleAttr(initial={self.initial}, kws={self.kws}, accept={self.accept.__name__}, inherits={self.inherits})"
-
-    def set2dict(self, s: set[StrSent]) -> Mapping[str, CompValue_T | StrSent]:
-        return {x if isinstance(x, str) else x.value: x for x in s}
+    def set2dict(
+        self, s: set[StrSent]
+    ) -> Mapping[str, CompValue_T | Sentinel | CompStr]:
+        return {x if isinstance(x, str) else x.value: ensure_comp(x) for x in s}
 
     def accept(
         self, value: str, p_style: FullyComputedStyle
     ) -> CompValue_T | CompStr | Sentinel | None:
-        kw = self.kws.get(value)
-        return ensure_comp(kw if kw is not None else self.acc(value, p_style))
+        # insert all vars
+        value = re.sub(r"var\(([-\d]*)\)", lambda match: p_style[match.group(1)], value)
+        return (
+            kw if (kw := self.kws.get(value)) is not None else self.acc(value, p_style)
+        )
 
 
 ####### Helpers ########
 
 # we don't want copies of these (memory) + better readibility
 auto: dict[str, AutoType] = {"auto": Auto}
-normal: dict[str, NormalType] = {"normal": Normal}
+normal: dict[str, AutoType] = {"normal": Auto}  # normal is internally mapped to Auto
 
 AALP = StyleAttr(
     "auto",
     auto,
-    length_percentage,
+    Calc(Length, Percentage),
 )
 
 BorderWidthAttr: StyleAttr[int] = StyleAttr(
@@ -428,10 +652,6 @@ BorderColorAttr: StyleAttr[Color] = StyleAttr("currentcolor", acc=color, inherit
 BorderRadiusAttr: StyleAttr[LengthPerc] = StyleAttr(
     "0", acc=border_radius, inherits=False
 )
-
-
-def no_change(value: str, p_style) -> str:
-    return value
 
 
 prio_keys = {"color", "font-size"}  # currentcolor and 1em for example
@@ -568,24 +788,20 @@ def parse_important(s: str) -> InputValue:
     return (s[: -len(IMPORTANT)], True) if s.endswith(IMPORTANT) else (s, False)
 
 
-@overload
-def remove_important(style: list[Property]) -> list[tuple[str, str]]:
-    ...
-
-
-@overload
-def remove_important(style: Style) -> ResolvedStyle:
-    ...
-
-
-def remove_important(
-    style: list[Property] | Style,
-) -> ResolvedStyle | list[tuple[str, str]]:
+def remove_importantd(style: dict[str, tuple[V_T, bool]]) -> dict[str, V_T]:
     """
-    Remove the information whether a value in the style is important
+    Remove the information whether a value in the style is important (dicts)
     """
-    d, t = (style, list) if isinstance(style, list) else (style.items(), dict)
-    return t((k, v[0]) for k, v in d)
+    return {k: v[0] for k, v in style.items()}
+
+
+def remove_importantl(
+    style: list[tuple[str, tuple[V_T, bool]]]
+) -> list[tuple[str, V_T]]:
+    """
+    Remove the information whether a value in the style is important (lists)
+    """
+    return [(k, v[0]) for k, v in style]
 
 
 def add_important(style: ResolvedStyle, imp: bool) -> Style:
@@ -651,7 +867,7 @@ g["global_sheet"] = SourceSheet()
 ############################### Parsing functions #######################################
 
 
-def parse_inline_style(s: str) -> Style:
+def parse_inline_style(s: str):
     """
     Parse a style string. For example an inline style.
     Self-written right now
@@ -793,7 +1009,8 @@ def is_valid(key: str, value: str) -> None | str | CompValue:
         return value
     elif (keys := dir_shorthands.get(key)) is not None:
         return is_valid(keys[0], value)
-    return False
+    else:
+        return CompStr(value)
 
 
 def process_dir(value: list[str]):
@@ -858,7 +1075,7 @@ def process_property(key: str, value: str) -> list[tuple[str, str]] | CompValue 
         return new_val
 
 
-def process_input(d: list[tuple[str, str]]):
+def process_input(d: list[tuple[str, str]]) -> dict[str, CompValue]:
     """
     Unpacks shorthands and filters and reports invalid declarations
     """
@@ -887,7 +1104,7 @@ def process(d: InputStyle) -> Style:
     Take an InputStyle and process it into a Style
     """
     imp, nimp = map(
-        lambda x: process_input(remove_important(x)),
+        lambda x: process_input(remove_importantl(x)),
         group_by_bool(d, lambda t: is_imp(t[1])),
     )
     return add_important(nimp, False) | add_important(imp, True)
@@ -920,12 +1137,77 @@ def compute_style(
                 redirect("inherit") if attr.inherits else redirect(get_style(tag)[key])
             )
         case _:
-            return (
-                valid
-                if (valid := attr.accept(val, p_style)) is not None
-                or print_once("Uncomputable property found:", key, val)
-                else redirect("unset")
+            try:
+                return (
+                    valid
+                    if (valid := attr.accept(val, p_style)) is not None
+                    or print_once("Uncomputable property found:", key, val)
+                    else redirect("unset")
+                )
+            except KeyError:
+                print_once("Uncomputable property found:", key, val)
+                return redirect("unset")
+
+
+################## Element Calculation ######################
+@dataclass
+class Calculator:
+    """
+    A calculator is for calculating the values of AlP attributes (width, height, border-width, etc.)
+    It only needs the AlP value, a percentage value and an auto value. If latter are None then they will raise an Exception
+    if a Percentage or Auto are encountered respectively
+    """
+
+    default_perc_val: float | None = None
+
+    def __call__(
+        self,
+        value: AutoLP | BinOp | float,
+        auto_val: float | None = None,
+        perc_val: float | None = None,
+    ) -> float:
+        """
+        This helper function takes a value, an auto_val
+        and the perc_value and returns a Number
+        if the value is Auto then the auto_value is returned
+        if the value is a Length that is returned
+        if the value is a Percentage the Percentage is multiplied with the perc_value
+        """
+        if isinstance(value, float):
+            return value
+        elif value is Auto:
+            assert auto_val is not None, BugError("This attribute cannot be Auto")
+            return auto_val
+        elif isinstance(value, Length):
+            return value.value
+        elif isinstance(value, Percentage):
+            perc_val = make_default(perc_val, self.default_perc_val)
+            assert perc_val is not None, BugError(
+                "This attribute cannot be a percentage"
             )
+            return value.resolve(perc_val)
+        elif isinstance(value, BinOp):
+            value.left = self(value.left, auto_val, perc_val)
+            value.right = self(value.right, auto_val, perc_val)
+            rv = value.resolve()
+            assert isinstance(rv, float), BugError(
+                f"Calculator couldn't resolve BinOp, {value}, {auto_val}, {perc_val}"
+            )
+            return rv
+        raise TypeError
+
+    def _multi(self, values: Iterable[AutoLP], *args):
+        return tuple(self(val, *args) for val in values)
+
+    # only relevant for typing
+    def multi2(self, values: tuple[AutoLP, AutoLP], *args) -> tuple[float, float]:
+        return self._multi(values, *args)
+
+    def multi4(self, values: AutoLP4Tuple, *args) -> Float4Tuple:
+        return self._multi(values, *args)
+
+
+####################################################################
 
 
 def pack_longhands(d: ResolvedStyle | FullyComputedStyle) -> ResolvedStyle:

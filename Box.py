@@ -7,9 +7,9 @@ from typing import Any, Callable, Iterable, Mapping
 import own_types as _o  # Just for dotted access to Auto in match
 from own_types import (Auto, AutoLP, Dimension, Float4Tuple, Index, Number,
                        Rect, Vector2)
-from Style import (FullyComputedStyle, bw_getter, directions, mrg_getter,
+from Style import (Calculator, FullyComputedStyle, bw_getter, directions, mrg_getter,
                    pad_getter)
-from util import Calculator, ensure_suffix, noop, not_neg
+from util import ensure_suffix, noop, not_neg
 # fmt: on
 
 l = [("border", "padding"), ("margin",)]
