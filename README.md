@@ -137,6 +137,7 @@ Or use a `GeneralParser` that is an easy way to tokenize a string.
 10. Parsing and Syntax
     - https://www.w3.org/TR/css-syntax-3/
     - https://www.w3.org/TR/css-style-attr/
+
 ## CSS Life Cycle
 
 1. First the css sits as a string in either a css file or in a style tag (or in a style attribute but that is a different thing)

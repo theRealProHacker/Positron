@@ -14,13 +14,13 @@ from typing import (Any, Callable, Generic, Iterable, Literal, Mapping,
 import tinycss
 
 import Media
-from config import (abs_angle_units, abs_border_width, abs_font_size,
+from config import (abs_angle_units, abs_resolution_units, abs_time_units, abs_border_width, abs_font_size,
                     abs_font_weight, abs_length_units, g, rel_font_size,
                     rel_length_units)
-from own_types import (CO_T, V_T, Angle, Auto, AutoLP, AutoLP4Tuple, AutoType,
+from own_types import (CO_T, V_T, Angle, Auto, AutoLP, AutoType,
                        BugError, CSSDimension, Color, CompStr, Drawable, Float4Tuple,
-                       FontStyle, Length, LengthPerc, Number, Percentage,
-                       Sentinel, Str4Tuple, StrSent, frozendict)
+                       FontStyle, Length, LengthPerc, Number, Percentage, Resolution,
+                       Sentinel, Str4Tuple, StrSent, Time, frozendict)
 from util import (GeneralParser, fetch_txt, find_index,
                   get_groups, group_by_bool, hsl2rgb, hwb2rgb, in_bounds, log_error,
                   make_default, noop, print_once, re_join, tup_replace)
@@ -130,7 +130,7 @@ def get_css_func(posses: Iterable[str] | str = ""):
     )
     pattern = re.compile(rf"({_posses})\((.*)\)")
 
-    def inner(value: str)->None|tuple[str, list[str]]:
+    def inner(value: str) -> None | tuple[str, list[str]]:
         if match := pattern.fullmatch(value):
             name, _args = match.groups()
             args = re.split(r"\s*,\s*", _args)
@@ -151,7 +151,7 @@ def split_units(attr: str) -> tuple[float, str]:
     """Split a dimension or percentage into a tuple of number and the "unit" """
     match = dim_pattern.fullmatch(attr)
     num, unit = match.groups()  # type: ignore # Raises AttributeError
-    return float(num), unit
+    return float(num), unit.lower()
 
 
 # https://docs.python.org/3/library/re.html#simulating-scanf
@@ -279,16 +279,27 @@ class Calculator:
         return tuple(self(val, *args) for val in values)
 
     # only relevant for typing
-    def multi2(self, values: tuple[AutoType | ParseResult, AutoType | ParseResult], *args) -> tuple[float, float]:
+    def multi2(
+        self, values: tuple[AutoType | ParseResult, AutoType | ParseResult], *args
+    ) -> tuple[float, float]:
         return self._multi(values, *args)
+
     # I would love a syntax like tuple[MyType,2]->tuple[MyType,MyType], and ... just means unspecified
-    def multi4(self, values: tuple[AutoType | ParseResult, AutoType | ParseResult, AutoType | ParseResult, AutoType | ParseResult], *args) -> Float4Tuple:
+    def multi4(
+        self,
+        values: tuple[
+            AutoType | ParseResult,
+            AutoType | ParseResult,
+            AutoType | ParseResult,
+            AutoType | ParseResult,
+        ],
+        *args,
+    ) -> Float4Tuple:
         return self._multi(values, *args)
 
 
 calculator = Calculator()
 ####################################################################
-
 
 
 ################## Acceptors #################################
@@ -398,9 +409,16 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
         elif _type is Length:
             return _length((number, unit), p_style)
         elif _type is Angle:
-            return _angle(number, unit)
+            if conversion_factor := abs_angle_units.get(unit):
+                return Angle(number * conversion_factor)
+        elif _type is Time:
+            if conversion_factor := abs_time_units.get(unit):
+                return Time(number * conversion_factor)
+        elif _type is Resolution:
+            if conversion_factor := abs_resolution_units.get(unit):
+                return Resolution(number * conversion_factor)
 
-    def __call__(self, value: str, p_style: FullyComputedStyle={}):
+    def __call__(self, value: str, p_style: FullyComputedStyle = {}):
         acc = partial(self.acc, p_style=p_style)
         if args := css_func(value, "calc", ""):
             # lexer
@@ -521,13 +539,13 @@ def _rgb(*rgb: str):
 
 def _hsl(h: str, *sl: str):
     # here we use the built-in pygame hsl converter
-    hue: float = calculator(number_angle(h)) # type: ignore
-    return hsl2rgb(hue, *(percentage(x).resolve(1) for x in sl)) # type: ignore
+    hue: float = calculator(number_angle(h))  # type: ignore
+    return hsl2rgb(hue, *(percentage(x).resolve(1) for x in sl))  # type: ignore
 
 
 def _hwb(h: str, *wb: str):
-    hue: float = calculator(number_angle(h)) # type: ignore
-    return hwb2rgb(hue,*(percentage(x).resolve(1) for x in wb)) # type: ignore
+    hue: float = calculator(number_angle(h))  # type: ignore
+    return hwb2rgb(hue, *(percentage(x).resolve(1) for x in wb))  # type: ignore
 
 
 color_funcs: dict[str, Callable[..., Color]] = {
@@ -551,8 +569,9 @@ def color(value: str, p_style):
             if len(args) == 4:
                 *args, a = args
                 color = color_funcs[func_name](*args)
-                if color is None: return None
-                color.a = int(255 * calculator(number_percentage(a), perc_val=1)) # type: ignore
+                if color is None:
+                    return None
+                color.a = int(255 * calculator(number_percentage(a), perc_val=1))  # type: ignore
                 return color
             else:
                 return color_funcs[func_name](*args)
@@ -656,11 +675,6 @@ def _length(dimension: tuple[float, str], p_style):
         case _:
             raise TypeError()
     return Length(rv)
-
-
-def _angle(num: float, unit: str):
-    if conversion_factor := abs_angle_units.get(unit):
-        return num * conversion_factor
 
 
 def border_radius(value: str, p_style):

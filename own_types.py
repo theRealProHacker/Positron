@@ -9,8 +9,8 @@ from functools import reduce
 from operator import or_
 
 # fmt: off
-from typing import (Any, Generator, Generic, Hashable, Iterable, Literal,
-                    Mapping, Protocol, Sequence, TypeVar, Union)
+from typing import (Generator, Generic, Hashable, Iterable, Literal,
+                    Mapping, Protocol, TypeVar, Union)
 # fmt: on
 from weakref import WeakValueDictionary
 from xml.etree.ElementTree import Element as _XMLElement
@@ -181,6 +181,7 @@ class Rect(_Rect):
 
 CSSDimension_T = TypeVar("CSSDimension_T", bound="CSSDimension")
 
+
 @dataclass(frozen=True)
 class CSSDimension:
     value: float
@@ -245,6 +246,16 @@ class Length(CSSDimension):
 
 @dataclass(frozen=True)
 class Angle(CSSDimension):
+    value: float
+
+
+@dataclass(frozen=True)
+class Time(CSSDimension):
+    value: float
+
+
+@dataclass(frozen=True)
+class Resolution(CSSDimension):
     value: float
 
 

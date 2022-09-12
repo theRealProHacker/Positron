@@ -430,7 +430,10 @@ class Element:
         Represents the elements style in a nice way for debugging
         """
         out_style = pack_longhands(
-            {k: f"{_in}->{_out}" if _in != (_out:=self.cstyle[k]) else str(_in) for k, _in in self.input_style.items()}
+            {
+                k: f"{_in}->{_out}" if _in != (_out := self.cstyle[k]) else str(_in)
+                for k, _in in self.input_style.items()
+            }
         )
         for k, v in out_style.items():
             print(f"{k}: {v}")
@@ -656,7 +659,11 @@ class ImgElement(Element):
     def layout(self, width):
         if self.cstyle["display"] == "none" or self.image is None:
             return
-        w, h = self.image.surf.get_bounding_rect().size if self.image.surf is not None else (x or 0 for x in self.given_size)
+        w, h = (
+            self.image.surf.get_bounding_rect().size
+            if self.image.surf is not None
+            else (x or 0 for x in self.given_size)
+        )
         self.box = Box.Box(
             self.cstyle["box-sizing"],
             # TODO: add border, margin, padding

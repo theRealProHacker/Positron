@@ -116,7 +116,7 @@ async def main(file: str):
                 g["recompute"] = True
         if end:
             break
-        # Await the next tick. In this spare time all async tasks can be run. 
+        # Await the next tick. In this spare time all async tasks can be run.
         await asyncio.to_thread(CLOCK.tick, g["FPS"])
 
         if g["css_dirty"] or g["css_sheet_len"] != len(

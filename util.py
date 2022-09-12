@@ -581,30 +581,32 @@ class GeneralParser:
 
 ############################# Colors #####################################
 def hsl2rgb(hue: float, sat: float, light: float):
-    hue %= 360 
-    sat = in_bounds(sat,0,1)
-    light = in_bounds(light,0,1)
+    hue %= 360
+    sat = in_bounds(sat, 0, 1)
+    light = in_bounds(light, 0, 1)
     # algorithm from https://www.w3.org/TR/css-color-3/#hsl-color
     def hue2rgb(n):
-        k = (n + hue/30) % 12
+        k = (n + hue / 30) % 12
         a = sat * min(light, 1 - light)
         return light - a * max(-1, min(k - 3, 9 - k, 1))
 
-    return Color(*(int(x*255) for x in (hue2rgb(0), hue2rgb(8), hue2rgb(4))))
+    return Color(*(int(x * 255) for x in (hue2rgb(0), hue2rgb(8), hue2rgb(4))))
 
-def hwb2rgb (h: float, w: float, b: float):
+
+def hwb2rgb(h: float, w: float, b: float):
     """
     h in [0,360]
     w,b in [0,1]
     """
     h %= 360
-    if (sum_:=(w+b)) > 1:
+    if (sum_ := (w + b)) > 1:
         w /= sum_
         b /= sum_
 
     rgb = hsl2rgb(h, 1, 0.5)
 
-    return Color(*(round((x/255*(1-w-b)+w)*255) for x in rgb))
+    return Color(*(round((x / 255 * (1 - w - b) + w) * 255) for x in rgb))
+
 
 ##########################################################################
 

@@ -125,11 +125,11 @@ def test_style_computing():
         "rgb(100%, 0%, 0%)",
         "hsl(0, 100%, 50%)",
         "hwb(0 0% 0% / 1)",
-        "rgb(calc(50%*pi), 0, 0)" # 50%*pi is clamped to 100%
+        "rgb(calc(50%*pi), 0, 0)",  # 50%*pi is clamped to 100%
+        "hsl(0πrad 100% 50%)",
     ]
     assert util.all_equal([Style.color(i, {}) for i in inputs])
 
-    assert Style.length("3px") == Length(3)
     # Calc
     assert Style.AddOp(Percentage(100), sub, Length(30)).get_type() == Length
     assert Style.length("3px") == Length(3)
@@ -254,7 +254,7 @@ def test_util():
     assert buffer.getvalue() == "hello\n"
     # Colors
     assert util.hsl2rgb(0, 1, 0.5) == Color("red")
-    assert util.hwb2rgb(0,0,0) == Color("red")
+    assert util.hwb2rgb(0, 0, 0) == Color("red")
     # Regex
     # finds the period followed by the two spaces and not by the single space.
     # But the regex has to be flipped (First the space, then the period)

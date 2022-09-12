@@ -120,10 +120,16 @@ rel_length_units = {
 }
 abs_angle_units = {
     "deg": 1,
-    "grad": 400/360,
+    "grad": 400 / 360,
     # allows for example 1.5πrad or 1.5pirad instead of calc(1.5rad*pi)
-    "pirad": 2/360,
-    "πrad": 2/360, 
-    "rad": 2*math.pi/360,
-    "turn": 1/360,
+    "pirad": 2 / 360,
+    "πrad": 2 / 360,
+    "rad": 2 * math.pi / 360,
+    "turn": 1 / 360,
 }
+abs_time_units = {"s": 1, "ms": 1 / 1000}
+# abs_frequency_units = {
+#     "hz": 1,
+#     "khz": 1000
+# }
+abs_resolution_units = {"dpi": 1, "dpcm": 2.54, "x": 96, "dppx": 96}
