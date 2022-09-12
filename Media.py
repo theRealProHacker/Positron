@@ -10,6 +10,7 @@ import pygame as pg
 
 import util
 from own_types import Coordinate, Surface
+from config import g
 
 
 surf_cache = WeakValueDictionary[str, Surface]()
@@ -27,7 +28,6 @@ async def load_surf(url: str):
 
 # to avoid None checks
 _default_surf = Surface((0,0))
-_default_task = util.create_task(asyncio.sleep(0))
 
 class Image:
     """
@@ -35,7 +35,7 @@ class Image:
     """
 
     _surf: Surface
-    loading_task: util.Task
+    _loading_task: util.Task | None
 
     def __init__(
         self,
@@ -51,10 +51,9 @@ class Image:
         self.urls = urls if isinstance(urls, list) else [urls]
         self.url = self.urls[0]
         self.surf = _default_surf
-        self.loading_task = _default_task
+        self._loading_task = None
         if load or sync:
             self.init_load()
-            assert self.loading_task is not None
             self.loading_task.sync = sync
 
     @property
@@ -69,6 +68,14 @@ class Image:
     @surf.setter
     def surf(self, surf: Surface):
         self._surf = surf
+
+    @property
+    def loading_task(self)->util.Task:
+        return self._loading_task if self._loading_task is not None else g["default_loading_task"]
+
+    @loading_task.setter
+    def loading_task(self, task: util.Task):
+        self._loading_task = task
 
     async def load_urls(self):
         """
@@ -125,7 +132,7 @@ class Image:
     @property
     def is_loading(self):
         """Whether the images surf is being loaded currently"""
-        return self.loading_task is not _default_task and not self.loading_task.done()
+        return self._loading_task is not None and not self.loading_task.done()
 
     @property
     def is_loaded(self):

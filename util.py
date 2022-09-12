@@ -196,7 +196,7 @@ def consume_dict(d: dict[K_T, V_T]):
 
 
 # tuple mutations
-def mutate_tuple(tup: tuple, val: Any, slicing: Index):
+def mutate_tuple(tup: tuple, val, slicing: Index):
     """
     Mutate a tuple given the tuple, a slicing and the value to fill into that slicing
     Example:
@@ -211,7 +211,7 @@ def mutate_tuple(tup: tuple, val: Any, slicing: Index):
 
 
 def tup_replace(
-    t: tuple[CO_T, ...], slice_: int | tuple[int, int], elem: Any
+    t: tuple[CO_T, ...], slice_: int | tuple[int, int], elem
 ) -> tuple[CO_T, ...]:
     """
     Replace the part of the tuple given by slice with elem
@@ -626,13 +626,19 @@ def surf_opaque(surf: Surface):
 def draw_text(
     surf: Surface, text: str, fontname: str | None, size: int, color, **kwargs
 ):
+    # somehow mypy doesn't understand the difference between freetype and font
     font: Any = freetype.SysFont(fontname, size)  # type: ignore[arg-type]
     color = Color(color)
-    dest: Rect = font.get_rect(str(text))
-    for k, val in kwargs.items():
-        with suppress(AttributeError):
-            setattr(dest, k, val)
-    font.render_to(surf, dest=dest, fgcolor=color)
+    if color.a:
+        text_surf, dest = font.render(text, fgcolor=color)
+        for k, val in kwargs.items():
+            with suppress(AttributeError):
+                setattr(dest, k, val)
+        if color.a != 255:
+            text_surf.convert_alpha()
+            text_surf.set_alpha(color.a)
+        surf.blit(text_surf, dest)
+    
 
 
 class Dotted:

@@ -30,6 +30,7 @@ g: dict[str, Any] = {
     "file_watcher": None,           # the file watcher
     "screen": None,                 # pg.Surface
     "global_sheet": None,           # SourceSheet() # Is added in Style.py
+    "default_loading_task": None    # util.Task
 }
 
 def reset_config():

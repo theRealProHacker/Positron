@@ -145,6 +145,7 @@ async def run(file: str):
     Runs the application
     """
     logging.info("Starting")
+    g["default_loading_task"] = util.create_task(asyncio.sleep(0), True)
     if uses_aioconsole:
         task = asyncio.create_task(Console())
     try:
@@ -163,8 +164,10 @@ async def run(file: str):
         pg.quit()
         logging.info("Exiting")
 
-
-if __name__ == "__main__":
+async def user_main():
     # User code would come here
     g["icon"] = Media.Image(r"C:\Users\Rashid\Downloads\favicon_io\favicon-16x16.png")
-    asyncio.run(run("example.html"))
+    await run("example.html")
+
+if __name__ == "__main__":
+    asyncio.run(user_main())
