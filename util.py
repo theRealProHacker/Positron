@@ -30,7 +30,7 @@ from watchdog.observers import Observer
 from config import g
 from own_types import (CO_T, K_T, V_T, BugError, Cache, Color, Coordinate,
                        Event, Index, OpenMode, OpenModeReading, OpenModeWriting, Rect,
-                       Surface, Vector2, _XMLElement)
+                       Surface, Vector2, _XMLElement, Font)
 
 # fmt: on
 
@@ -609,7 +609,7 @@ def hwb2rgb(h: float, w: float, b: float):
 
     rgb = hsl2rgb(h, 1, 0.5)
 
-    return Color(*(round(x * (1 - w - b) + 255*w) for x in rgb))
+    return Color(*(round(x * (1 - w - b) + 255 * w) for x in rgb))
 
 
 ##########################################################################
@@ -623,22 +623,14 @@ def surf_opaque(surf: Surface):
     return np.all(pg.surfarray.array_alpha(surf) == 255)
 
 
-def draw_text(
-    surf: Surface, text: str, fontname: str | None, size: int, color, **kwargs
-):
-    # somehow mypy doesn't understand the difference between freetype and font
-    font: Any = freetype.SysFont(fontname, size)  # type: ignore[arg-type]
+def draw_text(surf: Surface, text: str, font: Font, color, **kwargs):
     color = Color(color)
     if color.a:
-        text_surf, dest = font.render(text, fgcolor=color)
-        for k, val in kwargs.items():
-            with suppress(AttributeError):
-                setattr(dest, k, val)
+        text_surf = font.render(text, True, color)
+        dest = text_surf.get_rect(**kwargs)
         if color.a != 255:
-            text_surf.convert_alpha()
             text_surf.set_alpha(color.a)
         surf.blit(text_surf, dest)
-    
 
 
 class Dotted:

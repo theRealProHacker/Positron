@@ -29,7 +29,7 @@ from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color, Coordinate
 from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys,
                    get_style, inset_getter, pack_longhands, parse_file,
                    parse_sheet, prio_keys, calculator)
-from util import get_groups, get_tag, group_by_bool, log_error
+from util import draw_text, get_groups, get_tag, group_by_bool, log_error
 
 # fmt: on
 """ More useful links for further development
@@ -380,10 +380,18 @@ class Element:
             ypos = 0
             for line in self.lines:
                 for item in line:
-                    word_surf = self.font.render(
-                        item.text, True, item.element.cstyle["color"]
+                    text_pos = (draw_box.x + item.xpos, draw_box.y + ypos)
+                    draw_text(
+                        surf,
+                        item.text,
+                        item.element.font,
+                        item.element.cstyle["color"],
+                        topleft=text_pos,
                     )
-                    surf.blit(word_surf, (draw_box.x + item.xpos, draw_box.y + ypos))
+                    # word_surf = self.font.render(
+                    #     item.text, True, item.element.cstyle["color"]
+                    # )
+                    # surf.blit(word_surf, pos)
                 ypos += line.height
         else:
             raise BugError(f"Wrong layout_type ({self.layout_type})")
