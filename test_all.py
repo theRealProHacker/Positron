@@ -86,7 +86,7 @@ def test_cache():
     # 2. when adding another element the cache doesn't grow
     style4 = test_cache.add(style2)
     assert len(test_cache) == 1
-    
+
     # 3. and returns the found value
     style3 is style4
 

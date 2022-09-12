@@ -26,8 +26,10 @@ async def load_surf(url: str):
         surf_cache[url] = surf = await asyncio.to_thread(pg.image.load, file)  # type: ignore[assignment]
     return surf
 
+
 # to avoid None checks
-_default_surf = Surface((0,0))
+_default_surf = Surface((0, 0))
+
 
 class Image:
     """
@@ -70,8 +72,10 @@ class Image:
         self._surf = surf
 
     @property
-    def loading_task(self)->util.Task:
-        return self._loading_task if self._loading_task is not None else g["default_loading_task"]
+    def loading_task(self) -> util.Task:
+        return (
+            self._loading_task if self._loading_task is not None else g["default_task"]
+        )
 
     @loading_task.setter
     def loading_task(self, task: util.Task):

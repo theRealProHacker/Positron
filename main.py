@@ -51,7 +51,7 @@ async def set_mode():
     # Screen Saver
     pg.display.set_allow_screensaver(g["allow_screen_saver"])
     # icon
-    _icon: None|Media.Image
+    _icon: None | Media.Image
     if _icon := g["icon"]:
         if await _icon.loading_task is not None:
             pg.display.set_icon(_icon.surf)
@@ -106,7 +106,7 @@ async def main(file: str):
             _icon.unload()
     await asyncio.gather(
         *(task for task in util.consume_list(g["tasks"]) if task.sync),
-        return_exceptions=False
+        return_exceptions=False,
     )
     await set_mode()
     while True:
@@ -145,9 +145,12 @@ async def run(file: str):
     Runs the application
     """
     logging.info("Starting")
-    g["default_loading_task"] = util.create_task(asyncio.sleep(0), True)
-    if uses_aioconsole:
-        task = asyncio.create_task(Console())
+    g["default_task"] = util.create_task(asyncio.sleep(0), True)
+    task = (
+        asyncio.create_task(Console())
+        if uses_aioconsole
+        else util.create_task(asyncio.sleep(0))
+    )
     try:
         await main(file)
         while g["reload"]:
@@ -156,18 +159,19 @@ async def run(file: str):
     except asyncio.exceptions.CancelledError:
         return
     finally:
-        if uses_aioconsole:
-            task.cancel()
-            await task
+        task.cancel()
+        await task
         if True:
             await util.delete_created_files()
         pg.quit()
         logging.info("Exiting")
 
+
 async def user_main():
     # User code would come here
     g["icon"] = Media.Image(r"C:\Users\Rashid\Downloads\favicon_io\favicon-16x16.png")
     await run("example.html")
+
 
 if __name__ == "__main__":
     asyncio.run(user_main())
