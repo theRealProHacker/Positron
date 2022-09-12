@@ -112,9 +112,13 @@ async def main(file: str):
             elif event.type == pg.WINDOWRESIZED:
                 g["W"] = event.x
                 g["H"] = event.y
+                g["css_dirty"] = True
                 g["recompute"] = True
         if end:
             break
+        # Await the next tick. In this spare time all async tasks can be run. 
+        await asyncio.to_thread(CLOCK.tick, g["FPS"])
+
         if g["css_dirty"] or g["css_sheet_len"] != len(
             g["css_sheets"]
         ):  # addition or subtraction (or both)
@@ -122,11 +126,8 @@ async def main(file: str):
             g["recompute"] = True
         if g["recompute"]:
             tree.compute()
-            tree.layout()
             g["recompute"] = False
-
-        # Await the next tick. In this spare time all async tasks can be run. 
-        await asyncio.to_thread(CLOCK.tick, g["FPS"])
+        tree.layout()
 
         SCREEN.fill(g["window_bg"])
         tree.draw(SCREEN, (0, 0))

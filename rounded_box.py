@@ -7,19 +7,19 @@ import numpy as np
 import pygame as pg
 from pygame import gfxdraw
 
-from own_types import (V_T, BugError, Color, Dimension, Float4Tuple, Radii, Rect,
+from own_types import (V_T, BugError, Color, Coordinate, Float4Tuple, Radii, Rect,
                        Surface, Vector2)
 from util import all_equal
 # fmt: on
 
 
-def mul_tup(tup1: Dimension, tup2: Dimension) -> tuple[float, float]:
+def mul_tup(tup1: Coordinate, tup2: Coordinate) -> tuple[float, float]:
     x1, y1 = tup1
     x2, y2 = tup2
     return (x1 * x2, y1 * y2)
 
 
-def abs_tup(tup1: Dimension) -> Dimension:
+def abs_tup(tup1: Coordinate) -> Coordinate:
     return type(tup1)([abs(x) for x in tup1])  # type: ignore
 
 
@@ -33,7 +33,7 @@ corner_vectors: list[tuple[int, int]] = [
 ]
 
 
-def counter_vector(vector: Dimension) -> Vector2:
+def counter_vector(vector: Coordinate) -> Vector2:
     r: tuple[float, float]
     match tuple(vector):
         case (x, 0):
@@ -238,7 +238,7 @@ def draw_rounded_background(surf: Surface, box: Rect, bgcolor: Color, radii: Rad
         )
 
 
-def round_surf(surf: Surface, size: Dimension, radii: Radii):
+def round_surf(surf: Surface, size: Coordinate, radii: Radii):
     """
     Clip the surface on the box with the given radii
     """

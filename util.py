@@ -27,9 +27,9 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 # fmt: off
-from config import all_units, g
-from own_types import (CO_T, K_T, V_T, BugError, Cache, Color, Dimension,
-                       Event, OpenMode, OpenModeReading, OpenModeWriting, Rect,
+from config import g
+from own_types import (CO_T, K_T, V_T, BugError, Cache, Color, Coordinate,
+                       Event, Index, OpenMode, OpenModeReading, OpenModeWriting, Rect,
                        Surface, Vector2, _XMLElement)
 
 # fmt: on
@@ -196,6 +196,20 @@ def consume_dict(d: dict[K_T, V_T]):
 
 
 # tuple mutations
+def mutate_tuple(tup: tuple, val: Any, slicing: Index):
+    """
+    Mutate a tuple given the tuple, a slicing and the value to fill into that slicing
+    Example:
+        ```python
+        t = (1,2)
+        mutate_tuple(t, 3, 0) == (3,2)
+        ```
+    """
+    l = list(tup)
+    l[slicing] = val
+    return tuple(l)
+
+
 def tup_replace(
     t: tuple[CO_T, ...], slice_: int | tuple[int, int], elem: Any
 ) -> tuple[CO_T, ...]:
@@ -529,33 +543,6 @@ def rev_sub(
     return re.sub(pattern, _repl, s[::-1], count)[::-1]
 
 
-# https://docs.python.org/3/library/re.html#simulating-scanf
-int_re = r"[+-]?\d+"
-pos_int_re = r"+?\d+"
-# dec_re = rf"(?:{int_re})?(?:\.\d+)?(?:e{int_re})?"
-dec_re = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
-# pos_dec_re = rf"(?:{pos_int_re})?(?:\.\d+)?(?:e{int_re})?"
-units_re = re_join(*all_units)
-
-regexes: dict[str, re.Pattern] = {
-    k: re.compile(x)
-    for k, x in {
-        "integer": int_re,
-        "number": dec_re,
-        "percentage": rf"{dec_re}\%",
-        "dimension": rf"(?:{dec_re})(?:\w+)",  # TODO: Use actual units
-    }.items()
-}
-
-# for type checking
-IsFunc = Callable[[str], re.Match | None]
-is_integer: IsFunc
-is_number: IsFunc
-
-for key, regex in regexes.items():
-    globals()[f"is_{key}"] = regex.fullmatch
-
-
 class GeneralParser:
     """
     Really this is a lexer.
@@ -592,6 +579,35 @@ class GeneralParser:
 ##########################################################################
 
 
+############################# Colors #####################################
+def hsl2rgb(hue: float, sat: float, light: float):
+    hue %= 360 
+    sat = in_bounds(sat,0,1)
+    light = in_bounds(light,0,1)
+    # algorithm from https://www.w3.org/TR/css-color-3/#hsl-color
+    def hue2rgb(n):
+        k = (n + hue/30) % 12
+        a = sat * min(light, 1 - light)
+        return light - a * max(-1, min(k - 3, 9 - k, 1))
+
+    return Color(*(int(x*255) for x in (hue2rgb(0), hue2rgb(8), hue2rgb(4))))
+
+def hwb2rgb (h: float, w: float, b: float):
+    """
+    h in [0,360]
+    w,b in [0,1]
+    """
+    h %= 360
+    if (sum_:=(w+b)) > 1:
+        w /= sum_
+        b /= sum_
+
+    rgb = hsl2rgb(h, 1, 0.5)
+
+    return Color(*(round((x/255*(1-w-b)+w)*255) for x in rgb))
+
+##########################################################################
+
 ############################# Pygame related #############################
 
 pg.init()
@@ -620,7 +636,7 @@ class Dotted:
         color,
         dash_size: int = 10,
         dash_width: int = 2,
-        start_pos: Dimension = (0, 0),
+        start_pos: Coordinate = (0, 0),
     ):
         self.dim = Vector2(dim)
         self.color = Color(color)

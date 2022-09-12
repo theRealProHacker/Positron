@@ -98,11 +98,9 @@ def test_cache():
 
 def test_style_computing():
     # Helpers
-    assert Style.tup_replace((1, 2, 2, 2, 4), (2, 4), 3) == (1, 2, 3, 4)
     assert Style.match_bracket("3px+(5*12px))+(5px+6px)") == len("3px+(5*12px))") - 1
     assert Style.css_func("rgb(255, 255, 255)", "rgb") == ["255", "255", "255"]
     assert Style.split_units("3px") == (3, "px")
-    assert Style.split_units("0") == (0, "")
     assert Style.split_units("70%") == (70, "%")
     with pytest.raises(AttributeError):
         Style.split_units("blue")
@@ -113,23 +111,37 @@ def test_style_computing():
     ]
 
     # Acceptors
+    assert Style.number("120") == 120
+    assert Style.length("120px") == Length(120)
     assert Style.color("rgba(120, 120, 120, 1)", {}) == Color(*(120,) * 3, 255)
     assert Style.color("currentcolor", {"color": Color("blue")}) == Color("blue")
-    assert Style.color("#fff", {}) == Style.color("#ffffff", {}) == Color("white")
+    assert Style.color("#c0ffee", {}) == Color(192, 255, 238)
+    # https://developer.mozilla.org/en-US/docs/Web/CSS/color#making_text_red
+    inputs = [
+        "red",
+        "#f00",
+        "#ff0000ff",
+        "rgb(255,0,0)",
+        "rgb(100%, 0%, 0%)",
+        "hsl(0, 100%, 50%)",
+        "hwb(0 0% 0% / 1)",
+        "rgb(calc(50%*pi), 0, 0)" # 50%*pi is clamped to 100%
+    ]
+    assert util.all_equal([Style.color(i, {}) for i in inputs])
 
-    assert Style.length("3px", {}) == Length(3)
+    assert Style.length("3px") == Length(3)
     # Calc
     assert Style.AddOp(Percentage(100), sub, Length(30)).get_type() == Length
-    length_calc = Style.Calc(Length)
-    assert length_calc("3px", {}) == Length(3)
-    assert length_calc("calc(3px)", {}) == Length(3)
-    assert length_calc("calc(3*5)", {}) is None
-    assert length_calc("calc(3px*calc(5+3))", {}) == Length(24)
-    assert length_calc("calc(pi*(1+e)*1px)", {}) == Length(math.pi + math.e * math.pi)
-    lp_calc = Style.Calc(Length, Percentage)
-    assert lp_calc("calc(100%-30px)", {}) == Style.AddOp(
+    assert Style.length("3px") == Length(3)
+    assert Style.length("calc(3px)") == Length(3)
+    assert Style.length("calc(3*5)") is None
+    assert Style.length("calc(3px*calc(5+3))") == Length(24)
+    assert Style.length("calc(pi*(1+e)*1px)") == Length(math.pi + math.e * math.pi)
+    assert Style.length_percentage("calc(100%-30px)") == Style.AddOp(
         Percentage(100), sub, Length(30)
     )
+    with raises(KeyError):
+        Style.style_attrs["width"].accept("var(--my-width)", {})
 
     with raises(KeyError):
         Style.style_attrs["width"].accept("3em", {})  # em accesses font-size
@@ -226,6 +238,7 @@ def test_J():
 
 
 def test_util():
+    assert util.tup_replace((1, 2, 2, 2, 4), (2, 4), 3) == (1, 2, 3, 4)
     assert util.in_bounds(3, 4, 5) == 4
     assert util.ensure_suffix("test-box", "-box") == "test-box"
     assert util.ensure_suffix("test", "-box") == "test-box"
@@ -239,6 +252,9 @@ def test_util():
     util.print_once("hello", file=buffer)
     util.print_once("hello", file=buffer)
     assert buffer.getvalue() == "hello\n"
+    # Colors
+    assert util.hsl2rgb(0, 1, 0.5) == Color("red")
+    assert util.hwb2rgb(0,0,0) == Color("red")
     # Regex
     # finds the period followed by the two spaces and not by the single space.
     # But the regex has to be flipped (First the space, then the period)
@@ -250,38 +266,6 @@ def test_util():
         )
         == "123, 124, 125"
     )
-    tests = {
-        # https://developer.mozilla.org/en-US/docs/Web/CSS/integer#examples
-        "integer": {
-            True: ["12", "+123", "-456", "0", "+0", "-0", "00"],
-            False: ["12.0", "12.", "+---12", "ten", "_5", r"\35", r"\4E94", "3e4"],
-        },
-        # https://developer.mozilla.org/en-US/docs/Web/CSS/number#examples
-        "number": {
-            True: [
-                "12",
-                "4.01",
-                "-456.8",
-                "0.0",
-                "+0.0",
-                "-0.0",
-                ".60",
-                "10e3",
-                "-3.4e-2",
-                "12.",
-            ],
-            False: ["+-12.2", "12.1.1"],
-        },
-        # https://developer.mozilla.org/en-US/docs/Web/CSS/dimension
-        "dimension": {
-            True: ["12px", "1rem", "1.2pt", "2200ms", "5s", "200hz"],
-            False: ["12 px", '12"px"'],  # ,"3sec"]
-        },
-    }
-    for name, val in tests.items():
-        for b, items in val.items():
-            for x in items:
-                assert bool(getattr(util, f"is_{name}")(x)) is b
     assert util.abs_div(-1 / 2) == -2
     assert util.abs_div(3 / 4) == util.abs_div(4 / 3)
     # just like abs(3-4) == abs(4-3)

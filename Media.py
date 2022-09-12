@@ -9,7 +9,7 @@ from weakref import WeakValueDictionary
 import pygame as pg
 
 import util
-from own_types import Dimension, Surface
+from own_types import Coordinate, Surface
 
 
 surf_cache = WeakValueDictionary[str, Surface]()
@@ -112,7 +112,7 @@ class Image:
         """
         pass
 
-    def draw(self, surf: Surface, pos: Dimension):
+    def draw(self, surf: Surface, pos: Coordinate):
         """
         Draw the image to the given surface.
         If the surf is unloaded, loading will automatically start

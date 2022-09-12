@@ -1,4 +1,5 @@
 """ Any global variables are stored here"""
+import math
 from typing import Any
 from own_types import Color, Cache, FrozenDCache, Length
 
@@ -92,42 +93,6 @@ abs_border_width = {
     "medium": Length(3),
     "thick": Length(5),
 }
-# units
-all_units = {
-    # length https://developer.mozilla.org/en-US/docs/Web/CSS/length
-    "cap",
-    "ch",
-    "em",
-    "ex",
-    "ic",
-    "lh",
-    "rem",
-    "rlh",
-    "vh",
-    "vw",
-    "vmax",
-    "vmin",
-    "vb",
-    "vi",
-    "px",
-    "cm",
-    "mm",
-    "Q",
-    "in",
-    "pc",
-    "pt",
-    # time https://developer.mozilla.org/en-US/docs/Web/CSS/time
-    "s",
-    "ms",
-    # freq https://developer.mozilla.org/en-US/docs/Web/CSS/frequency
-    "hz",
-    "khz",
-    # resolution https://developer.mozilla.org/en-US/docs/Web/CSS/resolution
-    "dpi",
-    "dpcm",
-    "dppx",
-    "x",
-}
 abs_length_units = {
     "px": 1,
     "cm": 37.8,
@@ -152,4 +117,13 @@ rel_length_units = {
     "vmin",
     "vb",
     "vi",
+}
+abs_angle_units = {
+    "deg": 1,
+    "grad": 400/360,
+    # allows for example 1.5πrad or 1.5pirad instead of calc(1.5rad*pi)
+    "pirad": 2/360,
+    "πrad": 2/360, 
+    "rad": 2*math.pi/360,
+    "turn": 1/360,
 }

@@ -23,7 +23,7 @@ import Media
 import rounded_box
 import Style
 from config import add_sheet, g, watch_file
-from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color, Dimension, DisplayType, Drawable,
+from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color, Coordinate, DisplayType, Drawable,
                        Float4Tuple, Font, FontStyle, Length,
                        Number, Percentage, Radii, Rect, Surface, _XMLElement)
 from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys,
@@ -157,6 +157,7 @@ class Element:
                 for child in self.real_children:
                     if child.display == "inline":
                         child.display = "block"
+        self.layout_type = self.display
         return self.display == "block"
 
     def get_height(self) -> float:
@@ -177,7 +178,7 @@ class Element:
         """Returns whether the given Selector matches the Element, cached"""
         return selector(self)
 
-    def collide(self, pos: Dimension) -> Iterable["Element"]:
+    def collide(self, pos: Coordinate) -> Iterable["Element"]:
         """
         The idea of this function is to get which elements were hit for focus, hover, etc.
         """
@@ -251,7 +252,6 @@ class Element:
         if any(c.display == "block" for c in self.children):
             self.layout_children(set_height)
         else:
-            # with word-wrap but not between words if they are too long
             # https://stackoverflow.com/a/46220683/15046005
             self.layout_type = "inline"
             width = self.box.content_box.width
@@ -332,7 +332,7 @@ class Element:
                 )
             )
 
-    def draw(self, surf: Surface, pos: Dimension):
+    def draw(self, surf: Surface, pos: Coordinate):
         """
         Draws the element to the `surf` at `pos`
         """
@@ -430,7 +430,7 @@ class Element:
         Represents the elements style in a nice way for debugging
         """
         out_style = pack_longhands(
-            {k: f"{_in}->{self.cstyle[k]}" for k, _in in self.input_style.items()}
+            {k: f"{_in}->{_out}" if _in != (_out:=self.cstyle[k]) else str(_in) for k, _in in self.input_style.items()}
         )
         for k, v in out_style.items():
             print(f"{k}: {v}")
@@ -644,7 +644,7 @@ class ImgElement(Element):
         raise ValueError(given_size)
 
     @staticmethod
-    def crop_image(surf: Surface, to_size: Dimension):
+    def crop_image(surf: Surface, to_size: Coordinate):
         """
         Makes an image fit the `to_size`
         """
@@ -656,7 +656,7 @@ class ImgElement(Element):
     def layout(self, width):
         if self.cstyle["display"] == "none" or self.image is None:
             return
-        w, h = (x or 0 for x in self.given_size)
+        w, h = self.image.surf.get_bounding_rect().size if self.image.surf is not None else (x or 0 for x in self.given_size)
         self.box = Box.Box(
             self.cstyle["box-sizing"],
             # TODO: add border, margin, padding
