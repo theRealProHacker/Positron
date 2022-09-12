@@ -581,6 +581,10 @@ class GeneralParser:
 
 ############################# Colors #####################################
 def hsl2rgb(hue: float, sat: float, light: float):
+    """
+    hue in [0,360]
+    sat,light in [0,1]
+    """
     hue %= 360
     sat = in_bounds(sat, 0, 1)
     light = in_bounds(light, 0, 1)
@@ -605,7 +609,7 @@ def hwb2rgb(h: float, w: float, b: float):
 
     rgb = hsl2rgb(h, 1, 0.5)
 
-    return Color(*(round((x / 255 * (1 - w - b) + w) * 255) for x in rgb))
+    return Color(*(round(x * (1 - w - b) + 255*w) for x in rgb))
 
 
 ##########################################################################

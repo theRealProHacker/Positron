@@ -39,7 +39,7 @@ SCREEN: Surface
 
 # def set_mode(mode: dict[str, Any] = {}):
 #     g.update(mode)
-def set_mode():
+async def set_mode():
     """
     Call this after setting g manually. This will probably change to an API function
     """
@@ -50,6 +50,11 @@ def set_mode():
     g["screen"] = SCREEN = pg.display.set_mode(DIM, flags)
     # Screen Saver
     pg.display.set_allow_screensaver(g["allow_screen_saver"])
+    # icon
+    _icon: None|Media.Image
+    if _icon := g["icon"]:
+        if await _icon.loading_task is not None:
+            pg.display.set_icon(_icon.surf)
 
 
 def e(q: str):
@@ -93,17 +98,17 @@ async def main(file: str):
     g["root"] = tree = create_element(parsed)
     logging.debug(tree.to_html())
     pg.display.set_caption(g["title"])
-    _icon: Media.Image = Media.Image(g["icon_srcs"], sync=True)
+    if _icon_srcs := g["icon_srcs"]:
+        _icon: Media.Image = Media.Image(_icon_srcs)
+        await _icon.loading_task
+        if _icon.is_loaded:
+            pg.display.set_icon(_icon.surf)
+            _icon.unload()
     await asyncio.gather(
-        *filter(lambda task: task.sync, util.consume_list(g["tasks"])),
+        *(task for task in util.consume_list(g["tasks"]) if task.sync),
         return_exceptions=False
     )
-    assert _icon.loading_task
-    await _icon.loading_task
-    if _icon._surf:
-        pg.display.set_icon(_icon.surf)
-        _icon.unload()
-    set_mode()
+    await set_mode()
     while True:
         end = False
         for event in pg.event.get():
@@ -160,4 +165,6 @@ async def run(file: str):
 
 
 if __name__ == "__main__":
+    # User code would come here
+    g["icon"] = Media.Image(r"C:\Users\Rashid\Downloads\favicon_io\favicon-16x16.png")
     asyncio.run(run("example.html"))

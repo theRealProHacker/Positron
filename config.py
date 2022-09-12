@@ -21,6 +21,7 @@ g: dict[str, Any] = {
     "resizable": True,              # bool
     "frameless": False,             # bool
     "allow_screen_saver": True,     # bool
+    "icon": None,                   # None or Image
     "default_font_size": 16,        # float
     "zoom": 1,                      # float
     "FPS": 30,                      # float
