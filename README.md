@@ -2,6 +2,7 @@
 
 [![Join the chat at https://gitter.im/Positron-Contributors/community](https://badges.gitter.im/Positron-Contributors/community.svg)](https://gitter.im/Positron-Contributors/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+![Github CI workflow Badge](https://github.com/theRealProHacker/Positron/actions/workflows/run-test.yml/badge.svg)
 
 # Sources (MVPs)
 - [MDN](developer.mozilla.org)
@@ -20,7 +21,8 @@
 - [Firefox Source Structure](https://firefox-source-docs.mozilla.org/contributing/directory_structure.html)
 
 # Thoughts
-Somehow move `Selectors` out of `Element` because they don't really belong there
+Somehow move `Selectors` out of `Element` because they don't really belong there  
+Test on https://acid2.acidtests.org/
 ## Use less RegEx
 Many consider regular expressions to be the best thing if it comes to text processing. 
 However, it often makes more sense to use other tools like `str.removesuffix()` or `str.split()`/`re.split()`  
