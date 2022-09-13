@@ -9,7 +9,8 @@ from weakref import WeakValueDictionary
 import pygame as pg
 
 import util
-from own_types import Dimension, Surface
+from own_types import Coordinate, Surface
+from config import g
 
 
 surf_cache = WeakValueDictionary[str, Surface]()
@@ -26,13 +27,17 @@ async def load_surf(url: str):
     return surf
 
 
+# to avoid None checks
+_default_surf = Surface((0, 0))
+
+
 class Image:
     """
     Represents a single image with multiple sources
     """
 
-    _surf: Surface | None
-    loading_task: util.Task | None
+    _surf: Surface
+    _loading_task: util.Task | None
 
     def __init__(
         self,
@@ -47,11 +52,10 @@ class Image:
         """
         self.urls = urls if isinstance(urls, list) else [urls]
         self.url = self.urls[0]
-        self.surf = None
-        self.loading_task = None
+        self.surf = _default_surf
+        self._loading_task = None
         if load or sync:
             self.init_load()
-            assert self.loading_task is not None
             self.loading_task.sync = sync
 
     @property
@@ -59,13 +63,23 @@ class Image:
         """
         Getting the images surf automatically starts loading it if it isn't loaded
         """
-        if self._surf is None:
+        if self._surf is _default_surf:
             self.init_load()
         return self._surf
 
     @surf.setter
-    def surf(self, surf: Surface | None):
+    def surf(self, surf: Surface):
         self._surf = surf
+
+    @property
+    def loading_task(self) -> util.Task:
+        return (
+            self._loading_task if self._loading_task is not None else g["default_task"]
+        )
+
+    @loading_task.setter
+    def loading_task(self, task: util.Task):
+        self._loading_task = task
 
     async def load_urls(self):
         """
@@ -98,7 +112,7 @@ class Image:
         Unloads the image by destroying
         the loaded image and the current loading task
         """
-        self.surf = None
+        self.surf = _default_surf
         self.loading_task.cancel()
 
     def _on_loaded(self, future: asyncio.Future[Surface]):
@@ -112,23 +126,22 @@ class Image:
         """
         pass
 
-    def draw(self, surf: Surface, pos: Dimension):
+    def draw(self, surf: Surface, pos: Coordinate):
         """
         Draw the image to the given surface.
         If the surf is unloaded, loading will automatically start
         """
-        if self.surf is not None:
-            surf.blit(self.surf, pos)
+        surf.blit(self.surf, pos)
 
     @property
     def is_loading(self):
         """Whether the images surf is being loaded currently"""
-        return self.loading_task is not None and not self.loading_task.done()
+        return self._loading_task is not None and not self.loading_task.done()
 
     @property
     def is_loaded(self):
         """Whether the images surf is loaded and ready to draw"""
-        return self._surf is not None
+        return self._surf is not _default_surf
 
     @property
     def is_unloaded(self):

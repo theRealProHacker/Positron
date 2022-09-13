@@ -39,7 +39,7 @@ SCREEN: Surface
 
 # def set_mode(mode: dict[str, Any] = {}):
 #     g.update(mode)
-def set_mode():
+async def set_mode():
     """
     Call this after setting g manually. This will probably change to an API function
     """
@@ -50,6 +50,11 @@ def set_mode():
     g["screen"] = SCREEN = pg.display.set_mode(DIM, flags)
     # Screen Saver
     pg.display.set_allow_screensaver(g["allow_screen_saver"])
+    # icon
+    _icon: None | Media.Image
+    if _icon := g["icon"]:
+        if await _icon.loading_task is not None:
+            pg.display.set_icon(_icon.surf)
 
 
 def e(q: str):
@@ -93,17 +98,17 @@ async def main(file: str):
     g["root"] = tree = create_element(parsed)
     logging.debug(tree.to_html())
     pg.display.set_caption(g["title"])
-    _icon: Media.Image = Media.Image(g["icon_srcs"], sync=True)
+    if _icon_srcs := g["icon_srcs"]:
+        _icon: Media.Image = Media.Image(_icon_srcs)
+        await _icon.loading_task
+        if _icon.is_loaded:
+            pg.display.set_icon(_icon.surf)
+            _icon.unload()
     await asyncio.gather(
-        *filter(lambda task: task.sync, util.consume_list(g["tasks"])),
-        return_exceptions=False
+        *(task for task in util.consume_list(g["tasks"]) if task.sync),
+        return_exceptions=False,
     )
-    assert _icon.loading_task
-    await _icon.loading_task
-    if _icon._surf:
-        pg.display.set_icon(_icon.surf)
-        _icon.unload()
-    set_mode()
+    await set_mode()
     while True:
         end = False
         for event in pg.event.get():
@@ -112,9 +117,13 @@ async def main(file: str):
             elif event.type == pg.WINDOWRESIZED:
                 g["W"] = event.x
                 g["H"] = event.y
+                g["css_dirty"] = True
                 g["recompute"] = True
         if end:
             break
+        # Await the next tick. In this spare time all async tasks can be run.
+        await asyncio.to_thread(CLOCK.tick, g["FPS"])
+
         if g["css_dirty"] or g["css_sheet_len"] != len(
             g["css_sheets"]
         ):  # addition or subtraction (or both)
@@ -122,11 +131,8 @@ async def main(file: str):
             g["recompute"] = True
         if g["recompute"]:
             tree.compute()
-            tree.layout()
             g["recompute"] = False
-
-        # Await the next tick. In this spare time all async tasks can be run. 
-        await asyncio.to_thread(CLOCK.tick, g["FPS"])
+        tree.layout()
 
         SCREEN.fill(g["window_bg"])
         tree.draw(SCREEN, (0, 0))
@@ -139,8 +145,12 @@ async def run(file: str):
     Runs the application
     """
     logging.info("Starting")
-    if uses_aioconsole:
-        task = asyncio.create_task(Console())
+    g["default_task"] = util.create_task(asyncio.sleep(0), True)
+    task = (
+        asyncio.create_task(Console())
+        if uses_aioconsole
+        else util.create_task(asyncio.sleep(0))
+    )
     try:
         await main(file)
         while g["reload"]:
@@ -149,14 +159,19 @@ async def run(file: str):
     except asyncio.exceptions.CancelledError:
         return
     finally:
-        if uses_aioconsole:
-            task.cancel()
-            await task
+        task.cancel()
+        await task
         if True:
             await util.delete_created_files()
         pg.quit()
         logging.info("Exiting")
 
 
+async def user_main():
+    # User code would come here
+    g["icon"] = Media.Image(r"C:\Users\Rashid\Downloads\favicon_io\favicon-16x16.png")
+    await run("example.html")
+
+
 if __name__ == "__main__":
-    asyncio.run(run("example.html"))
+    asyncio.run(user_main())

@@ -1,6 +1,4 @@
-# Style computing is not thread safe and doesn't need to be. Maybe add a global lock?
 # fmt: off
-import abc
 import math
 import re
 from abc import ABC
@@ -9,26 +7,30 @@ from contextlib import contextmanager, suppress
 from dataclasses import astuple, dataclass
 from functools import cache, partial
 from itertools import chain, islice
-from operator import itemgetter, add, sub, mul, truediv
-from typing import (TYPE_CHECKING, Any, Callable, Generic, Iterable, Literal, Mapping, Protocol, Type, TypeVar, Union, cast,
-                    overload)
+from operator import add, itemgetter, mul, sub, truediv
+from typing import (Any, Callable, Generic, Iterable, Literal, Mapping,
+                    Protocol, TypeVar, Union, cast, overload)
 
 import tinycss
 
-from config import (abs_border_width, abs_font_size, abs_font_weight,
-                    abs_length_units, g, rel_font_size, rel_length_units)
 import Media
-from own_types import (CO_T, V_T, Auto, AutoLP, AutoLP4Tuple, AutoType, BugError, Color, Drawable, Float4Tuple,
-                       FontStyle, Length, LengthPerc,
-                       Number, Percentage, Sentinel, Str4Tuple, StrSent,
-                       frozendict, CompStr)
-from util import (GeneralParser, dec_re, fetch_txt, find, find_index, get_groups, group_by_bool, log_error, make_default,
-                  noop, print_once, re_join, tup_replace)
+from config import (abs_angle_units, abs_resolution_units, abs_time_units, abs_border_width, abs_font_size,
+                    abs_font_weight, abs_length_units, g, rel_font_size,
+                    rel_length_units)
+from own_types import (CO_T, V_T, Angle, Auto, AutoLP, AutoType,
+                       BugError, CSSDimension, Color, CompStr, Drawable, Float4Tuple,
+                       FontStyle, Length, LengthPerc, Number, Percentage, Resolution,
+                       Sentinel, Str4Tuple, StrSent, Time, frozendict)
+from util import (GeneralParser, fetch_txt, find_index,
+                  get_groups, group_by_bool, hsl2rgb, hwb2rgb, in_bounds, log_error,
+                  make_default, noop, print_once, re_join, tup_replace)
+
 # fmt: on
 
 # Typing
 
 CompValue = Any  # | float | Percentage | Sentinel | FontStyle | Color | tuple[Drawable, ...] | CompStr but not a normal str
+CompValue_T = TypeVar("CompValue_T", bound=CompValue, covariant=True)
 
 # A Value is the actual value together with whether the value is set as important
 # A Property corresponds to a css-property with a name and a value
@@ -45,7 +47,13 @@ StyleRule = tuple[str, Style]
 MediaValue = tuple[int, int]  # just the window size right now
 Rule = Union["AtRule", "StyleRule"]
 
-CompValue_T = TypeVar("CompValue_T", bound=CompValue, covariant=True)
+CalcTypes = float, CSSDimension
+CalcType = Union[type[float], type[CSSDimension]]
+CalcValue = float | CSSDimension
+Operator = Callable[[CalcValue, CalcValue], CalcValue]
+
+ParseResult = Union[CalcValue, "BinOp"]
+ParseResult_T = TypeVar("ParseResult_T", bound=ParseResult)
 
 
 def is_real_str(x):
@@ -101,6 +109,87 @@ def split_value(s: str) -> list[str]:
     return result
 
 
+# css func should be used if there is a single css function expected
+# get_css_func should be used if there a several css functions expected
+def css_func(value: str, name: str, delimiter=","):
+    if value.startswith(name + "(") and value.endswith(")"):
+        inside = value[len(name) + 1 : -1]
+        if delimiter:
+            return re.split(rf"\s*{re.escape(delimiter)}\s*", inside)
+        else:
+            return [inside]
+
+
+def get_css_func(posses: Iterable[str] | str = ""):
+    _posses: str = (
+        ident_re
+        if not posses
+        else re_join(*posses)
+        if isinstance(posses, Iterable)
+        else str
+    )
+    pattern = re.compile(rf"({_posses})\((.*)\)")
+
+    def inner(value: str) -> None | tuple[str, list[str]]:
+        if match := pattern.fullmatch(value):
+            name, _args = match.groups()
+            args = re.split(r"\s*,\s*", _args)
+            return name, args
+        return None
+
+    return inner
+
+
+def remove_quotes(value: str):
+    for quote in ("'", '"'):
+        if value.startswith(quote) and value.endswith(quote):
+            return value[1:-1]
+    return value
+
+
+def split_units(attr: str) -> tuple[float, str]:
+    """Split a dimension or percentage into a tuple of number and the "unit" """
+    match = dim_pattern.fullmatch(attr)
+    num, unit = match.groups()  # type: ignore # Raises AttributeError
+    return float(num), unit.lower()
+
+
+# https://docs.python.org/3/library/re.html#simulating-scanf
+dec_re = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
+ident_re = r"-*[\w]+[-\w\d]*"  # TODO: find out the actual definition. Done: way too complicated
+hex_pattern = re.compile(r"#([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})?")
+number_pattern = re.compile(dec_re)
+# units
+units_map: dict[str, type[CSSDimension]] = {
+    "%": Percentage,
+    **dict.fromkeys(chain(abs_length_units, rel_length_units), Length),
+    **dict.fromkeys(abs_angle_units, Angle),
+}
+unit_re = re_join(*units_map)
+dim_pattern = re.compile(rf"({dec_re})({unit_re})")
+# operators
+_is_high = lambda x: x in ("*", "/")
+_is_low = lambda x: x in ("+", "-")
+op_map: dict[str, Operator] = {
+    "+": add,
+    "-": sub,
+    "*": mul,
+    "/": truediv,
+}
+op_re = re.compile(re_join(*op_map))
+# calc literals
+literal_map = {
+    "pi": math.pi,
+    "e": math.e,
+    # I don't understand why you would need these. Like, you're not gonna make an element with a font-size of NaN or -infinity
+    # "infinity": float("inf"),
+    # "-infinity": float("-inf"),
+    # "NaN": float("nan"),
+}
+literal_re = re.compile(re_join(*literal_map))
+no_intrinsic_type = frozenset({Percentage, float})
+
+
 #################### Itemgetters/setters ###########################
 
 # https://stackoverflow.com/questions/54785148/destructuring-dicts-and-objects-in-python
@@ -142,6 +231,76 @@ br_getter: T4Getter[tuple[LengthPerc, LengthPerc]] = itemgetter(*br_keys)  # typ
 # fmt: on
 ####################################################################
 
+######################### Calculation ##############################
+@dataclass
+class Calculator:
+    default_perc_val: float | None = None
+
+    def __call__(
+        self,
+        value: AutoType | ParseResult,
+        auto_val: float | None = None,
+        perc_val: float | None = None,
+    ) -> float:
+        """
+        This helper function takes a value, an auto_val
+        and the perc_value and returns a Number
+        if the value is Auto then the auto_value is returned
+        if the value is a Length or similar that is returned
+        if the value is a Percentage the Percentage is multiplied with the perc_value
+        """
+        if isinstance(value, float):
+            return value
+        elif value is Auto:
+            assert auto_val is not None, BugError("This attribute cannot be Auto")
+            return auto_val
+        elif isinstance(value, Percentage):
+            perc_val = make_default(perc_val, self.default_perc_val)
+            assert perc_val is not None, BugError(
+                "This attribute cannot be a percentage"
+            )
+            return value.resolve(perc_val)
+        elif isinstance(value, CSSDimension):
+            return value.value
+        elif isinstance(value, BinOp):
+            new_value = type(value)(
+                self(value.left, auto_val, perc_val),
+                value.op,
+                self(value.right, auto_val, perc_val),
+            )
+            rv = new_value.resolve()
+            assert isinstance(rv, float), BugError(
+                f"Calculator couldn't resolve BinOp, {value}, {auto_val}, {perc_val}"
+            )
+            return rv
+        raise BugError("Unsupported type in calc")
+
+    def _multi(self, values: Iterable[AutoType | ParseResult], *args):
+        return tuple(self(val, *args) for val in values)
+
+    # only relevant for typing
+    def multi2(
+        self, values: tuple[AutoType | ParseResult, AutoType | ParseResult], *args
+    ) -> tuple[float, float]:
+        return self._multi(values, *args)
+
+    # I would love a syntax like tuple[MyType,2]->tuple[MyType,MyType], and ... just means unspecified
+    def multi4(
+        self,
+        values: tuple[
+            AutoType | ParseResult,
+            AutoType | ParseResult,
+            AutoType | ParseResult,
+            AutoType | ParseResult,
+        ],
+        *args,
+    ) -> Float4Tuple:
+        return self._multi(values, *args)
+
+
+calculator = Calculator()
+####################################################################
+
 
 ################## Acceptors #################################
 
@@ -158,52 +317,23 @@ class Acceptor(Protocol[CompValue_T]):
         ...
 
 
-def css_func(value: str, name: str):
-    if value.startswith(name + "(") and value.endswith(")"):
-        return re.split(r"\s*,\s*", value[len(name) + 1 : -1])
-
-
-def remove_quotes(value: str):
-    for quote in ("'", '"'):
-        if value.startswith(quote) and value.endswith(quote):
-            return value[1:-1]
-    return value
-
-
-def split_units(attr: str) -> tuple[float, str]:
-    """Split a dimension or percentage into a tuple of number and the "unit" """
-    if attr == "0":
-        return (0, "")
-    match = dim_pattern.fullmatch(attr.strip())
-    num, unit = match.groups()  # type: ignore # Raises AttributeError
-    return float(num), unit
-
-
-CalcTypes = Percentage, Length, Number
-CalcType = Union[Type[Length], Type[Percentage], Type[float]]
-no_type_types = frozenset({Percentage, *Number})
-CalcValue = Percentage | Length | float  # TODO: add Angle and more
-CalcValue_T = TypeVar("CalcValue_T", bound=CalcValue)
-Operator = Callable[[CalcValue, CalcValue], CalcValue]
-
-
 @dataclass
-class BinOp(abc.ABC):
+class BinOp:
     left: CalcValue
     op: Operator
     right: CalcValue
 
-    def resolve(self) -> "_ParseResult":
+    def resolve(self) -> "ParseResult":
         try:
             return self.op(self.left, self.right)
         except ValueError:
             return self
 
-    def get_type(self) -> str:
+    def get_type(self) -> CalcType:
         pass
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class AddOp(BinOp):
     left: CalcValue
     op: Operator
@@ -216,11 +346,8 @@ class AddOp(BinOp):
             else get_type(self.right)
         )
 
-    def __hash__(self):
-        return hash(astuple(self))
 
-
-@dataclass
+@dataclass(unsafe_hash=True)
 class MulOp(BinOp):
     left: CalcValue
     op: Operator
@@ -229,98 +356,74 @@ class MulOp(BinOp):
     def get_type(self):
         return (
             ltype
-            if (ltype := get_type(self.left)) is not Number
+            if (ltype := get_type(self.left)) is not float
             else get_type(self.right)
         )
 
-    def __hash__(self):
-        return hash(astuple(self))
 
-
-_ParseResult = CalcValue | BinOp
-_ParseResult_T = TypeVar("_ParseResult_T", bound=_ParseResult)
-
-
-def get_type(x: _ParseResult) -> CalcType:
-    """
-    Returns Number, Percentage or Length
-    """
-    if isinstance(x, (MulOp, AddOp)):
+def get_type(x: ParseResult) -> CalcType:
+    if isinstance(x, BinOp):
         return x.get_type()
-    for type_ in CalcTypes:
-        if isinstance(x, type_):  # type: ignore
-            return type_  # type: ignore
-    raise BugError(f"Cannot determine type of {x}")
-
-
-# https://regexr.com/3ag5b
-hex_re = re.compile(r"#([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})")
-number_pattern = re.compile(dec_re)
-units_map: dict[str, CalcType] = {
-    "%": Percentage,
-    **{k: Length for k in chain(abs_length_units, rel_length_units)},
-}
-unit_re = re_join(*units_map)
-units_pattern = re.compile(unit_re)
-dim_pattern = re.compile(rf"({dec_re})({unit_re})")
-# operators
-_is_high = lambda x: x in ("*", "/")
-_is_low = lambda x: x in ("+", "-")
-op_map: dict[str, Operator] = {
-    "+": add,
-    "-": sub,
-    "*": mul,
-    "/": truediv,
-}
-op_re = re.compile(re_join(*op_map))
-# calc literals
-literal_map = {
-    "pi": math.pi,
-    "e": math.e,
-    # I don't understand why you would need these. Like, you're not gonna make an element with a font-size of NaN or -infinity
-    "infinity": float("inf"),
-    "-infinity": float("-inf"),
-    "NaN": float("nan"),
-}
-literal_re = re.compile(re_join(*literal_map))
+    return type(x)
 
 
 class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
     _accepts: frozenset[CalcType]
-    default_type: CalcType | None
+    default_type: CalcType
 
     def __init__(self, *types):
+        assert types, BugError("Empty Calc")
         self._accepts = frozenset(types)
-        try:
-            self.default_type = next(iter(self._accepts.difference(no_type_types)))
-        except StopIteration:
-            self.default_type = None
+        intrinsic_type = self._accepts.difference(no_intrinsic_type)
+        if (len_ := len(intrinsic_type)) > 1:
+            raise BugError("Calc with more than one intrinsic type")
+        elif len_ == 1:
+            self.default_type = next(iter(intrinsic_type))
+        else:
+            self.default_type = (
+                float
+                if float in self._accepts
+                else int
+                if int in self._accepts
+                else Percentage
+            )
 
     def accepts_type(self, x):
         return x in self._accepts
 
     def acc(self, value: str, p_style):
+        if value == "0":
+            return self.default_type(0)
         try:
             number, unit = split_units(value)
         except AttributeError:
-            return None
-        if not unit and self.default_type is not None:
-            _type = self.default_type
-        else:
-            _type = units_map[unit]
-            if not self.accepts_type(_type):
+            if self.default_type is float and number_pattern.fullmatch(value):
+                return float(value)
+            else:
                 return None
-        if _type in no_type_types:
-            return _type(number)
+        _type = units_map[unit]
+        if not self.accepts_type(_type):
+            return None
+        if _type is Percentage:
+            return Percentage(number)
         elif _type is Length:
             return _length((number, unit), p_style)
+        elif _type is Angle:
+            if conversion_factor := abs_angle_units.get(unit):
+                return Angle(number * conversion_factor)
+        elif _type is Time:
+            if conversion_factor := abs_time_units.get(unit):
+                return Time(number * conversion_factor)
+        elif _type is Resolution:
+            if conversion_factor := abs_resolution_units.get(unit):
+                return Resolution(number * conversion_factor)
 
-    def __call__(self, value: str, p_style: FullyComputedStyle):
+    def __call__(self, value: str, p_style: FullyComputedStyle = {}):
         acc = partial(self.acc, p_style=p_style)
-        if args := css_func(value, "calc"):
+        if args := css_func(value, "calc", ""):
             # lexer
             self.x = args[0]
-            stack = deque[str | CalcValue_T | float | BinOp]()
+            stack = deque[str | CalcValue | float | BinOp]()
             while self.x:
                 start_x = self.x
                 if self.consume("(") or self.consume("calc("):
@@ -353,13 +456,13 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
         else:
             return acc(value)
 
-    def parse(self, d: Iterable[str | _ParseResult_T]) -> _ParseResult_T:
+    def parse(self, d: Iterable[str | ParseResult_T]) -> ParseResult_T | BinOp:
         """
         Parses the tokens
         Raises ValueError, IndexError or ZeroDivisionError on failure
         """
         # parser
-        t: tuple[str | _ParseResult_T, ...] = tuple(d)
+        t: tuple[str | ParseResult_T, ...] = tuple(d)
         while "(" in t or ")" in t:
             start_i = t.index("(")
             end_i = match_bracket(islice(iter(t), start_i + 1, None)) + start_i + 1
@@ -399,73 +502,16 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
         return t[0]
 
 
-################## Element Calculation ######################
-@dataclass
-class Calculator:
-    """
-    A calculator is for calculating the values of AlP attributes (width, height, border-width, etc.)
-    It only needs the AlP value, a percentage value and an auto value. If latter are None then they will raise an Exception
-    if a Percentage or Auto are encountered respectively
-    """
-
-    default_perc_val: float | None = None
-
-    def __call__(
-        self,
-        value: AutoLP | BinOp | float,
-        auto_val: float | None = None,
-        perc_val: float | None = None,
-    ) -> float:
-        """
-        This helper function takes a value, an auto_val
-        and the perc_value and returns a Number
-        if the value is Auto then the auto_value is returned
-        if the value is a Length that is returned
-        if the value is a Percentage the Percentage is multiplied with the perc_value
-        """
-        if isinstance(value, float):
-            return value
-        elif value is Auto:
-            assert auto_val is not None, BugError("This attribute cannot be Auto")
-            return auto_val
-        elif isinstance(value, Length):
-            return value.value
-        elif isinstance(value, Percentage):
-            perc_val = make_default(perc_val, self.default_perc_val)
-            assert perc_val is not None, BugError(
-                "This attribute cannot be a percentage"
-            )
-            return value.resolve(perc_val)
-        elif isinstance(value, BinOp):
-            new_value = type(value)(
-                self(value.left, auto_val, perc_val),
-                value.op,
-                self(value.right, auto_val, perc_val),
-            )
-            rv = new_value.resolve()
-            assert isinstance(rv, float), BugError(
-                f"Calculator couldn't resolve BinOp, {value}, {auto_val}, {perc_val}"
-            )
-            return rv
-        raise TypeError
-
-    def _multi(self, values: Iterable[AutoLP], *args):
-        return tuple(self(val, *args) for val in values)
-
-    # only relevant for typing
-    def multi2(self, values: tuple[AutoLP, AutoLP], *args) -> tuple[float, float]:
-        return self._multi(values, *args)
-
-    def multi4(self, values: AutoLP4Tuple, *args) -> Float4Tuple:
-        return self._multi(values, *args)
-
-
-calculator = Calculator()
-####################################################################
-
-
 def no_change(value: str, p_style) -> str:
     return value
+
+
+number = cast(Acceptor[float], Calc(float))
+length = cast(Acceptor[Length], Calc(Length))
+percentage = cast(Acceptor[Percentage], Calc(Percentage))
+number_angle = cast(Acceptor[float | Angle], Calc(float, Angle))
+number_percentage = cast(Acceptor[float | Percentage | BinOp], Calc(float, Percentage))
+length_percentage = cast(Acceptor[LengthPerc | BinOp], Calc(Length, Percentage))
 
 
 def background_image(value: str, p_style) -> tuple[Drawable, ...]:
@@ -473,33 +519,67 @@ def background_image(value: str, p_style) -> tuple[Drawable, ...]:
     arr = split_value(value)
     result: list[Drawable] = []
     for v in arr:
-        if args := css_func(v, "url"):
+        if args := css_func(v, "url", ""):
             result.append(Media.Image([remove_quotes(args[0])]))
         else:
             log_error("background-image only supports urls right now", v)
     return tuple(result)
 
 
+def _handle_rgb(value: str):
+    value: float = calculator(number_percentage(value), perc_val=255)  # type: ignore
+    if 0 < value <= 1:
+        value *= 255
+    return int(in_bounds(value, 0, 255))
+
+
+def _rgb(*rgb: str):
+    return Color(*map(_handle_rgb, rgb))
+
+
+def _hsl(h: str, *sl: str):
+    # here we use the built-in pygame hsl converter
+    hue: float = calculator(number_angle(h))  # type: ignore
+    return hsl2rgb(hue, *(percentage(x).resolve(1) for x in sl))  # type: ignore
+
+
+def _hwb(h: str, *wb: str):
+    hue: float = calculator(number_angle(h))  # type: ignore
+    return hwb2rgb(hue, *(percentage(x).resolve(1) for x in wb))  # type: ignore
+
+
+color_funcs: dict[str, Callable[..., Color]] = {
+    "rgb": _rgb,
+    "rgba": _rgb,
+    "hsl": _hsl,
+    "hsla": _hsl,
+    "hwb": _hwb,
+}
+_get_color_func = get_css_func(color_funcs)
+
+
 def color(value: str, p_style):
     if value == "currentcolor":
         return p_style["color"]
-    with suppress(ValueError):
-        if args := css_func(value, "rgb"):
-            r, g, b = map(float, args)
-            return Color(*map(round, (r, g, b)))
-        elif args := css_func(value, "rgba"):
-            r, g, b, a = map(float, args)
-            return Color(*map(round, (r, g, b, a * 255)))
-        elif groups := get_groups(value.lower(), hex_re):
+    with suppress(ValueError, TypeError):
+        if css_func := _get_color_func(value):  # css_function
+            func_name, args = css_func
+            if len(args) == 1:
+                args = args[0].replace("/", "").split()
+            if len(args) == 4:
+                *args, a = args
+                color = color_funcs[func_name](*args)
+                if color is None:
+                    return None
+                color.a = int(255 * calculator(number_percentage(a), perc_val=1))  # type: ignore
+                return color
+            else:
+                return color_funcs[func_name](*args)
+        elif groups := get_groups(
+            value.lower(), hex_pattern
+        ):  # "#rrggbb" or #"#rgb" but also "#rrggbbaa" and "#rgba"
             return Color(*map(lambda x: int(x * (2 // len(x)), 16), groups))
         return Color(value)
-
-
-def number(value: str, p_style):
-    if not number_pattern.fullmatch(value):  # Just to avoid non decimal input
-        return None
-    with suppress(ValueError):
-        return float(value)
 
 
 def font_size(value: str, p_style):
@@ -597,10 +677,6 @@ def _length(dimension: tuple[float, str], p_style):
     return Length(rv)
 
 
-length = cast(Acceptor[Length], Calc(Length))
-length_percentage = cast(Acceptor[LengthPerc], Calc(Length, Percentage))
-
-
 def border_radius(value: str, p_style):
     arr = value.split()
     if (_len := len(arr)) > 2:
@@ -658,7 +734,9 @@ class StyleAttr(Generic[CompValue_T]):
         self, value: str, p_style: FullyComputedStyle
     ) -> CompValue_T | CompStr | Sentinel | None:
         # insert all vars
-        value = re.sub(r"var\(([-\d]*)\)", lambda match: p_style[match.group(1)], value)
+        value = re.sub(
+            rf"var\(({ident_re})\)", lambda match: p_style[match.group(1)], value
+        )
         return (
             kw if (kw := self.kws.get(value)) is not None else self.acc(value, p_style)
         )
@@ -705,7 +783,7 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
     "font-family": StyleAttr("Arial", acc=no_change, inherits=True),
     "font-size": StyleAttr("medium", acc=font_size, inherits=True),
     "font-style": StyleAttr("normal", acc=font_style, inherits=True),
-    "line-height": StyleAttr("normal", normal, Calc(Number, Length, Percentage), True),
+    "line-height": StyleAttr("normal", normal, Calc(float, Length, Percentage), True),
     "word-spacing": StyleAttr("normal", normal, length_percentage, True),
     "display": StyleAttr("inline", {"inline", "block", "none"}),
     "background-color": StyleAttr("transparent", acc=color),
@@ -1173,7 +1251,6 @@ def compute_style(
             raise BugError("This case shouldn't happen")
             return redirect(attr.initial)
         case "unset":
-            raise BugError("This case shouldn't happen")
             return redirect(abs_default_style[key])
         case "revert":
             return (

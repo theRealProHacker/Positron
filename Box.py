@@ -5,11 +5,11 @@ from typing import Any, Callable, Iterable, Mapping
 
 # fmt: off
 import own_types as _o  # Just for dotted access to Auto in match
-from own_types import (Auto, AutoLP, Dimension, Float4Tuple, Index, Number,
+from own_types import (Auto, AutoLP, Coordinate, Float4Tuple, Index, Number,
                        Rect, Vector2)
 from Style import (Calculator, FullyComputedStyle, bw_getter, directions, mrg_getter,
                    pad_getter)
-from util import ensure_suffix, noop, not_neg
+from util import ensure_suffix, noop, not_neg, mutate_tuple
 # fmt: on
 
 l = [("border", "padding"), ("margin",)]
@@ -85,20 +85,6 @@ def convert(
     return not_neg(value + converted)
 
 
-def mutate_tuple(tup: tuple, val: Any, slicing: Index):
-    """
-    Mutate a tuple given the tuple, a slicing and the value to fill into that slicing
-    Example:
-        ```python
-        t = (1,2)
-        mutate_tuple(t, 3, 0) == (3,2)
-        ```
-    """
-    l = list(tup)
-    l[slicing] = val
-    return tuple(l)
-
-
 class Box:
     """
     A Box represents the CSS-Box-Model
@@ -114,12 +100,12 @@ class Box:
         padding: Float4Tuple = (0,) * 4,
         width: float = 0,
         height: float = 0,
-        pos: Dimension = (0, 0),
+        pos: Coordinate = (0, 0),
         outer_width: bool = False,
     ):
         self.t = box_sizing(t)
         self.margin = margin
-        self.border = tuple(map(int, map(not_neg, border)))
+        self.border = tuple(int(not_neg(x)) for x in border)
         self.padding = padding
         self.x, self.y = pos
         self.width = (
@@ -141,7 +127,7 @@ class Box:
         return Vector2(self.x, self.y)  # allows box.pos += (x,y)
 
     @pos.setter
-    def pos(self, pos: Dimension):
+    def pos(self, pos: Coordinate):
         self.x, self.y = pos
 
     def set_pos(self, pos: tuple[float, float], t: str = "outer-box"):
@@ -279,7 +265,7 @@ def make_box(
         )
         margin = mrg_t, mrg_r, mrg_b, mrg_l
 
-    # -1 is a sentinel value to say that the height hasn't yet been specified (height auto)
+    # -1 is a sentinel value to say that the height hasn't yet been specified (height: auto)
     height = calc(style["height"], auto_val=-1, perc_val=parent_height)
 
     box = Box(

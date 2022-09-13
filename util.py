@@ -27,10 +27,10 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 # fmt: off
-from config import all_units, g
-from own_types import (CO_T, K_T, V_T, BugError, Cache, Color, Dimension,
-                       Event, OpenMode, OpenModeReading, OpenModeWriting, Rect,
-                       Surface, Vector2, _XMLElement)
+from config import g
+from own_types import (CO_T, K_T, V_T, BugError, Cache, Color, Coordinate,
+                       Event, Index, OpenMode, OpenModeReading, OpenModeWriting, Rect,
+                       Surface, Vector2, _XMLElement, Font)
 
 # fmt: on
 
@@ -196,8 +196,22 @@ def consume_dict(d: dict[K_T, V_T]):
 
 
 # tuple mutations
+def mutate_tuple(tup: tuple, val, slicing: Index):
+    """
+    Mutate a tuple given the tuple, a slicing and the value to fill into that slicing
+    Example:
+        ```python
+        t = (1,2)
+        mutate_tuple(t, 3, 0) == (3,2)
+        ```
+    """
+    l = list(tup)
+    l[slicing] = val
+    return tuple(l)
+
+
 def tup_replace(
-    t: tuple[CO_T, ...], slice_: int | tuple[int, int], elem: Any
+    t: tuple[CO_T, ...], slice_: int | tuple[int, int], elem
 ) -> tuple[CO_T, ...]:
     """
     Replace the part of the tuple given by slice with elem
@@ -529,33 +543,6 @@ def rev_sub(
     return re.sub(pattern, _repl, s[::-1], count)[::-1]
 
 
-# https://docs.python.org/3/library/re.html#simulating-scanf
-int_re = r"[+-]?\d+"
-pos_int_re = r"+?\d+"
-# dec_re = rf"(?:{int_re})?(?:\.\d+)?(?:e{int_re})?"
-dec_re = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
-# pos_dec_re = rf"(?:{pos_int_re})?(?:\.\d+)?(?:e{int_re})?"
-units_re = re_join(*all_units)
-
-regexes: dict[str, re.Pattern] = {
-    k: re.compile(x)
-    for k, x in {
-        "integer": int_re,
-        "number": dec_re,
-        "percentage": rf"{dec_re}\%",
-        "dimension": rf"(?:{dec_re})(?:\w+)",  # TODO: Use actual units
-    }.items()
-}
-
-# for type checking
-IsFunc = Callable[[str], re.Match | None]
-is_integer: IsFunc
-is_number: IsFunc
-
-for key, regex in regexes.items():
-    globals()[f"is_{key}"] = regex.fullmatch
-
-
 class GeneralParser:
     """
     Really this is a lexer.
@@ -592,6 +579,41 @@ class GeneralParser:
 ##########################################################################
 
 
+############################# Colors #####################################
+def hsl2rgb(hue: float, sat: float, light: float):
+    """
+    hue in [0,360]
+    sat,light in [0,1]
+    """
+    hue %= 360
+    sat = in_bounds(sat, 0, 1)
+    light = in_bounds(light, 0, 1)
+    # algorithm from https://www.w3.org/TR/css-color-3/#hsl-color
+    def hue2rgb(n):
+        k = (n + hue / 30) % 12
+        a = sat * min(light, 1 - light)
+        return light - a * max(-1, min(k - 3, 9 - k, 1))
+
+    return Color(*(int(x * 255) for x in (hue2rgb(0), hue2rgb(8), hue2rgb(4))))
+
+
+def hwb2rgb(h: float, w: float, b: float):
+    """
+    h in [0,360]
+    w,b in [0,1]
+    """
+    h %= 360
+    if (sum_ := (w + b)) > 1:
+        w /= sum_
+        b /= sum_
+
+    rgb = hsl2rgb(h, 1, 0.5)
+
+    return Color(*(round(x * (1 - w - b) + 255 * w) for x in rgb))
+
+
+##########################################################################
+
 ############################# Pygame related #############################
 
 pg.init()
@@ -601,16 +623,14 @@ def surf_opaque(surf: Surface):
     return np.all(pg.surfarray.array_alpha(surf) == 255)
 
 
-def draw_text(
-    surf: Surface, text: str, fontname: str | None, size: int, color, **kwargs
-):
-    font: Any = freetype.SysFont(fontname, size)  # type: ignore[arg-type]
+def draw_text(surf: Surface, text: str, font: Font, color, **kwargs):
     color = Color(color)
-    dest: Rect = font.get_rect(str(text))
-    for k, val in kwargs.items():
-        with suppress(AttributeError):
-            setattr(dest, k, val)
-    font.render_to(surf, dest=dest, fgcolor=color)
+    if color.a:
+        text_surf = font.render(text, True, color)
+        dest = text_surf.get_rect(**kwargs)
+        if color.a != 255:
+            text_surf.set_alpha(color.a)
+        surf.blit(text_surf, dest)
 
 
 class Dotted:
@@ -620,7 +640,7 @@ class Dotted:
         color,
         dash_size: int = 10,
         dash_width: int = 2,
-        start_pos: Dimension = (0, 0),
+        start_pos: Coordinate = (0, 0),
     ):
         self.dim = Vector2(dim)
         self.color = Color(color)

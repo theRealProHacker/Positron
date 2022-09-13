@@ -9,7 +9,7 @@ from functools import reduce
 from operator import or_
 
 # fmt: off
-from typing import (Any, Generator, Generic, Hashable, Iterable, Literal,
+from typing import (Generator, Generic, Hashable, Iterable, Literal,
                     Mapping, Protocol, TypeVar, Union)
 # fmt: on
 from weakref import WeakValueDictionary
@@ -33,8 +33,8 @@ class BugError(AssertionError):
 
 Number = int, float  # for isinstance(x, Number)
 
-
-Dimension = Union[tuple[float, float], "Vector2"]
+# a size, vector, or position
+Coordinate = Union[tuple[float, float], "Vector2"]
 Index = int | slice
 
 DisplayType = Literal["inline", "block", "none"]
@@ -55,7 +55,7 @@ CO_T = TypeVar("CO_T", covariant=True)
 
 ############################ Some Classes ##############################
 class Drawable(Protocol):
-    def draw(self, surf: Surface, pos: Dimension):
+    def draw(self, surf: Surface, pos: Coordinate):
         pass
 
 
@@ -136,11 +136,11 @@ class Vector2(_Vector2):
         yield self.x
         yield self.y
 
-    def __add__(self, other: Dimension | _Vector2) -> "Vector2":
+    def __add__(self, other: Coordinate | _Vector2) -> "Vector2":
         other: Vector2 = Vector2(other)
         return Vector2(self.x + other.x, self.y + other.y)
 
-    def __sub__(self, other: Dimension | _Vector2) -> "Vector2":
+    def __sub__(self, other: Coordinate | _Vector2) -> "Vector2":
         other: Vector2 = Vector2(other)
         return Vector2(self.x - other.x, self.y - other.y)
 
@@ -168,7 +168,7 @@ class Rect(_Rect):
         )
 
     @staticmethod
-    def from_span(point1: Dimension, point2: Dimension):
+    def from_span(point1: Coordinate, point2: Coordinate):
         """
         Rect from two points.
         """
@@ -179,79 +179,41 @@ class Rect(_Rect):
         return rect
 
 
-@dataclass(frozen=True)
-class Percentage:
-    value: float
-
-    def __add__(self, other: "Percentage") -> "Percentage":
-        if not isinstance(other, Percentage):
-            raise ValueError
-        return Percentage(self.value + other.value)
-
-    def __sub__(self, other: "Percentage") -> "Percentage":
-        if not isinstance(other, Percentage):
-            raise ValueError
-        return Percentage(self.value - other.value)
-
-    def resolve(self, other: float):
-        if not isinstance(other, Number):
-            raise ValueError
-        return self.value * other * 0.01
-
-    def __mul__(self, other: float) -> "Percentage":
-        if not isinstance(other, Number):
-            raise ValueError
-        return Percentage(self.value * other)
-
-    def __rmul__(self, other: float) -> "Percentage":
-        if not isinstance(other, Number):
-            raise ValueError
-        return Percentage(self.value * other)
-
-    def __div__(self, other: float) -> "Percentage":
-        if not isinstance(other, Number):
-            raise ValueError
-        return Percentage(self.value / other)
-
-    def __float__(self):
-        return self.value
-
-    def __repr__(self):
-        return str(self.value).removesuffix(".0") + "%"
+CSSDimension_T = TypeVar("CSSDimension_T", bound="CSSDimension")
 
 
 @dataclass(frozen=True)
-class Length:
+class CSSDimension:
     value: float
 
-    def __add__(self, other: "Length") -> "Length":
-        if not isinstance(other, Length):
+    def __add__(self: CSSDimension_T, other: CSSDimension_T) -> CSSDimension_T:
+        if not isinstance(other, self.__class__):
             raise ValueError
-        return Length(self.value + float(other))
+        return self.__class__(self.value + float(other))
 
-    def __sub__(self, other: "Length") -> "Length":
-        if not isinstance(other, Length):
+    def __sub__(self: CSSDimension_T, other: CSSDimension_T) -> CSSDimension_T:
+        if not isinstance(other, self.__class__):
             raise ValueError
-        return Length(self.value - float(other))
+        return self.__class__(self.value - float(other))
 
-    def __mul__(self, other: float) -> "Length":
+    def __mul__(self: CSSDimension_T, other: float) -> CSSDimension_T:
         if not isinstance(other, Number):
             if self.value == 0:
-                return Length(0)
+                return self.__class__(0)
             raise ValueError
-        return Length(self.value * other)
+        return self.__class__(self.value * other)
 
-    def __rmul__(self, other: float) -> "Length":
+    def __rmul__(self: CSSDimension_T, other: float) -> CSSDimension_T:
         if not isinstance(other, Number):
             if self.value == 0:
-                return Length(0)
+                return self.__class__(0)
             raise ValueError
-        return Length(self.value * other)
+        return self.__class__(self.value * other)
 
-    def __div__(self, other: float) -> "Length":
+    def __div__(self: CSSDimension_T, other: float) -> CSSDimension_T:
         if not isinstance(other, Number):
             raise ValueError
-        return Length(self.value / other)
+        return self.__class__(self.value / other)
 
     def __int__(self):
         return int(self.value)
@@ -260,7 +222,41 @@ class Length:
         return self.value
 
     def __repr__(self):
-        return f"Length({self.value})"
+        return f"{self.__class__.__name__}({self.value})"
+
+
+@dataclass(frozen=True)
+class Percentage(CSSDimension):
+    value: float
+
+    def resolve(self, num: float):
+        """
+        Resolves the Percentage with the given number
+        The number should be equivalent to 100%
+        """
+        if not isinstance(num, Number):
+            raise ValueError
+        return self.value * num * 0.01
+
+
+@dataclass(frozen=True)
+class Length(CSSDimension):
+    value: float
+
+
+@dataclass(frozen=True)
+class Angle(CSSDimension):
+    value: float
+
+
+@dataclass(frozen=True)
+class Time(CSSDimension):
+    value: float
+
+
+@dataclass(frozen=True)
+class Resolution(CSSDimension):
+    value: float
 
 
 @dataclass(frozen=True)
@@ -277,9 +273,6 @@ class FontStyle:
 
 
 class Color(pg.Color):
-    def __setattr__(self, __name: str, __value: Any) -> None:
-        raise TypeError("Color can't be mutated")
-
     def __hash__(self):
         return hash(int(self))
 

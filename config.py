@@ -1,4 +1,5 @@
 """ Any global variables are stored here"""
+import math
 from typing import Any
 from own_types import Color, Cache, FrozenDCache, Length
 
@@ -20,6 +21,7 @@ g: dict[str, Any] = {
     "resizable": True,              # bool
     "frameless": False,             # bool
     "allow_screen_saver": True,     # bool
+    "icon": None,                   # None or Image
     "default_font_size": 16,        # float
     "zoom": 1,                      # float
     "FPS": 30,                      # float
@@ -28,6 +30,7 @@ g: dict[str, Any] = {
     "file_watcher": None,           # the file watcher
     "screen": None,                 # pg.Surface
     "global_sheet": None,           # SourceSheet() # Is added in Style.py
+    "default_task": None    # util.Task
 }
 
 def reset_config():
@@ -92,42 +95,6 @@ abs_border_width = {
     "medium": Length(3),
     "thick": Length(5),
 }
-# units
-all_units = {
-    # length https://developer.mozilla.org/en-US/docs/Web/CSS/length
-    "cap",
-    "ch",
-    "em",
-    "ex",
-    "ic",
-    "lh",
-    "rem",
-    "rlh",
-    "vh",
-    "vw",
-    "vmax",
-    "vmin",
-    "vb",
-    "vi",
-    "px",
-    "cm",
-    "mm",
-    "Q",
-    "in",
-    "pc",
-    "pt",
-    # time https://developer.mozilla.org/en-US/docs/Web/CSS/time
-    "s",
-    "ms",
-    # freq https://developer.mozilla.org/en-US/docs/Web/CSS/frequency
-    "hz",
-    "khz",
-    # resolution https://developer.mozilla.org/en-US/docs/Web/CSS/resolution
-    "dpi",
-    "dpcm",
-    "dppx",
-    "x",
-}
 abs_length_units = {
     "px": 1,
     "cm": 37.8,
@@ -153,3 +120,18 @@ rel_length_units = {
     "vb",
     "vi",
 }
+abs_angle_units = {
+    "deg": 1,
+    "grad": 400 / 360,
+    # allows for example 1.5πrad or 1.5pirad instead of calc(1.5rad*pi)
+    "pirad": 2 / 360,
+    "πrad": 2 / 360,
+    "rad": 2 * math.pi / 360,
+    "turn": 1 / 360,
+}
+abs_time_units = {"s": 1, "ms": 1 / 1000}
+# abs_frequency_units = {
+#     "hz": 1,
+#     "khz": 1000
+# }
+abs_resolution_units = {"dpi": 1, "dpcm": 2.54, "x": 96, "dppx": 96}
