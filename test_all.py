@@ -290,15 +290,18 @@ def test_rounded_box():
     ]
 
 
-async def _test_async():
+async def test_async():
     # IO
-    with pytest.raises(Exception) if not util.is_online() else suppress(
-        requests.exceptions.ConnectionError
-    ):
-        path = await util.download("https://www.google.com/", dir=".")
-    with suppress(OSError):
-        os.remove(path)
-    assert path == util.abspath("google.html")
+    # with pytest.raises(Exception) if not util.is_online() else suppress(
+    #     requests.exceptions.ConnectionError
+    # ):
+    #     path = await util.download("https://www.google.com/", dir=".")
+    # with suppress(OSError):
+    #     os.remove(path)
+    # assert path == util.abspath("google.html")
+    assert await util.fetch_txt("data:,Hello%2C%20World%21") == "Hello, World!"
+    assert await util.fetch_txt("data:text/plain;base64,SGVsbG8sIFdvcmxkIQ==")  == "Hello, World!"
+    assert await util.fetch_txt("data:text/html,<script>alert('hi');</script>") == "<script>alert('hi');</script>"
 
 
 def test_image_element():

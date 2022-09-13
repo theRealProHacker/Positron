@@ -6,6 +6,8 @@ This includes:
 - Computing, layouting and drawing the Elements
 - CSS-Selectors
 """
+import asyncio
+from contextlib import suppress
 import re
 from dataclasses import dataclass
 from functools import cache, cached_property, reduce
@@ -29,7 +31,7 @@ from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color, Coordinate
 from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys,
                    get_style, inset_getter, pack_longhands, parse_file,
                    parse_sheet, prio_keys, calculator)
-from util import draw_text, get_groups, get_tag, group_by_bool, log_error
+from util import create_task, draw_text, get_groups, get_tag, group_by_bool, log_error
 
 # fmt: on
 """ More useful links for further development
@@ -288,7 +290,6 @@ class Element:
         x_pos = inner.x
         y_cursor = inner.y
         # https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Box_Model/Mastering_margin_collapsing
-        last_margin = 0  # TODO: Margin collapsing
         flow, no_flow = group_by_bool(
             self.real_children,
             lambda x: x.cstyle["position"] in ("static", "relative", "sticky"),
@@ -566,13 +567,16 @@ class StyleElement(MetaElement):
         super().__init__(attrs, txt, parent)
         self.src = attrs.get("src")
         if self.src is not None:
-            self.src_sheet = parse_file(self.src)
-            add_sheet(self.src_sheet)
             self.src = watch_file(self.src)
+            create_task(parse_file(self.src), True, self.parse_callback)
         if txt:
             self.inline_sheet = parse_sheet(txt)
             add_sheet(self.inline_sheet)
 
+    def parse_callback(self, future: asyncio.Future):
+        with suppress(Exception):
+            self.src_sheet = future.result()
+            add_sheet(self.src_sheet)
 
 class TitleElement(MetaElement):
     tag = "title"
@@ -599,16 +603,21 @@ class LinkElement(MetaElement):
         super().__init__(attrs, txt, parent)
         # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link
         # TODO:
-        # media
+        # media -> depends on media query support
         match attrs.get("rel"):
             case "stylesheet" if (src := attrs.get("href")):
-                # TODO: disabled
-                # TODO: title
+                # TODO: disabled ?
+                # TODO: title ?
                 self.src = watch_file(src)
-                add_sheet(parse_file(self.src))
+                create_task(parse_file(src), True, self.parse_callback)
             case "icon" if (src := attrs.get("href")):
-                # TODO: sizes
+                # TODO: sizes ?
                 g["icon_srcs"].append(src)
+    
+    def parse_callback(self, future: asyncio.Future):
+        with suppress(Exception):
+            self.src_sheet = future.result()
+            add_sheet(self.src_sheet)
 
 
 class ImgElement(Element):

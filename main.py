@@ -16,6 +16,7 @@ import html5lib
 with open(os.devnull, "w") as f, redirect_stdout(f):
     import pygame as pg
 
+import aiohttp
 import util
 from config import g, reset_config, watch_file
 from Element import HTMLElement, apply_style, create_element
@@ -93,7 +94,7 @@ async def main(file: str):
     reset_config()
     g["file_watcher"] = util.FileWatcher()
     file = watch_file(file)
-    html = util.fetch_txt(file)
+    html = await util.fetch_txt(file)
     parsed = html5lib.parse(html)
     g["root"] = tree = create_element(parsed)
     logging.debug(tree.to_html())
@@ -149,9 +150,10 @@ async def run(file: str):
     task = (
         asyncio.create_task(Console())
         if uses_aioconsole
-        else util.create_task(asyncio.sleep(0))
+        else asyncio.create_task(asyncio.sleep(0))
     )
     try:
+        g["aiosession"] = aiohttp.ClientSession()
         await main(file)
         while g["reload"]:
             logging.info("Reloading")
@@ -159,12 +161,14 @@ async def run(file: str):
     except asyncio.exceptions.CancelledError:
         return
     finally:
+        await g["aiosession"].close()
         task.cancel()
         await task
         if True:
             await util.delete_created_files()
         pg.quit()
         logging.info("Exiting")
+        await asyncio.sleep(3)
 
 
 async def user_main():
