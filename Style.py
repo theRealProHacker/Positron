@@ -1,10 +1,11 @@
 # fmt: off
+import asyncio
 import math
 import re
 from abc import ABC
 from collections import defaultdict, deque
 from contextlib import contextmanager, suppress
-from dataclasses import astuple, dataclass
+from dataclasses import dataclass
 from functools import cache, partial
 from itertools import chain, islice
 from operator import add, itemgetter, mul, sub, truediv
@@ -14,6 +15,7 @@ from typing import (Any, Callable, Generic, Iterable, Literal, Mapping,
 import tinycss
 
 import Media
+import Selector
 from config import (abs_angle_units, abs_resolution_units, abs_time_units, abs_border_width, abs_font_size,
                     abs_font_weight, abs_length_units, g, rel_font_size,
                     rel_length_units)
@@ -29,7 +31,7 @@ from util import (GeneralParser, fetch_txt, find_index,
 
 # Typing
 
-CompValue = Any  # | float | Percentage | Sentinel | FontStyle | Color | tuple[Drawable, ...] | CompStr but not a normal str
+CompValue = Any
 CompValue_T = TypeVar("CompValue_T", bound=CompValue, covariant=True)
 
 # A Value is the actual value together with whether the value is set as important
@@ -42,7 +44,7 @@ Property = tuple[str, Value]
 ResolvedStyle = dict[str, str | CompValue]
 Style = dict[str, Value]
 FullyComputedStyle = Mapping[str, CompValue]
-StyleRule = tuple[str, Style]
+StyleRule = tuple[Selector.Selector, Style]
 
 MediaValue = tuple[int, int]  # just the window size right now
 Rule = Union["AtRule", "StyleRule"]
@@ -985,8 +987,6 @@ class SourceSheet(list[Rule]):
         raise ValueError("Immutable List")
 
 
-g["global_sheet"] = SourceSheet()
-
 ############################### Parsing functions #######################################
 
 
@@ -1007,13 +1007,17 @@ def parse_inline_style(s: str):
     return process(pre_parsed)
 
 
+parse_lock = asyncio.Lock()
+
+
 async def parse_file(source: str) -> SourceSheet:
     """
     Parses a file.
     It sets the current_file globally which is just for debugging purposes.
     """
-    with set_curr_file(source):
-        return parse_sheet(await fetch_txt(source))
+    async with parse_lock:  # with this we ensure that only one css-sheet is ever parsed at the same time
+        with set_curr_file(source):
+            return parse_sheet(await fetch_txt(source))
 
 
 def parse_sheet(source: str) -> SourceSheet:
@@ -1036,7 +1040,7 @@ def handle_rule(
     """
     if isinstance(rule, tinycss.css21.RuleSet):
         return (
-            rule.selector.as_css(),
+            Selector.parse_selector(rule.selector.as_css()),
             frozendict(
                 process(
                     [

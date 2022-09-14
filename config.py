@@ -29,7 +29,6 @@ g: dict[str, Any] = {
     "root": None,                   # the html element
     "file_watcher": None,           # the file watcher
     "screen": None,                 # pg.Surface
-    "global_sheet": None,           # SourceSheet() # Is added in Style.py
     "default_task": None,           # util.Task
     "aiosession": None,             # aiohttp.ClientSession
     "tasks": []                     # list of tasks that are started in synchronous functions
@@ -49,7 +48,6 @@ def reset_config():
         "css_dirty": False,         # bool: does css need to be applied
         "css_sheet_len": 0,         # int
     })
-    g["global_sheet"].clear()
 # fmt: on
 
 
@@ -58,7 +56,6 @@ def add_sheet(sheet: Any):
     Add a sheet to the global css_sheets
     """
     g["css_sheets"].add(sheet)
-    g["global_sheet"] += sheet
     g["css_dirty"] = True
 
 

@@ -1,10 +1,11 @@
 from config import g
-from Element import Element, Selector, parse_selector
+from Element import Element
+from Selector import Selector, parse_selector
 
 
 def find_in(elem: Element, selector: Selector) -> Element | None:
     """Breadth first search in element"""
-    if elem.matches(selector):
+    if selector(elem):
         return elem
     for c in elem.real_children:
         if (found := find_in(c, selector)) is not None:
@@ -51,9 +52,7 @@ class J:
         # Make a list of matching Elements
         selector = parse_selector(query)
         root: Element = g["root"]
-        self.singles = [
-            SingleJ(elem) for elem in root.iter_desc() if elem.matches(selector)
-        ]
+        self.singles = [SingleJ(elem) for elem in root.iter_desc() if selector(elem)]
 
     def __getitem__(self, index):
         return self.singles[index]
