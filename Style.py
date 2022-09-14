@@ -397,7 +397,9 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
 
     def acc(self, value: str, p_style):
         if value == "0":
-            return self.default_type(0)
+            return (
+                self.default_type(0) if self.default_type in (Length, float) else None
+            )
         try:
             number, unit = split_units(value)
         except AttributeError:
@@ -643,11 +645,9 @@ def _length(dimension: tuple[float, str], p_style):
 
     See: https://developer.mozilla.org/en-US/docs/Web/CSS/length
     """
-    num, s = dimension  # Raises ValueError if dimension has not exactly 2 entries
+    num, s = dimension
     if num == 0:
-        return Length(
-            0
-        )  # we don't even have to look at the unit. Especially because the unit might be the empty string
+        return Length(0)
     abs_length: dict[str, float] = abs_length_units
     w: int = g["W"]
     h: int = g["H"]
@@ -1278,7 +1278,7 @@ def pack_longhands(d: ResolvedStyle | FullyComputedStyle) -> ResolvedStyle:
     """Pack longhands back into their shorthands for readability"""
     d: dict[str, str] = {k: str(v).removesuffix(".0") for k, v in d.items()}
     for shorthand, keys in dir_shorthands.items():
-        if not all(f in d for f in keys):
+        if any(f not in d for f in keys):
             continue
         longhands = [d.pop(f) for f in keys]
         match longhands:
