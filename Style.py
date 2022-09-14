@@ -156,7 +156,9 @@ def split_units(attr: str) -> tuple[float, str]:
 
 # https://docs.python.org/3/library/re.html#simulating-scanf
 dec_re = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
-ident_re = r"-*[\w]+[-\w\d]*"  # TODO: find out the actual definition. Done: way too complicated
+ident_re = (
+    r"-*\w[-\w\d]*"  # a digit can only come after a letter and one letter is minimum
+)
 hex_pattern = re.compile(r"#([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})?")
 number_pattern = re.compile(dec_re)
 # units
@@ -1005,14 +1007,13 @@ def parse_inline_style(s: str):
     return process(pre_parsed)
 
 
-def parse_file(source: str) -> SourceSheet:
+async def parse_file(source: str) -> SourceSheet:
     """
     Parses a file.
     It sets the current_file globally which is just for debugging purposes.
     """
     with set_curr_file(source):
-        data = fetch_txt(source)
-        return parse_sheet(data)
+        return parse_sheet(await fetch_txt(source))
 
 
 def parse_sheet(source: str) -> SourceSheet:

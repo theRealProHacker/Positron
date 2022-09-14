@@ -3,34 +3,36 @@ Utilities for all kinds of needs (funcs, regex, etc...)
 """
 
 import asyncio
+import binascii
+import errno
 import logging
 import mimetypes
 import os
 import re
 import socket
+import sys
 import time
-from contextlib import contextmanager, redirect_stdout, suppress
+import uuid
+from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from functools import cache
-from os.path import abspath, dirname
 from types import FunctionType
-from typing import Any, Callable, Iterable, Sequence, overload
-from urllib.error import URLError
-from urllib.parse import urlparse
+from typing import Callable, Iterable, Literal, Sequence
+from urllib.parse import unquote_plus
 
+import aiofiles
+import aiofiles.ospath as aospath
+import aiohttp
 import numpy as np
 import pygame as pg
-import pygame.freetype as freetype
-import requests
-import tldextract
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 # fmt: off
 from config import g
 from own_types import (CO_T, K_T, V_T, BugError, Cache, Color, Coordinate,
-                       Event, Index, OpenMode, OpenModeReading, OpenModeWriting, Rect,
-                       Surface, Vector2, _XMLElement, Font)
+                       Event, Font, Index, OpenMode, OpenModeReading,
+                       OpenModeWriting, Rect, Surface, Vector2, _XMLElement)
 
 # fmt: on
 
@@ -56,9 +58,9 @@ class FileWatcher(FileSystemEventHandler):
         self.dirs = set[str]()
 
     def add_file(self, file: str):
-        file = abspath(file)
+        file = os.path.abspath(file)
         file = self.files.add(file)
-        new_dir = dirname(file)
+        new_dir = os.path.dirname(file)
         if not new_dir in self.dirs:
             self.dirs.add(new_dir)
             ob = Observer()
@@ -233,8 +235,16 @@ class Task(asyncio.Task):
         self.sync = sync
 
 
-def create_task(coro, sync: bool = False, **kwargs):
-    return Task(sync, coro)
+def create_task(
+    coro,
+    sync: bool = False,
+    callback: Callable[[asyncio.Future], None] = noop,
+    **kwargs,
+):
+    task = Task(sync, coro)
+    task.add_done_callback(callback)
+    g["tasks"].append(task)
+    return task
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,7 +308,10 @@ async def delete_created_files():
     )
 
 
-def create_file(file_name: str):
+save_dir = os.environ.get("TEMP") or "."
+
+
+def create_file(file_name: str) -> str:
     """
     Definitely create a new file
     """
@@ -311,155 +324,311 @@ def create_file(file_name: str):
         return create_file(_make_new_name(file_name))
 
 
-save_dir = os.environ.get("TEMP") or "."
-
-
 # TODO: actually write into here
 # IMPORTANT: only add absolute paths
-download_cache: dict[str, File] = {}
+# download_cache: dict[str, File] = {}
 
 
-async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
-    """
-    Downloads a file from the given url as a stream into the given directory
+@dataclass
+class Response:
+    url: str
+    content: str | bytes
+    status: int = 200
+    _charset: str = ""  # aka encoding
+    _mime_type: str = ""
+    _ext: str = ""
 
-    Raises Request Errors, OSErrors, or URLErrors.
-    """
-    # TODO: Use Multiprocessing to really improve downloads
-    # https://docs.python.org/3/library/asyncio-task.html
-    # sleep() always suspends the current task, allowing other tasks to run.
-    # Setting the delay to 0 provides an optimized path to allow other tasks to run.
-    # This can be used by long-running functions to avoid blocking the event loop
-    # for the full duration of the function call.
-    if (_url := download_cache.get(url)) is not None and os.path.exists(
-        _url.name
-    ):  # this might not be a good idea if the file can be changed
-        return _url
-    with suppress(OSError):
-        if os.path.exists(url):
-            return File(os.path.abspath(url))
-    ext: str | None
-    mime_type: str | None
-    chardet: str | None
-    sleep = (not fast) * 0.01
-    parse_result = urlparse(url)
-    if parse_result.scheme == "file":
-        if os.path.exists(path := parse_result.path.removeprefix("/")):
-            return File(path)
+    @property
+    def israw(self):
+        return isinstance(self.content, bytes)
+
+    @property
+    def charset(self):
+        return self._charset or sys.getdefaultencoding()
+
+    @property
+    def text(self):
+        if isinstance(self.content, str):
+            return self.content
         else:
-            raise URLError("File doesn't exist", url)
-    elif parse_result.scheme == "":
-        # try https:// then http://
-        httpurl = url + ("/" if "/" not in url else "")
-        with suppress(Exception):
-            return await download("https://" + httpurl, dir, fast)
-        with suppress(Exception):
-            return await download("http://" + httpurl, dir, fast)
-        raise URLError("Could not find file or uri: " + url)
-    response = requests.get(url, stream=True)
-    response.raise_for_status()
-    name, ext = os.path.splitext(os.path.basename(parse_result.path))
-    name = name or tldextract.extract(parse_result.netloc).domain
-    # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
-    # TODO: multipart with boundaries
-    if (_content_type := response.headers.get("Content-Type")) is not None:
-        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
-        content_type = [x.strip() for x in _content_type.split(";")]
-        chardet_bgn = "chardet="
-        match content_type:
-            case [mime_type]:
-                chardet = mimetypes.guess_type(url)[1]
-            case [mime_type, chardet] if chardet.startswith(chardet_bgn):
-                chardet = chardet[len(chardet_bgn) :]
-            case _:
-                raise BugError(f"Unknown content type: {content_type}")
-        ext = ext or mimetypes.guess_extension(mime_type)
-    else:
-        mime_type, chardet = mimetypes.guess_type(url)
-    if ext is None:
-        raise BugError(
-            f"Couldn't guess extension for file: {url}->{name,ext}, Content-Type: {content_type}"
-        )
-    filename = create_file(os.path.abspath(os.path.join(dir, name + ext)))
-    with open(filename, "wb") as f:
-        chunk: bytes
-        for chunk in response.iter_content():
-            f.write(chunk)
-            await asyncio.sleep(sleep)
-    logging.debug(f"Downloaded {url} into {filename}")
-    # TODO: guess mime type and encoding from content if None
-    return File(filename, mime_type, chardet)
+            return self.content.decode(self.charset)
+
+    @property
+    def raw(self):
+        if isinstance(self.content, bytes):
+            return self.content
+        else:
+            return self.content.encode(self.charset)
+
+    @property
+    def mime_type(self):
+        if not self._mime_type:
+            self._mime_type = mimetypes.guess_type(self.url, strict=False)
+        return self._mime_type
+
+    @property
+    def ext(self):
+        if not self._ext:
+            if self._mime_type:
+                self._ext = mimetypes.guess_extension(self._mime_type, strict=False)
+            else:
+                _, self._ext = os.path.splitext(self.url)
+        return self._ext
 
 
-def sync_download(url: str, dir: str = save_dir) -> File:
+def parse_media_type(
+    media_type: str, mime_type: str = "", charset: str = ""
+) -> tuple[str, str]:
+    if not media_type:
+        return (mime_type, charset)
+    arr = media_type.split(";")
+    _charset = ""
+    _mime_type, *params = arr
+    try:
+        for param in params:
+            name, value = param.split("=")
+            if name == "charset":
+                charset = value
+    except ValueError:
+        return (mime_type, charset)
+    return _mime_type or mime_type, _charset or charset
+
+
+media_type_pattern = re.compile(rf"[\w\-]+\/[\w\-]+(\;\w+\=\w+)*")  # don't capture this
+
+
+async def fetch(url: str, raw: bool = False) -> Response:
     """
-    Downloads a file from the given url as a stream into the given directory
-    Raises RequestException, OSErrors, or URLErrors.
+    Fetch an url (into memory)
+
+    Returns a Response or raises a ValueError if the url passed was invalid
+
+    Also it might raise an aiohttp error
     """
-    # TODO: Use Multiprocessing to really improve downloads
-    if (_url := download_cache.get(url)) is not None and os.path.exists(
-        _url.name
-    ):  # this might not be a good idea if the file can be changed
-        return _url
-    with suppress(OSError):
-        if os.path.exists(url):
-            return File(os.path.abspath(url))
-    ext: str | None
-    mime_type: str | None
-    chardet: str | None
-    parse_result = urlparse(url)
-    if parse_result.scheme == "file":
-        if os.path.exists(path := parse_result.path.removeprefix("/")):
-            return File(path)
-        else:
-            raise URLError("File not found: " + url)
-    elif parse_result.scheme in ("http", "https"):
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-        name, ext = os.path.splitext(os.path.basename(parse_result.path))
-        name = name or tldextract.extract(parse_result.netloc).domain
-        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
-        # TODO: multipart with boundaries
-        if (_content_type := response.headers.get("Content-Type")) is not None:
-            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
-            content_type = [x.strip() for x in _content_type.split(";")]
-            chardet_bgn = "chardet="
-            match content_type:
-                case [mime_type]:
-                    chardet = mimetypes.guess_type(url)[1]
-                case [mime_type, chardet] if chardet.startswith(chardet_bgn):
-                    chardet = chardet[len(chardet_bgn) :]
-                case _:
-                    raise BugError(f"Unknown content type: {content_type}")
-            ext = ext or mimetypes.guess_extension(mime_type)
-        else:
-            mime_type, chardet = mimetypes.guess_type(url)
-        if ext is None:
-            raise BugError(
-                f"Couldn't guess extension for file: {url}->{name,ext}, Content-Type: {content_type}"
+    if url.startswith("http"):
+        session: aiohttp.ClientSession = g["aiosession"]
+        async with session.get(url) as response:
+            content_type = response.headers.get("content-type", "")
+            mime_type, charset = parse_media_type(content_type)
+            return Response(
+                url=response.url.human_repr(),
+                content=await response.read(),
+                status=response.status,
+                _charset=charset or response.charset or "",
+                _mime_type=mime_type,
             )
-        filename = create_file(os.path.abspath(os.path.join(dir, name + ext)))
-        with open(filename, "wb") as f:
-            chunk: bytes
-            for chunk in response.iter_content():
-                f.write(chunk)
-        logging.debug(f"Downloaded {url} into {filename}")
-    elif parse_result.scheme == "":
-        # try https:// then http://
-        httpurl = url + ("/" if "/" not in url else "")
-        with suppress(requests.exceptions.RequestException, OSError, URLError):
-            return sync_download("https://" + httpurl, dir)
-        with suppress(requests.exceptions.RequestException, OSError, URLError):
-            return sync_download("http://" + httpurl, dir)
-        raise URLError("Could not find file or uri: " + url)
+    elif url.startswith("data:"):
+        # handle data url
+        """https://www.rfc-editor.org/rfc/rfc2397#section-2
+        dataurl    := "data:" [ mediatype ] [ ";base64" ] "," data
+        mediatype  := [ type "/" subtype ] *( ";" parameter )
+        data       := *urlchar
+        parameter  := attribute "=" value
+        """
+        url = re.sub("\s*", "", url)  # remove all whitespace
+        url = url[5:]
+        parser = GeneralParser(url)
+        media_type = parser.consume(media_type_pattern)
+        mime_type, charset = parse_media_type(media_type, "text/plain", "US-ASCII")
+        is_base64 = parser.consume(";base64")
+        if not parser.consume(","):
+            raise ValueError
+        content: str | bytes = unquote_plus(parser.x)
+        if is_base64:
+            # From https://stackoverflow.com/a/39210134/15046005
+            content = binascii.a2b_base64(content)
+        return Response(
+            url,
+            content,
+            _charset=charset,
+            _mime_type=mime_type,
+        )
     else:
-        raise URLError("Could not find file or uri: " + url)
-    return File(filename, mime_type, chardet)
+        try:
+            mode: Literal["rb", "r"] = "rb" if raw else "r"
+            async with aiofiles.open(url, mode) as f:
+                content = await f.read()
+            return Response(url, content)
+        except IOError as e:
+            code: int = (
+                403
+                if e.errno == errno.EACCES
+                else 404
+                if e.errno == errno.ENOENT
+                else 400
+            )
+            return Response(url, "", code)
 
 
-def fetch_txt(src: str) -> str:
-    file: File = sync_download(src)
-    return file.read()
+async def download(url: str) -> str:
+    """
+    Instead of fetching the url into memory, the data is downloaded to a file
+    """
+    if url.startswith("http"):
+        session: aiohttp.ClientSession = g["aiosession"]
+        async with session.get(url) as resp:
+            new_file = create_file(uuid.uuid4().hex)
+            async with aiofiles.open(new_file, "wb") as f:
+                async for chunk in resp.content.iter_any():
+                    await f.write(chunk)
+        return new_file
+    elif url.startswith("data"):
+        logging.warning(
+            "Downloading data URI. This means you are likely putting something into a data uri that is too big (like an image)"
+        )
+        response = await fetch(url)
+        new_file = create_file(uuid.uuid4().hex)
+        mode: Literal["wb", "w"] = "wb" if response.israw else "w"
+        async with aiofiles.open(new_file, mode) as f:
+            await f.write(response.content)
+        return new_file
+    else:
+        if await aospath.isfile(url):
+            return url
+        else:
+            raise ValueError("Invalid Path")
+
+
+# async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
+#     """
+#     Downloads a file from the given url as a stream into the given directory
+
+#     Raises Request Errors, OSErrors, or URLErrors.
+#     """
+#     # TODO: Use Multiprocessing to really improve downloads
+#     # https://docs.python.org/3/library/asyncio-task.html
+#     # sleep() always suspends the current task, allowing other tasks to run.
+#     # Setting the delay to 0 provides an optimized path to allow other tasks to run.
+#     # This can be used by long-running functions to avoid blocking the event loop
+#     # for the full duration of the function call.
+#     if (_url := download_cache.get(url)) is not None and os.path.exists(
+#         _url.name
+#     ):  # this might not be a good idea if the file can be changed
+#         return _url
+#     with suppress(OSError):
+#         if os.path.exists(url):
+#             return File(os.path.abspath(url))
+#     ext: str | None
+#     mime_type: str | None
+#     chardet: str | None
+#     sleep = (not fast) * 0.01
+#     parse_result = urlparse(url)
+#     if parse_result.scheme == "file":
+#         if os.path.exists(path := parse_result.path.removeprefix("/")):
+#             return File(path)
+#         else:
+#             raise URLError("File doesn't exist", url)
+#     elif parse_result.scheme == "":
+#         # try https:// then http://
+#         httpurl = url + ("/" if "/" not in url else "")
+#         with suppress(Exception):
+#             return await download("https://" + httpurl, dir, fast)
+#         with suppress(Exception):
+#             return await download("http://" + httpurl, dir, fast)
+#         raise URLError("Could not find file or uri: " + url)
+#     response = requests.get(url, stream=True)
+#     response.raise_for_status()
+#     name, ext = os.path.splitext(os.path.basename(parse_result.path))
+#     name = name or tldextract.extract(parse_result.netloc).domain
+#     # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
+#     # TODO: multipart with boundaries
+#     if (_content_type := response.headers.get("Content-Type")) is not None:
+#         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
+#         content_type = [x.strip() for x in _content_type.split(";")]
+#         chardet_bgn = "chardet="
+#         match content_type:
+#             case [mime_type]:
+#                 chardet = mimetypes.guess_type(url)[1]
+#             case [mime_type, chardet] if chardet.startswith(chardet_bgn):
+#                 chardet = chardet[len(chardet_bgn) :]
+#             case _:
+#                 raise BugError(f"Unknown content type: {content_type}")
+#         ext = ext or mimetypes.guess_extension(mime_type)
+#     else:
+#         mime_type, chardet = mimetypes.guess_type(url)
+#     if ext is None:
+#         raise BugError(
+#             f"Couldn't guess extension for file: {url}->{name,ext}, Content-Type: {content_type}"
+#         )
+#     filename = create_file(os.path.abspath(os.path.join(dir, name + ext)))
+#     with open(filename, "wb") as f:
+#         chunk: bytes
+#         for chunk in response.iter_content():
+#             f.write(chunk)
+#             await asyncio.sleep(sleep)
+#     logging.debug(f"Downloaded {url} into {filename}")
+#     # TODO: guess mime type and encoding from content if None
+#     return File(filename, mime_type, chardet)
+
+
+# def sync_download(url: str, dir: str = save_dir) -> File:
+#     """
+#     Downloads a file from the given url as a stream into the given directory
+#     Raises RequestException, OSErrors, or URLErrors.
+#     """
+#     # TODO: Use Multiprocessing to really improve downloads
+#     if (_url := download_cache.get(url)) is not None and os.path.exists(
+#         _url.name
+#     ):  # this might not be a good idea if the file can be changed
+#         return _url
+#     with suppress(OSError):
+#         if os.path.exists(url):
+#             return File(os.path.abspath(url))
+#     ext: str | None
+#     mime_type: str | None
+#     chardet: str | None
+#     parse_result = urlparse(url)
+#     if parse_result.scheme == "file":
+#         if os.path.exists(path := parse_result.path.removeprefix("/")):
+#             return File(path)
+#         else:
+#             raise URLError("File not found: " + url)
+#     elif parse_result.scheme in ("http", "https"):
+#         response = requests.get(url, stream=True)
+#         response.raise_for_status()
+#         name, ext = os.path.splitext(os.path.basename(parse_result.path))
+#         name = name or tldextract.extract(parse_result.netloc).domain
+#         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
+#         # TODO: multipart with boundaries
+#         if (_content_type := response.headers.get("Content-Type")) is not None:
+#             # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
+#             content_type = [x.strip() for x in _content_type.split(";")]
+#             chardet_bgn = "chardet="
+#             match content_type:
+#                 case [mime_type]:
+#                     chardet = mimetypes.guess_type(url)[1]
+#                 case [mime_type, chardet] if chardet.startswith(chardet_bgn):
+#                     chardet = chardet[len(chardet_bgn) :]
+#                 case _:
+#                     raise BugError(f"Unknown content type: {content_type}")
+#             ext = ext or mimetypes.guess_extension(mime_type)
+#         else:
+#             mime_type, chardet = mimetypes.guess_type(url)
+#         if ext is None:
+#             raise BugError(
+#                 f"Couldn't guess extension for file: {url}->{name,ext}, Content-Type: {content_type}"
+#             )
+#         filename = create_file(os.path.abspath(os.path.join(dir, name + ext)))
+#         with open(filename, "wb") as f:
+#             chunk: bytes
+#             for chunk in response.iter_content():
+#                 f.write(chunk)
+#         logging.debug(f"Downloaded {url} into {filename}")
+#     elif parse_result.scheme == "":
+#         # try https:// then http://
+#         httpurl = url + ("/" if "/" not in url else "")
+#         with suppress(requests.exceptions.RequestException, OSError, URLError):
+#             return sync_download("https://" + httpurl, dir)
+#         with suppress(requests.exceptions.RequestException, OSError, URLError):
+#             return sync_download("http://" + httpurl, dir)
+#         raise URLError("Could not find file or uri: " + url)
+#     else:
+#         raise URLError("Could not find file or uri: " + url)
+#     return File(filename, mime_type, chardet)
+
+
+async def fetch_txt(src: str) -> str:
+    return (await fetch(src)).text
 
 
 _error_logfile = File("error.log", encoding="utf-8")
@@ -554,26 +723,17 @@ class GeneralParser:
     def __init__(self, x: str):
         self.x = x
 
-    @overload
-    def consume(self, s: str) -> bool:
-        ...
-
-    @overload
-    def consume(self, s: re.Pattern[str]) -> str:
-        ...
-
-    def consume(self, s: str | re.Pattern[str]):
+    def consume(self, s: str | re.Pattern[str]) -> str:
+        assert s, BugError("Parser with empty consume")
         if isinstance(s, str) and self.x.startswith(s):
             self.x = self.x[len(s) :]
-            return True
+            return s
         elif isinstance(s, re.Pattern):
             if match := s.match(self.x):
                 slice_ = match.span()[1]
                 result, self.x = self.x[:slice_], self.x[slice_:]
                 return result
-            else:
-                return ""
-        return False
+        return ""
 
 
 ##########################################################################

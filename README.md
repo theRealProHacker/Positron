@@ -13,10 +13,7 @@
 ## Single sources
 - https://zerox-dg.github.io/blog/2021/09/26/Browser-from-Scratch-Layout/
 - https://runebook.dev/en/docs/css/css_flow_layout/block_and_inline_layout_in_normal_flow
-- https://www.rexegg.com/regex-boundaries.html
 - https://hacks.mozilla.org/2017/08/inside-a-super-fast-css-engine-quantum-css-aka-stylo/
-
-## Sites to save
 - [Parsing](https://html.spec.whatwg.org/multipage/parsing.html#tokenization)
 - [Firefox Source Structure](https://firefox-source-docs.mozilla.org/contributing/directory_structure.html)
 
@@ -25,10 +22,9 @@ Somehow move `Selectors` out of `Element` because they don't really belong there
 Test on https://acid2.acidtests.org/
 ## Use less RegEx
 Many consider regular expressions to be the best thing if it comes to text processing. 
-However, it often makes more sense to use other tools like `str.removesuffix()` or `str.split()`/`re.split()`  
-Or use a `GeneralParser` that is an easy way to tokenize a string.
+However, it often makes more sense to use other tools like `str.removesuffix()` or `str.split()`/`re.split()`.  
+Or use a `GeneralParser` which is an easy way to tokenize a string.
 ## Feature Ideas
-- https://web.archive.org/web/20110210133151/http://refactormycode.com/codes/333-sanitize-html
 - animated GIF support (https://yeahexp.com/how-to-insert-animated-gif-into-pygame/)
 - `@when` and `@else` in CSS: https://css-tricks.com/proposal-for-css-when/
 

@@ -16,6 +16,7 @@ import html5lib
 with open(os.devnull, "w") as f, redirect_stdout(f):
     import pygame as pg
 
+import aiohttp
 import util
 from config import g, reset_config, watch_file
 from Element import HTMLElement, apply_style, create_element
@@ -44,17 +45,17 @@ async def set_mode():
     Call this after setting g manually. This will probably change to an API function
     """
     global SCREEN, DIM, W, H
+    # icon
+    _icon: None | Media.Image
+    if _icon := g["icon"]:
+        if await _icon.loading_task is not None:
+            pg.display.set_icon(_icon.surf)
     # Display Mode
     W, H = DIM = Vector2((g["W"], g["H"]))
     flags = pg.SCALED | pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
     g["screen"] = SCREEN = pg.display.set_mode(DIM, flags)
     # Screen Saver
     pg.display.set_allow_screensaver(g["allow_screen_saver"])
-    # icon
-    _icon: None | Media.Image
-    if _icon := g["icon"]:
-        if await _icon.loading_task is not None:
-            pg.display.set_icon(_icon.surf)
 
 
 def e(q: str):
@@ -93,7 +94,7 @@ async def main(file: str):
     reset_config()
     g["file_watcher"] = util.FileWatcher()
     file = watch_file(file)
-    html = util.fetch_txt(file)
+    html = await util.fetch_txt(file)
     parsed = html5lib.parse(html)
     g["root"] = tree = create_element(parsed)
     logging.debug(tree.to_html())
@@ -149,9 +150,10 @@ async def run(file: str):
     task = (
         asyncio.create_task(Console())
         if uses_aioconsole
-        else util.create_task(asyncio.sleep(0))
+        else asyncio.create_task(asyncio.sleep(0))
     )
     try:
+        g["aiosession"] = aiohttp.ClientSession()
         await main(file)
         while g["reload"]:
             logging.info("Reloading")
@@ -159,12 +161,14 @@ async def run(file: str):
     except asyncio.exceptions.CancelledError:
         return
     finally:
+        await g["aiosession"].close()
         task.cancel()
         await task
         if True:
             await util.delete_created_files()
         pg.quit()
         logging.info("Exiting")
+        await asyncio.sleep(1)
 
 
 async def user_main():

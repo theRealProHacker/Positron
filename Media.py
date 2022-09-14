@@ -22,7 +22,7 @@ async def load_surf(url: str):
     """
     # TODO: be able to activate and deactivate surface caching
     if (surf := surf_cache.get(url)) is None:
-        file = (await util.download(url)).name
+        file = await util.download(url)
         surf_cache[url] = surf = await asyncio.to_thread(pg.image.load, file)  # type: ignore[assignment]
     return surf
 

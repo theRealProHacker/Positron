@@ -30,7 +30,9 @@ g: dict[str, Any] = {
     "file_watcher": None,           # the file watcher
     "screen": None,                 # pg.Surface
     "global_sheet": None,           # SourceSheet() # Is added in Style.py
-    "default_task": None    # util.Task
+    "default_task": None,           # util.Task
+    "aiosession": None,             # aiohttp.ClientSession
+    "tasks": []                     # list of tasks that are started in synchronous functions
 }
 
 def reset_config():
@@ -46,7 +48,6 @@ def reset_config():
         "css_sheets": Cache(),      # Cache[SourceSheet] # a list of external css SourceSheets
         "css_dirty": False,         # bool: does css need to be applied
         "css_sheet_len": 0,         # int
-        "tasks": []                 # list of tasks that are started in synchronous functions
     })
     g["global_sheet"].clear()
 # fmt: on
