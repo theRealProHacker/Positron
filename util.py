@@ -478,7 +478,7 @@ async def download(url: str) -> str:
         )
         response = await fetch(url)
         new_file = create_file(uuid.uuid4().hex)
-        mode: Literal["wb","w"] = "wb" if response.israw else "w"
+        mode: Literal["wb", "w"] = "wb" if response.israw else "w"
         async with aiofiles.open(new_file, mode) as f:
             await f.write(response.content)
         return new_file
