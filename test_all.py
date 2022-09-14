@@ -2,12 +2,9 @@
 import io
 import math
 from operator import sub
-import os
-from contextlib import suppress
 
 import pygame as pg
 import pytest
-import requests
 from pytest import raises
 
 import Box
@@ -291,14 +288,7 @@ def test_rounded_box():
 
 
 async def test_async():
-    # IO
-    # with pytest.raises(Exception) if not util.is_online() else suppress(
-    #     requests.exceptions.ConnectionError
-    # ):
-    #     path = await util.download("https://www.google.com/", dir=".")
-    # with suppress(OSError):
-    #     os.remove(path)
-    # assert path == util.abspath("google.html")
+    # from https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URLs#syntax
     assert await util.fetch_txt("data:,Hello%2C%20World%21") == "Hello, World!"
     assert await util.fetch_txt("data:text/plain;base64,SGVsbG8sIFdvcmxkIQ==")  == "Hello, World!"
     assert await util.fetch_txt("data:text/html,<script>alert('hi');</script>") == "<script>alert('hi');</script>"
