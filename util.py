@@ -17,7 +17,7 @@ from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from functools import cache
 from types import FunctionType
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Iterable, Literal, Sequence
 from urllib.parse import unquote_plus
 
 import aiofiles
@@ -445,7 +445,7 @@ async def fetch(url: str, raw: bool = False) -> Response:
         )
     else:
         try:
-            mode = "rb" if raw else "r"
+            mode: Literal["rb", "r"] = "rb" if raw else "r"
             async with aiofiles.open(url, mode) as f:
                 content = await f.read()
             return Response(url, content)
@@ -467,17 +467,19 @@ async def download(url: str) -> str:
     if url.startswith("http"):
         session: aiohttp.ClientSession = g["aiosession"]
         async with session.get(url) as resp:
-            new_file = create_file(uuid.uuid4())
+            new_file = create_file(uuid.uuid4().hex)
             async with aiofiles.open(new_file, "wb") as f:
                 async for chunk in resp.content.iter_any():
                     await f.write(chunk)
+        return new_file
     elif url.startswith("data"):
         logging.warning(
             "Downloading data URI. This means you are likely putting something into a data uri that is too big (like an image)"
         )
         response = await fetch(url)
-        new_file = create_file(uuid.uuid4())
-        async with aiofiles.open(new_file, "wb" if response.israw else "w") as f:
+        new_file = create_file(uuid.uuid4().hex)
+        mode: Literal["wb","w"] = "wb" if response.israw else "w"
+        async with aiofiles.open(new_file, mode) as f:
             await f.write(response.content)
         return new_file
     else:
