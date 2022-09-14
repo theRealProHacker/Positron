@@ -156,7 +156,9 @@ def split_units(attr: str) -> tuple[float, str]:
 
 # https://docs.python.org/3/library/re.html#simulating-scanf
 dec_re = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
-ident_re = r"-*\w[-\w\d]*"  # a digit can only come after a letter and one letter is minimum
+ident_re = (
+    r"-*\w[-\w\d]*"  # a digit can only come after a letter and one letter is minimum
+)
 hex_pattern = re.compile(r"#([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})([\da-f]{1,2})?")
 number_pattern = re.compile(dec_re)
 # units

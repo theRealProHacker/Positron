@@ -578,6 +578,7 @@ class StyleElement(MetaElement):
             self.src_sheet = future.result()
             add_sheet(self.src_sheet)
 
+
 class TitleElement(MetaElement):
     tag = "title"
 
@@ -613,7 +614,7 @@ class LinkElement(MetaElement):
             case "icon" if (src := attrs.get("href")):
                 # TODO: sizes ?
                 g["icon_srcs"].append(src)
-    
+
     def parse_callback(self, future: asyncio.Future):
         with suppress(Exception):
             self.src_sheet = future.result()

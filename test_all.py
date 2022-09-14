@@ -290,8 +290,14 @@ def test_rounded_box():
 async def test_async():
     # from https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URLs#syntax
     assert await util.fetch_txt("data:,Hello%2C%20World%21") == "Hello, World!"
-    assert await util.fetch_txt("data:text/plain;base64,SGVsbG8sIFdvcmxkIQ==")  == "Hello, World!"
-    assert await util.fetch_txt("data:text/html,<script>alert('hi');</script>") == "<script>alert('hi');</script>"
+    assert (
+        await util.fetch_txt("data:text/plain;base64,SGVsbG8sIFdvcmxkIQ==")
+        == "Hello, World!"
+    )
+    assert (
+        await util.fetch_txt("data:text/html,<script>alert('hi');</script>")
+        == "<script>alert('hi');</script>"
+    )
 
 
 def test_image_element():

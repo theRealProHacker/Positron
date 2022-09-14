@@ -45,17 +45,17 @@ async def set_mode():
     Call this after setting g manually. This will probably change to an API function
     """
     global SCREEN, DIM, W, H
+    # icon
+    _icon: None | Media.Image
+    if _icon := g["icon"]:
+        if await _icon.loading_task is not None:
+            pg.display.set_icon(_icon.surf)
     # Display Mode
     W, H = DIM = Vector2((g["W"], g["H"]))
     flags = pg.SCALED | pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
     g["screen"] = SCREEN = pg.display.set_mode(DIM, flags)
     # Screen Saver
     pg.display.set_allow_screensaver(g["allow_screen_saver"])
-    # icon
-    _icon: None | Media.Image
-    if _icon := g["icon"]:
-        if await _icon.loading_task is not None:
-            pg.display.set_icon(_icon.surf)
 
 
 def e(q: str):
@@ -168,7 +168,7 @@ async def run(file: str):
             await util.delete_created_files()
         pg.quit()
         logging.info("Exiting")
-        await asyncio.sleep(3)
+        await asyncio.sleep(1)
 
 
 async def user_main():
