@@ -283,7 +283,9 @@ class Calculator:
                 f"Calculator couldn't resolve BinOp, {value}, {auto_val}, {perc_val}"
             )
             return rv
-        raise BugError("Unsupported type in calc")
+        elif value is None:
+            raise ValueError
+        raise BugError(f"Unsupported type in calc, {value} {value.__class__.__name__}")
 
     def _multi(self, values: Iterable[AutoType | ParseResult], *args):
         return tuple(self(val, *args) for val in values)
@@ -406,9 +408,10 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
 
     def acc(self, value: str, p_style):
         if value == "0":
-            return (
-                self.default_type(0) if self.default_type in (Length, float) else None
-            )
+            for type_ in (Length, float):
+                if self.accepts_type(type_):
+                    return type_(0)
+            return None
         try:
             number, unit = split_units(value)
         except AttributeError:
