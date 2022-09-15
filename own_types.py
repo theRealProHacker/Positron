@@ -237,7 +237,7 @@ class CSSDimension:
         return f"{self.__class__.__name__}({self.value})"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class Percentage(CSSDimension):
     value: float
 
@@ -251,17 +251,17 @@ class Percentage(CSSDimension):
         return self.value * num * 0.01
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class Length(CSSDimension):
     value: float
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class Angle(CSSDimension):
     value: float
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class Time(CSSDimension):
     value: float
 

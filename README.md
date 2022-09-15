@@ -21,6 +21,7 @@
 
 # Thoughts
 Test on https://acid2.acidtests.org/
+`tinycss` generates tokens like for example `<Token PERCENTAGE at 5:19 70%>`, we could use these instead of throwing them away by calling `TokenList.as_css()`
 ## Use less RegEx
 Many consider regular expressions to be the best thing if it comes to text processing. 
 However, it often makes more sense to use other tools like `str.removesuffix()` or `str.split()`/`re.split()`.  

@@ -26,8 +26,8 @@ from config import add_sheet, g, watch_file
 from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color, Coordinate, DisplayType, Drawable,
                        Float4Tuple, Font, FontStyle, Length,
                        Number, Percentage, Radii, Rect, Surface, _XMLElement)
-from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys,
-                   get_style, inset_getter, pack_longhands, parse_file,
+from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys, is_custom,
+                   get_style, has_prio, inset_getter, pack_longhands, parse_file,
                    parse_sheet, prio_keys, calculator)
 from util import create_task, draw_text, get_tag, group_by_bool, log_error
 
@@ -174,17 +174,18 @@ class Element:
         It then computes all the childrens styles
         """
         input_style = get_style(self.tag) | self.input_style
-        keys = sorted(input_style.keys(), key=prio_keys.__contains__, reverse=True)
         parent_style = dict(self.parent.cstyle)
+        # inherit any custom properties from parent
+        for k, v in parent_style.items():
+            if is_custom(k):
+                input_style.setdefault(k, v)
+        keys = sorted(input_style.keys(), key=has_prio, reverse=True)
         style: Style.FullyComputedStyle = {}
         for key in keys:
             val = input_style[key]
             new_val = Style.compute_style(self.tag, val, key, parent_style)
-            assert new_val is not None, BugError(
-                f"Style {key} was set to None. Which should never happen."
-            )
             style[key] = new_val
-            if key in prio_keys:
+            if has_prio:
                 parent_style[key] = new_val
         # corrections
         """ mdn border-width: 

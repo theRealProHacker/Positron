@@ -13,6 +13,7 @@ from typing import (Any, Callable, Generic, Iterable, Literal, Mapping,
                     Protocol, TypeVar, Union, cast, overload)
 
 import tinycss
+import tinycss.token_data
 
 import Media
 import Selector
@@ -156,6 +157,10 @@ def split_units(attr: str) -> tuple[float, str]:
     return float(num), unit.lower()
 
 
+def is_custom(k: str):
+    return k.startswith("--")
+
+
 # https://docs.python.org/3/library/re.html#simulating-scanf
 dec_re = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
 ident_re = (
@@ -180,6 +185,7 @@ op_map: dict[str, Operator] = {
     "*": mul,
     "/": truediv,
 }
+_reversed_op_map = {v: k for k, v in op_map.items()}
 op_re = re.compile(re_join(*op_map))
 # calc literals
 literal_map = {
@@ -336,8 +342,11 @@ class BinOp:
     def get_type(self) -> CalcType:
         pass
 
+    def __repr__(self):
+        return f"{self.left}{_reversed_op_map[self.op]}{self.right}"
 
-@dataclass(unsafe_hash=True)
+
+@dataclass(unsafe_hash=True, repr=False)
 class AddOp(BinOp):
     left: CalcValue
     op: Operator
@@ -351,7 +360,7 @@ class AddOp(BinOp):
         )
 
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, repr=False)
 class MulOp(BinOp):
     left: CalcValue
     op: Operator
@@ -781,6 +790,10 @@ BorderRadiusAttr: StyleAttr[LengthPerc] = StyleAttr("0", acc=border_radius)
 prio_keys = {"color", "font-size"}  # currentcolor and 1em for example
 
 
+def has_prio(key: str):
+    return key in prio_keys or is_custom(key)
+
+
 style_attrs: dict[str, StyleAttr[CompValue]] = {
     "color": StyleAttr("canvastext", acc=color, inherits=True),
     "font-weight": StyleAttr("normal", abs_font_weight, font_weight, inherits=True),
@@ -852,10 +865,24 @@ def get_style(tag: str) -> ResolvedStyle:
 
 
 ###########################  CSS-Parsing ############################
-Parser = tinycss.CSS21Parser()
+class CustomCSSParser(tinycss.CSS21Parser):
+    def parse_declaration(self, tokens: list[tinycss.token_data.Token]):
+        first_token, second_token, *rest = tokens
+        if first_token.value == "-" and second_token.type == "IDENT":
+            value = first_token.value + second_token.value
+            tokens = [
+                tinycss.token_data.Token(
+                    "IDENT", value, value, None, first_token.line, first_token.column
+                ),
+                *rest,
+            ]
+        return super().parse_declaration(tokens)
 
 
-current_file: str | None = None  # TODO: not thread-safe (but we probably don't care)
+Parser = CustomCSSParser()
+
+
+current_file: str = ""
 
 
 @contextmanager
@@ -865,7 +892,7 @@ def set_curr_file(file: str):
     try:
         yield
     finally:
-        current_file = None
+        current_file = ""
 
 
 ############################# Types #######################################
@@ -904,13 +931,6 @@ def join_styles(style1: Style, style2: Style) -> Style:
 
 def is_imp(t: Value):
     return t[1]
-
-
-IMPORTANT = " !important"
-
-
-def parse_important(s: str) -> InputValue:
-    return (s[: -len(IMPORTANT)], True) if s.endswith(IMPORTANT) else (s, False)
 
 
 def remove_importantd(style: dict[str, tuple[V_T, bool]]) -> dict[str, V_T]:
@@ -988,6 +1008,11 @@ class SourceSheet(list[Rule]):
 
 
 ############################### Parsing functions #######################################
+IMPORTANT = " !important"
+
+
+def parse_important(s: str) -> InputValue:
+    return (s[: -len(IMPORTANT)], True) if s.endswith(IMPORTANT) else (s, False)
 
 
 def parse_inline_style(s: str):
@@ -1025,6 +1050,8 @@ def parse_sheet(source: str) -> SourceSheet:
     Parses a whole css sheet
     """
     tiny_sheet: tinycss.css21.Stylesheet = Parser.parse_stylesheet(source)
+    for error in tiny_sheet.errors:
+        log_error(error)
     return SourceSheet(handle_rule(rule) for rule in tiny_sheet.rules)
 
 
@@ -1131,7 +1158,6 @@ def is_valid(key: str, value: str) -> None | str | CompValue:
             return "inherit" if attr.inherits else "revert"
         with suppress(KeyError):
             return attr.accept(value, p_style={})
-        # TODO: probably add a check that the KeyError was really raised on the p_style, if not raise a BugError
         return value
     elif (keys := dir_shorthands.get(key)) is not None:
         return is_valid(keys[0], value)
@@ -1158,6 +1184,8 @@ def process_property(key: str, value: str) -> list[tuple[str, str]] | CompValue 
     # We do a little style hickup here by using assertions instead of normal raises or Error type returns,
     # but I think that is fine
     # TODO: font
+    if is_custom(key):
+        return CompStr(value)
     arr = split_value(value)
     if key == "all":
         assert len(arr) == 1
