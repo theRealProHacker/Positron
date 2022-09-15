@@ -1,10 +1,11 @@
 # fmt: off
+import asyncio
 import math
 import re
 from abc import ABC
 from collections import defaultdict, deque
 from contextlib import contextmanager, suppress
-from dataclasses import astuple, dataclass
+from dataclasses import dataclass
 from functools import cache, partial
 from itertools import chain, islice
 from operator import add, itemgetter, mul, sub, truediv
@@ -12,8 +13,10 @@ from typing import (Any, Callable, Generic, Iterable, Literal, Mapping,
                     Protocol, TypeVar, Union, cast, overload)
 
 import tinycss
+import tinycss.token_data
 
 import Media
+import Selector
 from config import (abs_angle_units, abs_resolution_units, abs_time_units, abs_border_width, abs_font_size,
                     abs_font_weight, abs_length_units, g, rel_font_size,
                     rel_length_units)
@@ -29,7 +32,7 @@ from util import (GeneralParser, fetch_txt, find_index,
 
 # Typing
 
-CompValue = Any  # | float | Percentage | Sentinel | FontStyle | Color | tuple[Drawable, ...] | CompStr but not a normal str
+CompValue = Any
 CompValue_T = TypeVar("CompValue_T", bound=CompValue, covariant=True)
 
 # A Value is the actual value together with whether the value is set as important
@@ -42,7 +45,7 @@ Property = tuple[str, Value]
 ResolvedStyle = dict[str, str | CompValue]
 Style = dict[str, Value]
 FullyComputedStyle = Mapping[str, CompValue]
-StyleRule = tuple[str, Style]
+StyleRule = tuple[Selector.Selector, Style]
 
 MediaValue = tuple[int, int]  # just the window size right now
 Rule = Union["AtRule", "StyleRule"]
@@ -154,6 +157,10 @@ def split_units(attr: str) -> tuple[float, str]:
     return float(num), unit.lower()
 
 
+def is_custom(k: str):
+    return k.startswith("--")
+
+
 # https://docs.python.org/3/library/re.html#simulating-scanf
 dec_re = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
 ident_re = (
@@ -178,6 +185,7 @@ op_map: dict[str, Operator] = {
     "*": mul,
     "/": truediv,
 }
+_reversed_op_map = {v: k for k, v in op_map.items()}
 op_re = re.compile(re_join(*op_map))
 # calc literals
 literal_map = {
@@ -275,7 +283,9 @@ class Calculator:
                 f"Calculator couldn't resolve BinOp, {value}, {auto_val}, {perc_val}"
             )
             return rv
-        raise BugError("Unsupported type in calc")
+        elif value is None:
+            raise ValueError
+        raise BugError(f"Unsupported type in calc, {value} {value.__class__.__name__}")
 
     def _multi(self, values: Iterable[AutoType | ParseResult], *args):
         return tuple(self(val, *args) for val in values)
@@ -334,8 +344,11 @@ class BinOp:
     def get_type(self) -> CalcType:
         pass
 
+    def __repr__(self):
+        return f"{self.left}{_reversed_op_map[self.op]}{self.right}"
 
-@dataclass(unsafe_hash=True)
+
+@dataclass(unsafe_hash=True, repr=False)
 class AddOp(BinOp):
     left: CalcValue
     op: Operator
@@ -349,7 +362,7 @@ class AddOp(BinOp):
         )
 
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True, repr=False)
 class MulOp(BinOp):
     left: CalcValue
     op: Operator
@@ -395,7 +408,10 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
 
     def acc(self, value: str, p_style):
         if value == "0":
-            return self.default_type(0)
+            for type_ in (Length, float):
+                if self.accepts_type(type_):
+                    return type_(0)
+            return None
         try:
             number, unit = split_units(value)
         except AttributeError:
@@ -641,11 +657,9 @@ def _length(dimension: tuple[float, str], p_style):
 
     See: https://developer.mozilla.org/en-US/docs/Web/CSS/length
     """
-    num, s = dimension  # Raises ValueError if dimension has not exactly 2 entries
+    num, s = dimension
     if num == 0:
-        return Length(
-            0
-        )  # we don't even have to look at the unit. Especially because the unit might be the empty string
+        return Length(0)
     abs_length: dict[str, float] = abs_length_units
     w: int = g["W"]
     h: int = g["H"]
@@ -779,6 +793,10 @@ BorderRadiusAttr: StyleAttr[LengthPerc] = StyleAttr("0", acc=border_radius)
 prio_keys = {"color", "font-size"}  # currentcolor and 1em for example
 
 
+def has_prio(key: str):
+    return key in prio_keys or is_custom(key)
+
+
 style_attrs: dict[str, StyleAttr[CompValue]] = {
     "color": StyleAttr("canvastext", acc=color, inherits=True),
     "font-weight": StyleAttr("normal", abs_font_weight, font_weight, inherits=True),
@@ -850,10 +868,24 @@ def get_style(tag: str) -> ResolvedStyle:
 
 
 ###########################  CSS-Parsing ############################
-Parser = tinycss.CSS21Parser()
+class CustomCSSParser(tinycss.CSS21Parser):
+    def parse_declaration(self, tokens: list[tinycss.token_data.Token]):
+        first_token, second_token, *rest = tokens
+        if first_token.value == "-" and second_token.type == "IDENT":
+            value = first_token.value + second_token.value
+            tokens = [
+                tinycss.token_data.Token(
+                    "IDENT", value, value, None, first_token.line, first_token.column
+                ),
+                *rest,
+            ]
+        return super().parse_declaration(tokens)
 
 
-current_file: str | None = None  # TODO: not thread-safe (but we probably don't care)
+Parser = CustomCSSParser()
+
+
+current_file: str = ""
 
 
 @contextmanager
@@ -863,7 +895,7 @@ def set_curr_file(file: str):
     try:
         yield
     finally:
-        current_file = None
+        current_file = ""
 
 
 ############################# Types #######################################
@@ -902,13 +934,6 @@ def join_styles(style1: Style, style2: Style) -> Style:
 
 def is_imp(t: Value):
     return t[1]
-
-
-IMPORTANT = " !important"
-
-
-def parse_important(s: str) -> InputValue:
-    return (s[: -len(IMPORTANT)], True) if s.endswith(IMPORTANT) else (s, False)
 
 
 def remove_importantd(style: dict[str, tuple[V_T, bool]]) -> dict[str, V_T]:
@@ -985,9 +1010,12 @@ class SourceSheet(list[Rule]):
         raise ValueError("Immutable List")
 
 
-g["global_sheet"] = SourceSheet()
-
 ############################### Parsing functions #######################################
+IMPORTANT = " !important"
+
+
+def parse_important(s: str) -> InputValue:
+    return (s[: -len(IMPORTANT)], True) if s.endswith(IMPORTANT) else (s, False)
 
 
 def parse_inline_style(s: str):
@@ -1007,13 +1035,17 @@ def parse_inline_style(s: str):
     return process(pre_parsed)
 
 
+parse_lock = asyncio.Lock()
+
+
 async def parse_file(source: str) -> SourceSheet:
     """
     Parses a file.
     It sets the current_file globally which is just for debugging purposes.
     """
-    with set_curr_file(source):
-        return parse_sheet(await fetch_txt(source))
+    async with parse_lock:  # with this we ensure that only one css-sheet is ever parsed at the same time
+        with set_curr_file(source):
+            return parse_sheet(await fetch_txt(source))
 
 
 def parse_sheet(source: str) -> SourceSheet:
@@ -1021,6 +1053,8 @@ def parse_sheet(source: str) -> SourceSheet:
     Parses a whole css sheet
     """
     tiny_sheet: tinycss.css21.Stylesheet = Parser.parse_stylesheet(source)
+    for error in tiny_sheet.errors:
+        log_error(error)
     return SourceSheet(handle_rule(rule) for rule in tiny_sheet.rules)
 
 
@@ -1036,7 +1070,7 @@ def handle_rule(
     """
     if isinstance(rule, tinycss.css21.RuleSet):
         return (
-            rule.selector.as_css(),
+            Selector.parse_selector(rule.selector.as_css()),
             frozendict(
                 process(
                     [
@@ -1127,7 +1161,6 @@ def is_valid(key: str, value: str) -> None | str | CompValue:
             return "inherit" if attr.inherits else "revert"
         with suppress(KeyError):
             return attr.accept(value, p_style={})
-        # TODO: probably add a check that the KeyError was really raised on the p_style, if not raise a BugError
         return value
     elif (keys := dir_shorthands.get(key)) is not None:
         return is_valid(keys[0], value)
@@ -1154,6 +1187,8 @@ def process_property(key: str, value: str) -> list[tuple[str, str]] | CompValue 
     # We do a little style hickup here by using assertions instead of normal raises or Error type returns,
     # but I think that is fine
     # TODO: font
+    if is_custom(key):
+        return CompStr(value)
     arr = split_value(value)
     if key == "all":
         assert len(arr) == 1
@@ -1274,7 +1309,7 @@ def pack_longhands(d: ResolvedStyle | FullyComputedStyle) -> ResolvedStyle:
     """Pack longhands back into their shorthands for readability"""
     d: dict[str, str] = {k: str(v).removesuffix(".0") for k, v in d.items()}
     for shorthand, keys in dir_shorthands.items():
-        if not all(f in d for f in keys):
+        if any(f not in d for f in keys):
             continue
         longhands = [d.pop(f) for f in keys]
         match longhands:

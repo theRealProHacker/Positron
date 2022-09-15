@@ -9,7 +9,7 @@ from functools import reduce
 from operator import or_
 
 # fmt: off
-from typing import (Generator, Generic, Hashable, Iterable, Literal,
+from typing import (Any, Generator, Generic, Hashable, Iterable, Literal,
                     Mapping, Protocol, TypeVar, Union)
 # fmt: on
 from weakref import WeakValueDictionary
@@ -57,6 +57,18 @@ CO_T = TypeVar("CO_T", covariant=True)
 class Drawable(Protocol):
     def draw(self, surf: Surface, pos: Coordinate):
         pass
+
+
+class Element_P(Protocol):
+    """
+    A Protocol that just represents an Element
+    """
+
+    tag: str
+    attrs: dict[str, Any]
+
+    def iter_anc(self) -> Iterable["Element_P"]:
+        ...
 
 
 class Enum(_Enum):
@@ -225,7 +237,7 @@ class CSSDimension:
         return f"{self.__class__.__name__}({self.value})"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class Percentage(CSSDimension):
     value: float
 
@@ -239,17 +251,17 @@ class Percentage(CSSDimension):
         return self.value * num * 0.01
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class Length(CSSDimension):
     value: float
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class Angle(CSSDimension):
     value: float
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class Time(CSSDimension):
     value: float
 

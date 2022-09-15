@@ -13,8 +13,8 @@ import J
 import rounded_box
 import Style
 import util
-from Element import (AndSelector, ClassSelector, DirectChildSelector,
-                     HasAttrSelector, IdSelector, TagSelector, parse_selector,
+from Selector import (AndSelector, ClassSelector, DirectChildSelector,
+                     HasAttrSelector, IdSelector, Selector, TagSelector, matches, parse_selector,
                      rel_p, sngl_p)
 from own_types import Auto, Color, FrozenDCache, Length, Percentage, Rect
 
@@ -201,7 +201,7 @@ def test_selector_parsing():
     for x in (" ", " > ", "+", "~ "):
         assert rel_p.match(x)
 
-    assert Element.matches("p > ", rel_p) == ("p", ">")
+    assert matches("p > ", rel_p) == ("p", ">")
 
     selector = parse_selector("div > a#hello.dark[target]")
     assert selector == DirectChildSelector(
