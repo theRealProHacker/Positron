@@ -446,8 +446,10 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
                 start_x = self.x
                 if self.consume("(") or self.consume("calc("):
                     stack.append("(")
+                    continue
                 elif self.consume(")"):
                     stack.append(")")
+                    continue
                 elif dimension := self.consume(dim_pattern):
                     if (result := acc(dimension)) is not None:
                         stack.append(result)
