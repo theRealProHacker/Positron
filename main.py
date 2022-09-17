@@ -119,7 +119,6 @@ async def main(file: str):
                 g["W"] = event.x
                 g["H"] = event.y
                 g["css_dirty"] = True
-                g["recompute"] = True
         if end:
             break
         # Await the next tick. In this spare time all async tasks can be run.
@@ -173,7 +172,6 @@ async def run(file: str):
 
 async def user_main():
     # User code would come here
-    g["icon"] = Media.Image(r"C:\Users\Rashid\Downloads\favicon_io\favicon-16x16.png")
     await run("example.html")
 
 

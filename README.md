@@ -1,9 +1,26 @@
 
 [![Join the chat at https://gitter.im/Positron-Contributors/community](https://badges.gitter.im/Positron-Contributors/community.svg)](https://gitter.im/Positron-Contributors/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-![Github CI workflow Badge](https://github.com/theRealProHacker/Positron/actions/workflows/run-test.yml/badge.svg)
+![Github CI workflow badge](https://github.com/theRealProHacker/Positron/actions/workflows/run-test.yml/badge.svg)
 
 # Positron
+
+**E**lectron uses **E**CMAScript and **P**ositron uses **P**ython 
+
+# How to run this
+You need Python 3.10 and Git installed
+```shell
+git clone https://github.com/theRealProHacker/Positron.git
+cd Positron
+python3 -m venv venv
+venv\Scripts\activate   &:: on Windows
+venv/bin/activate       # on Unix 
+pip install -r requirements.txt
+```
+Now you can create an HTML-file `example.html` and then you just do  
+```shell
+python3 main.py
+```
 
 # Sources 
 ## MVPs
@@ -16,11 +33,12 @@
 - https://zerox-dg.github.io/blog/2021/09/26/Browser-from-Scratch-Layout/
 - https://runebook.dev/en/docs/css/css_flow_layout/block_and_inline_layout_in_normal_flow
 - https://hacks.mozilla.org/2017/08/inside-a-super-fast-css-engine-quantum-css-aka-stylo/
-- [Parsing](https://html.spec.whatwg.org/multipage/parsing.html#tokenization)
+- [Parsing](https://html.spec.whatwg.org/multipage/parsing.html)
 - [Firefox Source Structure](https://firefox-source-docs.mozilla.org/contributing/directory_structure.html)
+- [Gamma Correction](https://blog.johnnovak.net/2016/09/21/what-every-coder-should-know-about-gamma/)
 
 # Thoughts
-Test on https://acid2.acidtests.org/
+Test on https://acid2.acidtests.org/  
 `tinycss` generates tokens like for example `<Token PERCENTAGE at 5:19 70%>`, we could use these instead of throwing them away by calling `TokenList.as_css()`
 ## Use less RegEx
 Many consider regular expressions to be the best thing if it comes to text processing. 
@@ -74,7 +92,7 @@ margin-bottom: inherit;
 margin-right: inherit;
 ```
 4. Also if any of the four values in `margin` were invalid, the rest would still be accepted.
-5. URLs can generally also be absolute or relative paths without having to use the `file://` syntax
+5. URLs can generally also be absolute or relative paths. `file`-URLs are not accepted
 
 # Rants
 ## Why Python is definitely better then JS
@@ -84,7 +102,7 @@ From https://stackoverflow.com/a/2346626/15046005
 ## Why the CSS-Specifications are pretty bad
 1. Many Inconsistencies. Very similar concepts have totally different syntaxes. 
     Simple example: `rgb` and `hwb`  
-2. Sometimes the specifications were done respecting the actual implementation but then somewhere else they don't care about those at all and then you see CSS-'Features' that are not supported by a single browser.
+2. Sometimes the specifications were done respecting the implementors but then somewhere else they don't care about those at all and then you see CSS-'Features' that are not supported by a single browser.
 3. Because CSS was sometimes tailored to very old hardware or other almost ancient circumstances, it has a lot of technical debt. Another reason for this is that just like HTML and JS, CSS cannot have breaking changes, even if totally necessary. 
 For example there are a million ways to say the same thing in CSS (colors, tranparency)
 4. But in general, CSS is a simple and effective language to describe how a webpage should look like. 
