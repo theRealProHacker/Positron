@@ -300,12 +300,5 @@ async def test_async():
     )
 
 
-def test_image_element():
-    Element.ImgElement.make_dimensions((None, None), (500, 800)) == (500, 800)
-    Element.ImgElement.make_dimensions((1000, None), (500, 800)) == (500, 1600)
-    Element.ImgElement.make_dimensions((None, 400), (500, 800)) == (250, 400)
-    Element.ImgElement.make_dimensions((500, 400), (500, 800)) == (500, 400)
-
-
 if __name__ == "__main__":
     pytest.main()

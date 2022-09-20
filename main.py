@@ -11,7 +11,7 @@ try:
     import aioconsole
 except ImportError:
     uses_aioconsole = False
-import html5lib
+from parse_html import parse_dom
 
 with open(os.devnull, "w") as f, redirect_stdout(f):
     import pygame as pg
@@ -19,14 +19,14 @@ with open(os.devnull, "w") as f, redirect_stdout(f):
 import aiohttp
 import util
 from config import g, reset_config, watch_file
-from Element import HTMLElement, apply_style, create_element
+from Element import HTMLElement, apply_style
 from J import J, SingleJ  # for console
 import Media
 from own_types import Surface, Vector2
 
 # setup
 pg.init()
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 running = False
 
@@ -95,8 +95,7 @@ async def main(file: str):
     g["file_watcher"] = util.FileWatcher()
     file = watch_file(file)
     html = await util.fetch_txt(file)
-    parsed = html5lib.parse(html)
-    g["root"] = tree = create_element(parsed)
+    g["root"] = tree = parse_dom(html)
     logging.debug(tree.to_html())
     pg.display.set_caption(g["title"])
     if _icon_srcs := g["icon_srcs"]:
