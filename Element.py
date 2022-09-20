@@ -752,9 +752,7 @@ class TextElement:
         lines.append(current_line)
         self.lines = lines
         self.box = Box.Box(
-            "content-box",
-            width = width,
-            height = len(lines)*self.parent.line_height
+            "content-box", width=width, height=len(lines) * self.parent.line_height
         )
 
     def draw(self, surf: Surface, pos: Coordinate):
