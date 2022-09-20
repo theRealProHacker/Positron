@@ -26,7 +26,7 @@ from own_types import Surface, Vector2
 
 # setup
 pg.init()
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 running = False
 
