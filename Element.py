@@ -1,10 +1,8 @@
 """
 This file contains most of the code around the Element class
 This includes:
-- Creating Elements from a parsed tree
 - Different Element types
 - Computing, layouting and drawing the Elements
-- CSS-Selectors
 """
 import asyncio
 from contextlib import suppress
@@ -28,17 +26,12 @@ from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color, Coordinate
                        Number, Percentage, Radii, Rect, Surface, _XMLElement)
 from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys, is_custom,
                    get_style, has_prio, inset_getter, pack_longhands, parse_file,
-                   parse_sheet, prio_keys, calculator)
-from util import create_task, draw_text, get_tag, group_by_bool, log_error
+                   parse_sheet, calculator)
+from util import create_task, draw_text, get_tag, group_by_bool, log_error, make_default
 
 # fmt: on
-""" More useful links for further development
-https://developer.mozilla.org/en-US/docs/Web/CSS/image
-"""
 
 ################################# Globals ###################################
-
-
 @dataclass(frozen=True, slots=True)
 class TextDrawItem:
     text: str
@@ -50,7 +43,24 @@ class TextDrawItem:
         return self.element.line_height
 
 
-class Line(tuple[TextDrawItem]):
+@dataclass(frozen=True)
+class ElementDrawItem:
+    element: "Element"
+    xpos: float
+
+    @property
+    def height(self):
+        return self.element.box.outer_box.height
+
+    @property
+    def width(self):
+        return self.element.box.outer_box.width
+
+
+InlineItem = TextDrawItem | ElementDrawItem
+
+
+class Line(tuple[InlineItem, ...]):
     @property
     def height(self):
         return max([0, *(item.height for item in self)])
@@ -235,7 +245,7 @@ class Element:
             self.layout_type = "inline"
             width = self.box.content_box.width
             xpos: float = 0
-            current_line: list[TextDrawItem] = []
+            current_line: list[InlineItem] = []
             lines: list[Line] = []
 
             def line_break():
@@ -245,16 +255,24 @@ class Element:
                 current_line.clear()
 
             for elem in self._text_iter_desc():
-                c, text = elem.parent, elem.text
-                if text == "\n":
-                    line_break()
-                    continue
-                for word in text.split():
-                    word_width = c.font.size(word)[0]
-                    if xpos + word_width > width:
+                if isinstance(elem, TextElement):
+                    c, text = elem.parent, elem.text
+                    if text == "\n":
                         line_break()
-                    current_line.append(TextDrawItem(word, c, xpos))
-                    xpos += word_width + c.word_spacing
+                        continue
+                    for word in text.split():
+                        word_width = c.font.size(word)[0]
+                        if xpos + word_width > width:
+                            line_break()
+                        current_line.append(TextDrawItem(word, c, xpos))
+                        xpos += word_width + c.word_spacing
+                else:
+                    elem.layout(width)
+                    elem_width = elem.box.outer_box.width
+                    if xpos + elem_width > width:
+                        line_break()
+                    current_line.append(ElementDrawItem(elem, xpos))
+                    xpos += elem_width + c.word_spacing
             lines.append(Line(current_line))
             set_height(sum(line.height for line in lines))
             self.lines = lines
@@ -336,20 +354,19 @@ class Element:
         # 1.+2. draw background-color and background-image
         bg_imgs: Sequence[Drawable] = style["background-image"]
         bg_color: Color = style["background-color"]
-        if not bg_imgs:  # draw only the background-color
-            rounded_box.draw_rounded_background(surf, border_rect, bg_color, radii)
-        else:
-            bg_size = border_rect.size
-            bg_surf = Surface(bg_size, pg.SRCALPHA)
-            bg_surf.fill(bg_color)
-            for drawable in bg_imgs:
-                drawable.draw(bg_surf, (0, 0))
-            rounded_box.round_surf(bg_surf, bg_size, radii)
-            surf.blit(bg_surf, border_rect.topleft)
+        bg_size = border_rect.size
+        bg_surf = Surface(bg_size, pg.SRCALPHA)
+        bg_surf.fill(bg_color)
+        for drawable in bg_imgs:
+            drawable.draw(bg_surf, (0, 0))
+        rounded_box.round_surf(bg_surf, bg_size, radii)
+        surf.blit(bg_surf, border_rect.topleft)
+
         # 3. draw border
         rounded_box.draw_rounded_border(
             surf, border_rect, bc_getter(style), draw_box.border, radii
         )
+
         # 4. draw children
         if self.layout_type == "block":
             for c in self.real_children:
@@ -358,14 +375,17 @@ class Element:
             ypos = 0
             for line in self.lines:
                 for item in line:
-                    text_pos = (draw_box.x + item.xpos, draw_box.y + ypos)
-                    draw_text(
-                        surf,
-                        item.text,
-                        item.element.font,
-                        item.element.cstyle["color"],
-                        topleft=text_pos,
-                    )
+                    item_pos = (draw_box.x + item.xpos, draw_box.y + ypos)
+                    if isinstance(item, TextDrawItem):
+                        draw_text(
+                            surf,
+                            item.text,
+                            item.element.font,
+                            item.element.cstyle["color"],
+                            topleft=item_pos,
+                        )
+                    else:
+                        item.element.draw(surf, item_pos)
                 ypos += line.height
         else:
             raise BugError(f"Wrong layout_type ({self.layout_type})")
@@ -441,7 +461,7 @@ class Element:
                 yield x
         # return filter(lambda c: not (c is self or isinstance(c, TextElement)),self.parent.children)
 
-    def _text_iter_desc(self) -> Iterable["TextElement"]:
+    def _text_iter_desc(self) -> Iterable[Union["Element", "TextElement"]]:
         """
         Alternative iteration over all descendants
         used in text layout.
@@ -598,6 +618,8 @@ class ImgElement(Element):
     size: None | tuple[int, int]
     given_size: tuple[int | None, int | None]
     image: Media.Image | None
+    attrw: int | None
+    attrh: int | None
 
     def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
         # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img
@@ -613,63 +635,55 @@ class ImgElement(Element):
                 # "auto" is synonymous with "async"
                 sync=attrs.get("decoding", "async") == "sync",
             )
-            self.given_size = (
-                int(w) if (w := attrs.get("width")) is not None else None,
-                int(h) if (h := attrs.get("height")) is not None else None,
-            )
+            self.attrw = int(w) if (w := attrs.get("width")) is not None else None
+            self.attrh = int(h) if (h := attrs.get("height")) is not None else None
         except (KeyError, ValueError):
             self.image = None
-            self.given_size = (None, None)
-
-    @staticmethod
-    def make_dimensions(
-        given_size: tuple[int | None, int | None], intrinsic_size: tuple[int, int]
-    ) -> tuple[int, int]:
-        ix, iy = intrinsic_size
-        match given_size:
-            case [None, None]:
-                return ix, iy
-            case [x, None]:
-                return x, iy * x // ix
-            case [None, y]:
-                return ix * y // iy, y
-            case [x, y]:
-                return x, y
-        raise ValueError(given_size)
+            self.attrw = self.attrh = None
 
     @staticmethod
     def crop_image(surf: Surface, to_size: Coordinate):
         """
         Makes an image fit the `to_size`
         """
-        # TODO: don't just scale but also cut out, because scaling destroys the image
+        # TODO: don't just scale but also cut out, because scaling might destroy the image
         if surf.get_size() == to_size:
             pass
         return pg.transform.scale(surf, to_size)
 
     def layout(self, width):
-        if self.cstyle["display"] == "none" or self.image is None:
+        if self.display == "none" or self.image is None:
             return
+        # the width and height are determined in the following order
+        # 1. css-box-properties if not Auto
+        # 2. width and height attributes set on the image
+        # 3. The elements intrinsic size
+        intrinsic_size = (
+            self.image.surf.get_size() if self.image.is_loaded else (None, None)
+        )
         w, h = (
-            self.image.surf.get_bounding_rect().size
-            if self.image.surf is not None
-            else (x or 0 for x in self.given_size)
+            make_default(attr, make_default(intr, 0))
+            for attr, intr in zip((self.attrw, self.attrh), intrinsic_size)
         )
-        self.box = Box.Box(
-            self.cstyle["box-sizing"],
-            # TODO: add border, margin, padding
-            width=w,
-            height=h,
+        self.box, set_height = Box.make_box(
+            w, self.cstyle, self.parent.box.width, self.parent.get_height()
         )
+        set_height(h)
 
-    def draw(self, surf, pos):
+    def draw(self, surf: Surface, pos: Coordinate):
         if self.cstyle["display"] == "none" or self.image is None:
             return
-        if (_surf := self.image.surf) is not None:
-            draw_surf = self.crop_image(
-                _surf, self.make_dimensions(self.given_size, _surf.get_size())
+        if self.image.is_loaded:
+            surf.blit(
+                self.crop_image(self.image.surf, (self.box.width, self.box.height)),
+                self.box.pos + pos,
             )
-            surf.blit(draw_surf, self.box.pos + pos)
+            self.children = []
+            self.lines = []
+            super().draw(surf, pos)
+
+    def _text_iter_desc(self):
+        yield self
 
 
 class AudioElement(Element):
@@ -692,6 +706,9 @@ class AudioElement(Element):
         except (KeyError, ValueError):
             self.image = None
 
+    def _text_iter_desc(self):
+        yield self
+
 
 class BrElement(Element):
     def _text_iter_desc(self):
@@ -699,7 +716,7 @@ class BrElement(Element):
 
 
 class TextElement:
-    """Special element that can't be accessed from HTML directly but represents any raw text"""
+    """Special element that represents any raw text"""
 
     text: str
     parent: Element
@@ -757,41 +774,6 @@ class TextElement:
 
     def __repr__(self):
         return f"<Text: '{self.text}'>"
-
-
-_special_elements: dict[str, Type[Element]] = {
-    "html": HTMLElement,
-    "img": ImgElement,
-    "audio": AudioElement,
-    "br": BrElement,
-}
-
-
-def create_element(elem: _XMLElement, parent: Element | None = None):
-    """
-    Create an element
-    """
-    tag = get_tag(elem)
-    assert tag
-    text = "" if elem.text is None else elem.text.strip()
-    new: Element
-    match tag:
-        case tag if (
-            meta_element := globals().get(tag.capitalize() + "Element")
-        ) is not None and issubclass(meta_element, MetaElement):
-            # meta_elements don't need their tag, but take their text
-            new = meta_element(elem.attrib, text, parent)
-        case tag if (special_elem := _special_elements.get(tag)) is not None:
-            new = special_elem(tag, elem.attrib, parent)
-        case _:
-            new = Element(tag, elem.attrib, parent)
-
-    children = [create_element(e, new) for e in elem]
-    # insert Text Element at the top
-    if text:
-        children.insert(0, TextElement(text, new))
-    new.children = children
-    return new
 
 
 def apply_style():
