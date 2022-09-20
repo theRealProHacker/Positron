@@ -7,7 +7,7 @@ This includes:
 import asyncio
 from contextlib import suppress
 from dataclasses import dataclass
-from functools import cache
+from functools import cache, partial
 from itertools import chain
 
 # fmt: off
@@ -23,11 +23,11 @@ import Style
 from config import add_sheet, g, watch_file
 from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color, Coordinate, DisplayType, Drawable,
                        Float4Tuple, Font, FontStyle, Length,
-                       Number, Percentage, Radii, Rect, Surface, _XMLElement)
+                       Number, Percentage, Radii, Rect, Surface, _XMLElement, frozendict)
 from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys, is_custom,
                    get_style, has_prio, inset_getter, pack_longhands, parse_file,
                    parse_sheet, calculator)
-from util import create_task, draw_text, get_tag, group_by_bool, log_error, make_default
+from util import all_equal, create_task, draw_text, get_tag, group_by_bool, log_error, make_default
 
 # fmt: on
 
@@ -139,17 +139,12 @@ class Element:
         """
         self.display = self.cstyle["display"]
         if self.display != "none":
-            if len(self.children) == 1 and isinstance(
-                elem := self.children[0], TextElement
-            ):
-                elem.display = self.display
-            elif any(
+            if any(
                 [child.is_block() for child in self.children]
             ):  # set all children to blocked
                 self.display = "block"
-                for child in self.real_children:
-                    if child.display == "inline":
-                        child.display = "block"
+                for child in self.children:
+                    child.display = "block"
         self.layout_type = self.display
         return self.display == "block"
 
@@ -238,8 +233,58 @@ class Element:
         self.box, set_height = Box.make_box(
             width, style, self.parent.box.width, self.parent.get_height()
         )
+        self.layout_children(set_height)
+
+    def layout_children(self, set_height: Callable[[float], None]):
         if any(c.display == "block" for c in self.children):
-            self.layout_children(set_height)
+            inner: Rect = self.box.content_box
+            x_pos = inner.x
+            y_cursor = inner.y
+            # https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Box_Model/Mastering_margin_collapsing
+            flow, no_flow = group_by_bool(
+                self.children,
+                lambda x: x.cstyle["position"] in ("static", "relative", "sticky"),
+            )
+            for child in flow:
+                child.layout(inner.width)
+                # top, right, bottom, left = calc_inset(
+                #     inset_getter(c.cstyle), self.box.width, self.box.height
+                # )
+                child.box.set_pos(
+                    # (
+                    #     (x_pos, y_cursor)
+                    #     if child.cstyle["position"] == "sticky"
+                    #     else (bottom - top + x_pos, right - left + y_cursor)
+                    # )
+                    (x_pos, y_cursor)
+                )
+                y_cursor += child.box.outer_box.height
+            set_height(y_cursor)
+            for child in no_flow:
+                child.layout(inner.width)
+                # calculate position
+                top, bottom, left, right = calc_inset(
+                    inset_getter(self.cstyle), self.box.width, self.box.height
+                )
+                child.box.set_pos(
+                    (
+                        (
+                            top
+                            if top is not Auto
+                            else self.get_height() - bottom
+                            if bottom is not Auto
+                            else 0
+                        ),
+                        (
+                            left
+                            if left is not Auto
+                            else inner.width - right
+                            if right is not Auto
+                            else 0
+                        ),
+                    )
+                )
+
         else:
             # https://stackoverflow.com/a/46220683/15046005
             self.layout_type = "inline"
@@ -276,57 +321,6 @@ class Element:
             lines.append(Line(current_line))
             set_height(sum(line.height for line in lines))
             self.lines = lines
-
-    def layout_children(self, set_height: Callable[[float], None]):
-        """
-        Layout all the elements children (Currently flow layout)
-        """
-        inner: Rect = self.box.content_box
-        x_pos = inner.x
-        y_cursor = inner.y
-        # https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Box_Model/Mastering_margin_collapsing
-        flow, no_flow = group_by_bool(
-            self.real_children,
-            lambda x: x.cstyle["position"] in ("static", "relative", "sticky"),
-        )
-        for child in flow:
-            child.layout(inner.width)
-            top, right, bottom, left = calc_inset(
-                inset_getter(self.cstyle), self.box.width, self.box.height
-            )
-            child.box.set_pos(
-                (
-                    (x_pos, y_cursor)
-                    if child.cstyle["position"] == "sticky"
-                    else (bottom - top + x_pos, right - left + y_cursor)
-                )
-            )
-            y_cursor += child.box.outer_box.height
-        set_height(y_cursor)
-        for child in no_flow:
-            child.layout(inner.width)
-            # calculate position
-            top, bottom, left, right = calc_inset(
-                inset_getter(self.cstyle), self.box.width, self.box.height
-            )
-            child.box.set_pos(
-                (
-                    (
-                        top
-                        if top is not Auto
-                        else self.get_height() - bottom
-                        if bottom is not Auto
-                        else 0
-                    ),
-                    (
-                        left
-                        if left is not Auto
-                        else inner.width - right
-                        if right is not Auto
-                        else 0
-                    ),
-                )
-            )
 
     def draw(self, surf: Surface, pos: Coordinate):
         """
@@ -369,7 +363,7 @@ class Element:
 
         # 4. draw children
         if self.layout_type == "block":
-            for c in self.real_children:
+            for c in self.children:
                 c.draw(surf, draw_box.content_box.topleft)
         elif self.layout_type == "inline":
             ypos = 0
@@ -505,7 +499,7 @@ class HTMLElement(Element):
         self.box = Box.Box(t="content-box", width=g["W"], height=g["H"])
         # all children correct their display
         assert self.is_block()
-        self.layout_children(lambda height: setattr(self.box, "height", height))
+        super().layout_children(partial(setattr, self.box, "height"))
 
     def draw(self, screen, pos):
         for c in self.children:
@@ -722,6 +716,7 @@ class TextElement:
     parent: Element
     tag = "Text"
     display = "inline"
+    cstyle = frozendict({"position": "static"})
 
     # Used internally
     _draw_items: list[TextDrawItem]
@@ -737,37 +732,41 @@ class TextElement:
         pass
 
     def layout(self, width: float) -> None:
-        pass
-        # font_split_regex = re.compile(r"\s*\,\s*")
-        # style = self.parent.style
-        # families = font_split_regex.split(style["font-family"]) # this algorithm should be updated
-        # families = [f.removeprefix('"').removesuffix('"') for f in families]
-        # font = get_font(
-        #     families,
-        #     style["font-size"],
-        #     style["font-style"],
-        #     style["font-weight"]
-        # )
-        # self.font = font
-        # if word_spacing == "normal":
-        #     word_spacing = font.size(" ")[0] # the width of the space character in the font
-        # if line_height == "normal":
-        #     line_height = 1.2 * style["font-size"]
-        # xcursor = ycursor = 0.0
-        # self._draw_items.clear()
-        # l = self.text.split()
-        # for word in l:
-        #     word_width, _ = font.size(word)
-        #     if xcursor + word_width > width: #overflow
-        #         xcursor = 0
-        #         ycursor += line_height
-        #     self._draw_items.append(TextDrawItem(word,(xcursor, ycursor)))
-        #     xcursor += word_width + word_spacing
-        # # should set a box
-        # self.x, self.y = xcursor, ycursor
+        assert self.display == "block"
+        xpos: float = 0
+        current_line: list[tuple[str, float]] = []
+        lines: list[list[tuple[str, float]]] = []
 
-    def draw(self, surface: pg.surface.Surface):
-        pass
+        def line_break():
+            nonlocal xpos, current_line
+            xpos = 0
+            lines.append(current_line)
+            current_line = []
+
+        for word in self.text.split():
+            word_width = self.parent.font.size(word)[0]
+            if xpos + word_width > width:
+                line_break()
+            current_line.append((word, xpos))
+            xpos += word_width + self.parent.word_spacing
+        lines.append(current_line)
+        self.lines = lines
+        self.box = Box.Box(
+            "content-box", width=width, height=len(lines) * self.parent.line_height
+        )
+
+    def draw(self, surf: Surface, pos: Coordinate):
+        x, y = self.box.pos + pos
+        for i, line in enumerate(self.lines):
+            y_pos = i * self.parent.line_height + y
+            for word, x_pos in line:
+                draw_text(
+                    surf,
+                    word,
+                    self.parent.font,
+                    self.parent.cstyle["color"],
+                    topleft=(x_pos + x, y_pos),
+                )
 
     def to_html(self, indent=0):
         return " " * indent + self.text
