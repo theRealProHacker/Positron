@@ -24,17 +24,18 @@ def lxml_to_element(lxml_elem, parent: Element.Element | None) -> Element.Elemen
     tag = get_tag(lxml_elem)
     type_ = elem_type_map.get(tag, Element.Element)
     children: list[Element.Element | Element.TextElement] = []
+    text = (lxml_elem.text or "").strip()
     if type_ is Element.HTMLElement:
         elem = Element.HTMLElement("html", {}, None)
     else:
         assert parent is not None
         if issubclass(type_, Element.MetaElement):
-            elem = type_(lxml_elem.attrib, lxml_elem.text, parent)
+            elem = type_(lxml_elem.attrib, text, parent)
         else:
             elem = type_(tag, lxml_elem.attrib, parent)
     children = []
-    if _text := (lxml_elem.text or "").strip():
-        children.append(Element.TextElement(_text, elem))
+    if text:
+        children.append(Element.TextElement(text, elem))
     for _c in lxml_elem:
         c = lxml_to_element(_c, parent=elem)
         children.append(c)

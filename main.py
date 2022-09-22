@@ -31,6 +31,8 @@ logging.basicConfig(level=logging.INFO)
 running = False
 
 CLOCK = pg.time.Clock()
+DEBUG = False
+uses_aioconsole &= DEBUG
 # These aren't actually constant
 W: float
 H: float
@@ -86,8 +88,8 @@ async def Console():
 
 async def main(file: str):
     """The main function that includes the main event-loop"""
-    global running
     tree: HTMLElement
+    global running
     if running:
         raise RuntimeError("Already running")
     running = True
@@ -117,6 +119,7 @@ async def main(file: str):
             elif event.type == pg.WINDOWRESIZED:
                 g["W"] = event.x
                 g["H"] = event.y
+                await set_mode()
                 g["css_dirty"] = True
         if end:
             break
@@ -135,6 +138,14 @@ async def main(file: str):
 
         SCREEN.fill(g["window_bg"])
         tree.draw(SCREEN, (0, 0))
+        if DEBUG:
+            util.draw_text(
+                SCREEN,
+                str(round(CLOCK.get_fps())),
+                pg.font.SysFont("Arial", 18),
+                "black",
+                topleft=(20, 20),
+            )
         pg.display.flip()
     running = False
 
@@ -166,7 +177,7 @@ async def run(file: str):
             await util.delete_created_files()
         pg.quit()
         logging.info("Exiting")
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
 
 
 async def user_main():

@@ -12,7 +12,7 @@ from Style import (Calculator, FullyComputedStyle, bw_getter, directions, mrg_ge
 from util import ensure_suffix, noop, not_neg, mutate_tuple
 # fmt: on
 
-l = [("border", "padding"), ("margin",)]
+between_types = [("border", "padding"), ("margin",)]
 box_types = [
     "content-box",
     "border-box",
@@ -45,15 +45,13 @@ guess_slicing: dict[str, Index] = {
 
 
 def _sum(*args: float) -> float:
-    """This function can take a single value or an iterable and returns a single Number"""
+    """This function can take a single value or an Iterable and returns a single Number"""
     match args:
         case [x] if isinstance(x, Number):
             return x
         case [x] if isinstance(x, Iterable):
             return sum(x)
-        case _:
-            return sum(args)
-    raise TypeError  # mypy doesn't recognise this as unreachable
+    return sum(args)
 
 
 def _convert(box: "Box", frm: str, to: str, part: Index) -> float:
@@ -61,9 +59,9 @@ def _convert(box: "Box", frm: str, to: str, part: Index) -> float:
         return 0
     _frm = box_types.index(frm)
     _to = box_types.index(to)
-    if _frm > _to:  # we are converting from a bigger box to a smaller box
+    if _frm > _to:  # we are converting from a larger box to a smaller box
         return -_convert(box, to, frm, part)
-    lookup_chain = [*chain(*l[_frm:_to])]
+    lookup_chain = [*chain.from_iterable(between_types[_frm:_to])]
     return sum(_sum(getattr(box, name)[part]) for name in lookup_chain)
 
 
@@ -103,7 +101,7 @@ class Box:
         pos: Coordinate = (0, 0),
         outer_width: bool = False,
     ):
-        self.t = box_sizing(t)
+        self.t = t
         self.margin = margin
         self.border = tuple(int(not_neg(x)) for x in border)
         self.padding = padding
@@ -111,7 +109,7 @@ class Box:
         self.width = (
             width
             if not outer_width
-            else convert(self, "width", "outer-box", value=width)
+            else convert(self, "width", frm="outer-box", value=width)
         )
         self.height = height
 
@@ -138,27 +136,26 @@ class Box:
 
     @property
     def outer_box(self):
-        return self.box("outer")
+        return self.box("outer-box")
 
     @property
     def border_box(self):
-        return self.box("border")
+        return self.box("border-box")
 
     @property
     def content_box(self):
-        return self.box("content")
+        return self.box("content-box")
 
     def _set(self, attr: str, value: Any, t: str = "outer-box"):
         _t = box_sizing(t)
         setattr(self, attr, convert(self, attr, frm=_t, value=value))
 
     def box(self, t: str) -> Rect:
-        _t = box_sizing(t)
         return Rect(
-            convert(self, "x", to=_t),
-            convert(self, "y", to=_t),
-            convert(self, "width", to=_t),
-            convert(self, "height", to=_t),
+            convert(self, "x", to=t),
+            convert(self, "y", to=t),
+            convert(self, "width", to=t),
+            convert(self, "height", to=t),
         )
 
     def _props(self):
@@ -193,6 +190,7 @@ class Box:
     def __getattr__(self, name: str):
         """
         Enables special member access, like padding_top, or margin_vertical
+        and special methods like set_padding
         """
         with suppress(AssertionError):
             match name.split("_"):
@@ -220,7 +218,7 @@ def make_box(
     style: FullyComputedStyle,
     parent_width: float,
     parent_height: float,
-) -> tuple[Box, Callable[[float], None]]:
+) -> tuple[Box, Callable[..., None]]:
     """
     Makes a box from input.
     If height is Auto it leaves the boxes height by setting it to a sentinel (-1).
@@ -247,12 +245,10 @@ def make_box(
     box_sizing: str = style["box-sizing"]
 
     padding = calc.multi4(pad_getter(style), 0)
-    border = calc.multi4(
-        bw_getter(style), None, None
-    )  # doesn't allow auto or percentage
+    border = calc.multi4(bw_getter(style), None, None)
     if style["width"] is Auto:
         margin = calc.multi4(mrg_getter(style), 0)
-        width = given_width  # outer width
+        width = given_width
     else:
         # width is a resolvable value. So this time margin: auto resolves to all of the remaining space
         width = calc(style["width"])
@@ -277,7 +273,7 @@ def make_box(
         height,
         outer_width=style["width"] is Auto,
     )
-    set_height: Callable[[float], None] = box.set_height if height == -1 else noop
+    set_height: Any = partial(box.set_height, t="content-box") if height == -1 else noop
     return (
         box,
         set_height,

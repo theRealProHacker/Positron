@@ -154,14 +154,14 @@ class OrSelector(CompositeSelector):
 
 @dataclass(frozen=True, slots=True)
 class DirectChildSelector(CompositeSelector):
-    selectors: tuple[Selector, ...]
+    selectors: tuple[Selector, Selector]
     spec = cached_property(joined_specs)
 
     def __call__(self, elem: Element_P):
-        chain = [elem, *elem.iter_anc()]
-        if len(chain) != len(self.selectors):
+        if not elem.parent:
             return False
-        return all(sel(elem) for parent, sel in zip(chain, self.selectors))
+        p_sel, e_sel = self.selectors
+        return p_sel(elem.parent) and e_sel(elem)
 
     __str__ = lambda self: " > ".join(str(s) for s in self.selectors)  # type: ignore[attr-defined]
 
@@ -172,8 +172,8 @@ class ChildSelector(CompositeSelector):
     spec = cached_property(joined_specs)
 
     def __call__(self, elem: Element_P):
-        own_sel, p_sel = self.selectors
-        if not own_sel(elem):
+        p_sel, e_sel = self.selectors
+        if not e_sel(elem):
             return False
         return any(p_sel(p) for p in elem.iter_anc())
 
@@ -182,8 +182,9 @@ class ChildSelector(CompositeSelector):
 
 ########################################## Parser #######################################################
 s = r"\s*"
+_id = r"[\w\-]+"
 sngl_p = re.compile(
-    r"((?:\*|(?:#\w+)|(?:\.\w+)|(?:\[\s*\w+\s*\])|(?:\[\s*\w+\s*[~|^$*]?=\s*\w+\s*\])|(?:\w+)))$"
+    rf"((?:\*|(?:#{_id})|(?:\.{_id})|(?:\[\s*{_id}\s*\])|(?:\[\s*{_id}\s*[~|^$*]?=\s*{_id}\s*\])|(?:{_id})))$"
 )
 rel_p = re.compile(r"\s*([>+~ ])\s*$")  # pretty simple
 

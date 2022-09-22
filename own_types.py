@@ -66,6 +66,7 @@ class Element_P(Protocol):
 
     tag: str
     attrs: dict[str, Any]
+    parent: "Element_P"
 
     def iter_anc(self) -> Iterable["Element_P"]:
         ...
@@ -163,6 +164,7 @@ class Vector2(_Vector2):
 class Rect(_Rect):
     @property
     def corners(self):
+        """clock-wise"""
         return (
             self.topleft,
             self.topright,

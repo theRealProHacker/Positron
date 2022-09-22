@@ -230,6 +230,21 @@ def test_boxes():
     assert box.content_box == pg.Rect(3, 3, 500 - 6, 150), box.content_box
     assert box.outer_box == pg.Rect(0, 0, 500, 150 + 6), box.outer_box
 
+    box = Box.Box(
+        "content-box",
+        (
+            0,
+            20,
+        )
+        * 2,
+        (3,) * 4,
+        (10,) * 4,
+        100,
+        100,
+        outer_width=True,
+    )
+    assert box.width == 100 - 2 * (20 + 3 + 10)
+
 
 def test_J():
     with raises(AttributeError):  # should raise because g["root"] is None
