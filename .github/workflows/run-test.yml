@@ -14,5 +14,6 @@ jobs:
       - run: python3 -m venv venv
       - run: venv/bin/activate
       - run: pip install -r requirements.txt
+      - run: python3 -m black . --check
       - run: python3 -m mypy .
       - run: python3 -m pytest
