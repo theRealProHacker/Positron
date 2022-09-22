@@ -21,7 +21,7 @@ import Media
 import rounded_box
 import Style
 from config import add_sheet, g, watch_file
-from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color, Coordinate, DisplayType, Drawable,
+from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color, Coordinate, DisplayType, Drawable, Element_P,
                        Float4Tuple, Font, FontStyle, Length,
                        Number, Percentage, Radii, Rect, Surface, _XMLElement, frozendict)
 from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys, is_custom,
@@ -100,7 +100,7 @@ def calc_inset(inset: AutoLP4Tuple, width: float, height: float) -> Float4Tuple:
 ########################## Element ########################################
 
 
-class Element:
+class Element(Element_P):
     """
     The Element represents an HTML-Element
     """
@@ -117,8 +117,10 @@ class Element:
     box: Box.Box = Box.Box.empty()
     line_height: float
     white_spacing: float
-    display: DisplayType  # the used display state. Is set before layout
-    layout_type: DisplayType  # the used layout state. Is set before layout
+    display: DisplayType
+    layout_type: DisplayType
+    position: str
+
     # Dynamic states
     focus: bool = False
     hover: bool = False
@@ -141,7 +143,7 @@ class Element:
         if self.display != "none":
             if any(
                 [child.is_block() for child in self.children]
-            ):  # set all children to blocked
+            ):  # set all children to block
                 self.display = "block"
                 for child in self.children:
                     child.display = "block"
@@ -218,6 +220,7 @@ class Element:
         wspace: float | Percentage = Percentage(100) if wspace is Auto else wspace
         d_ws = self.font.size(" ")[0]
         self.word_spacing = (calculator(wspace, 0, d_ws)) + d_ws
+        self.position = str(style["position"])
         self.cstyle = g["cstyles"].add(style)
         for child in self.children:
             child.compute()
@@ -235,7 +238,7 @@ class Element:
         )
         self.layout_children(set_height)
 
-    def layout_children(self, set_height: Callable[[float], None]):
+    def layout_children(self, set_height: Callable[..., None]):
         if any(c.display == "block" for c in self.children):
             inner: Rect = self.box.content_box
             x_pos = inner.x
@@ -243,7 +246,7 @@ class Element:
             # https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Box_Model/Mastering_margin_collapsing
             flow, no_flow = group_by_bool(
                 self.children,
-                lambda x: x.cstyle["position"] in ("static", "relative", "sticky"),
+                lambda x: x.position in ("static", "relative", "sticky"),
             )
             for child in flow:
                 child.layout(inner.width)
@@ -253,7 +256,7 @@ class Element:
                 child.box.set_pos(
                     # (
                     #     (x_pos, y_cursor)
-                    #     if child.cstyle["position"] == "sticky"
+                    #     if child.position == "sticky"
                     #     else (bottom - top + x_pos, right - left + y_cursor)
                     # )
                     (x_pos, y_cursor)
@@ -545,6 +548,11 @@ class MetaElement(Element):
         pass
 
 
+class ReplacedElement(Element):
+    def _text_iter_desc(self) -> Iterable[Union["Element", "TextElement"]]:
+        yield self
+
+
 class StyleElement(MetaElement):
     tag = "style"
     inline_sheet: SourceSheet | None = None
@@ -608,7 +616,7 @@ class LinkElement(MetaElement):
             add_sheet(self.src_sheet)
 
 
-class ImgElement(Element):
+class ImgElement(ReplacedElement):
     size: None | tuple[int, int]
     given_size: tuple[int | None, int | None]
     image: Media.Image | None
@@ -676,11 +684,8 @@ class ImgElement(Element):
             self.lines = []
             super().draw(surf, pos)
 
-    def _text_iter_desc(self):
-        yield self
 
-
-class AudioElement(Element):
+class AudioElement(ReplacedElement):
     def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
         # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/audio
         # TODO:
@@ -700,13 +705,13 @@ class AudioElement(Element):
         except (KeyError, ValueError):
             self.image = None
 
-    def _text_iter_desc(self):
-        yield self
 
+class BrElement(ReplacedElement):
+    def layout(self, given_width):
+        self.box = Box.Box("content-box", width=given_width, height=self.line_height)
 
-class BrElement(Element):
-    def _text_iter_desc(self):
-        yield TextElement("\n", self)
+    def draw(self, *args, **kwargs):
+        pass
 
 
 class TextElement:
@@ -716,10 +721,7 @@ class TextElement:
     parent: Element
     tag = "Text"
     display = "inline"
-    cstyle = frozendict({"position": "static"})
-
-    # Used internally
-    _draw_items: list[TextDrawItem]
+    position = "static"
 
     def is_block(self):
         return False

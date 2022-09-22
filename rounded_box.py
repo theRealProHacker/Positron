@@ -1,7 +1,7 @@
 # fmt: off
 import math
 from functools import cache
-from typing import Sequence
+from typing import Sequence, TypeVar
 
 import numpy as np
 import pygame as pg
@@ -86,6 +86,10 @@ def adj_corners(corners: list[V_T]) -> list[tuple[V_T, V_T]]:
     return [(corners[i1], corners[i2]) for i1, i2 in _corner2sides]
 
 
+def radii2pg(radii: Sequence[V_T]) -> tuple[V_T, V_T, V_T, V_T]:
+    return (*radii[:2], radii[3], radii[2])  # type: ignore # swap bottomleft and bottom right
+
+
 @cache
 def full_ellipse(size: tuple[int, int], color: Color, width: int) -> Surface:
     """
@@ -120,7 +124,7 @@ def draw_rounded_border(
         if all_equal(new_radii):
             pg.draw.rect(surf, colors[0], box, widths[0], new_radii[0])
         else:
-            pg.draw.rect(surf, colors[0], box, widths[0], -1, *new_radii)
+            pg.draw.rect(surf, colors[0], box, widths[0], -1, *radii2pg(new_radii))
     else:
         # advanced border draw
         def draw_rect(color, rect):
@@ -191,12 +195,11 @@ def draw_rounded_background(surf: Surface, box: Rect, bgcolor: Color, radii: Rad
         if all_equal(new_radii):
             pg.draw.rect(surf, bgcolor, box, border_radius=new_radii[0])
         else:
-            pg.draw.rect(surf, bgcolor, box, 0, -1, *new_radii)
+            pg.draw.rect(surf, bgcolor, box, 0, -1, *radii2pg(new_radii))
     else:
 
         def draw_rect(color, rect):
             gfxdraw.box(surf, rect, color)
-            # pg.draw.rect(surf, color, rect)
 
         corners = [Vector2(x) for x in box.corners]
         vectors = [
@@ -250,6 +253,12 @@ def round_surf(surf: Surface, size: Coordinate, radii: Radii):
     surf.convert_alpha()
     clip_surf = Surface(size, flags=pg.SRCALPHA)
     draw_rounded_background(clip_surf, box, Color("black"), radii)
-    # here we need to copy the alpha value from the clip_surf to the surface
+    # here we multiply the alpha values from the clip_surf onto the surface
     surf_alpha = pg.surfarray.pixels_alpha(surf)
-    np.copyto(surf_alpha, src=pg.surfarray.pixels_alpha(clip_surf))
+    clip_alpha = pg.surfarray.pixels_alpha(clip_surf)
+    result = np.multiply(clip_alpha, surf_alpha)
+    factor = np.max(result) / 255
+    if factor:
+        normalized = np.true_divide(result, factor).astype("uint8")
+        np.copyto(surf_alpha, normalized)
+    pass

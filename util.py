@@ -18,9 +18,10 @@ from dataclasses import dataclass
 from functools import cache
 from types import FunctionType
 from typing import Callable, Iterable, Literal, Sequence
-from urllib.parse import unquote_plus
+from urllib.parse import unquote_plus, urlparse
 
 import aiofiles
+import aiofiles.os
 import aiofiles.ospath as aospath
 import aiohttp
 import numpy as np
@@ -303,9 +304,7 @@ created_files: set[str] = set()
 async def delete_created_files():
     global created_files
     logging.info(f"Deleting: {created_files}")
-    await asyncio.gather(
-        *(asyncio.to_thread(os.remove, file) for file in created_files)
-    )
+    await asyncio.gather(*(aiofiles.os.remove(file) for file in created_files))
 
 
 save_dir = os.environ.get("TEMP") or "."
@@ -322,11 +321,6 @@ def create_file(file_name: str) -> str:
             return file_name
     except FileExistsError:
         return create_file(_make_new_name(file_name))
-
-
-# TODO: actually write into here
-# IMPORTANT: only add absolute paths
-# download_cache: dict[str, File] = {}
 
 
 @dataclass
@@ -369,8 +363,8 @@ class Response:
     @property
     def ext(self):
         if not self._ext:
-            if self._mime_type:
-                self._ext = mimetypes.guess_extension(self._mime_type, strict=False)
+            if self.mime_type:
+                self._ext = mimetypes.guess_extension(self.mime_type, strict=False)
             else:
                 _, self._ext = os.path.splitext(self.url)
         return self._ext
@@ -467,7 +461,7 @@ async def download(url: str) -> str:
     if url.startswith("http"):
         session: aiohttp.ClientSession = g["aiosession"]
         async with session.get(url) as resp:
-            new_file = create_file(uuid.uuid4().hex)
+            new_file = create_file(os.path.basename(urlparse(url).path))
             async with aiofiles.open(new_file, "wb") as f:
                 async for chunk in resp.content.iter_any():
                     await f.write(chunk)
@@ -770,6 +764,9 @@ def hwb2rgb(h: float, w: float, b: float):
     rgb = hsl2rgb(h, 1, 0.5)
 
     return Color(*(round(x * (1 - w - b) + 255 * w) for x in rgb))
+
+
+# TODO: lab, lch, oklab, oklch, etc. to rgb
 
 
 ##########################################################################

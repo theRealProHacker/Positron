@@ -7,6 +7,67 @@
 
 **E**lectron uses **E**CMAScript and **P**ositron uses **P**ython 
 
+# Screen cast
+
+This code
+```html
+<html>
+    <title>
+        Hero Banner Example
+    </title>
+    <style src="example.css"></style>
+    <body> 
+        <div class="hero-banner">
+            <div>
+                <h1>
+                    A useless hero banner
+                </h1>
+                <h3>
+                    And a subtitle, no one is going to ever read (apart from you)
+                </h3>
+            </div>
+        </div>
+        <div class="container">
+            <h1>
+                Here is the content header
+            </h1>
+            <p>
+                Lorem, ipsum dolor sit amet consectetur adipisicing elit. Dolores ut modi ratione. Mollitia consequuntur voluptatem alias, commodi illum dolore odit voluptas animi ipsum velit quasi, nam necessitatibus provident. Deserunt, impedit!
+            </p>
+        </div>
+    </body>
+</html>
+```
+```css
+body {
+    background-color: grey;
+    height: 100%;
+}
+.hero-banner {
+    background-image: url(https://sitefarm.ucdavis.edu/sites/g/files/dgvnsk511/files/styles/sf_title_banner/public/media/images/lighthouse-pixabay-lumix2004.jpg?h=2ed12e5b&itok=ES3yBdhi);
+    width: 100%;
+    height: 300px;
+}
+.hero-banner>div{
+    display: block;
+    margin: 10% auto;
+    font-size: x-large;
+    width: 90%;
+}
+.hero-banner h1{
+    color: rgb(75, 73, 73);
+}
+.container{
+    width: auto;
+    margin: 20px 30px;
+    background-color: blanchedalmond;
+    padding: 20px;
+}
+```
+creates this result  
+
+![A Screenshot of the result](https://i.ibb.co/47d9kLy/Screenshot-2022-09-22-201336.png)
+
 # How to run this
 You need Python 3.10 and Git installed
 ```shell
@@ -39,7 +100,8 @@ python3 main.py
 
 # Thoughts
 Test on https://acid2.acidtests.org/  
-`tinycss` generates tokens like for example `<Token PERCENTAGE at 5:19 70%>`, we could use these instead of throwing them away by calling `TokenList.as_css()`
+`tinycss` generates tokens like for example `<Token PERCENTAGE at 5:19 70%>`, we could use these instead of throwing them away by calling `TokenList.as_css()`  
+Use [aiohttp-client-cache](https://github.com/requests-cache/aiohttp-client-cache)
 ## Use less RegEx
 Many consider regular expressions to be the best thing if it comes to text processing. 
 However, it often makes more sense to use other tools like `str.removesuffix()` or `str.split()`/`re.split()`.  
@@ -52,31 +114,7 @@ Or use a `GeneralParser` which is an easy way to tokenize a string.
 1. Unicode and font selection
 2. Fast media (images, videos, audio). This applies especially to video. Which is basically moving image synced with audio
 3. Using the GPU to accelerate drawing. (Related to 2.)
-4. Support for all formats (eg. animated GIF)
-
-# Stylesheets
-
-## Global stylesheets
-- User agent stylesheet for each attribute
-    - inherited values have a default of inherit
-    - others have other default values:  
-    `display: "inline"`
-- User stylesheet overrides
-
-## Specific stylesheets
-- User agent stylesheet for element x  
-    https://www.w3.org/TR/CSS2/sample.html  
-    https://trac.webkit.org/browser/trunk/Source/WebCore/css/html.css  
-    https://hg.mozilla.org/mozilla-central/file/tip/layout/style/res/html.css  
-    https://www.w3schools.com/cssref/css_default_values.asp  
-    Example  
-    ```css
-    div {
-        display: "block"
-    }
-    ```
-- User stylesheet overrides
-- Author stylesheet overrides (element selectors)
+4. Support for all file formats (eg. animated GIF)
 
 # CSS
 

@@ -832,43 +832,6 @@ abs_default_style: dict[str, str] = {
 }
 """ The default style for a value (just like "unset") """
 
-element_styles: dict[str, dict[str, str]] = defaultdict(
-    dict,
-    {
-        "html": {
-            **{k: attr.initial for k, attr in style_attrs.items() if attr.inherits},
-            "display": "block",
-        },
-        # special elements
-        "head": {
-            "display": "none",
-        },
-        "body": {
-            "display": "block",
-        },
-        "span": {"display": "inline"},
-        "img": {"display": "block"},
-        "h1": {
-            "font-size": "2em",
-            "margin-top": ".67em",
-            "margin-bottom": ".67em",
-            "margin-right": "0",
-            "margin-left": "0",
-        },
-        "p": {
-            "display": "block",
-            "margin-top": "1em",
-            "margin-bottom": "1em",
-        },
-    },
-)
-
-
-@cache
-def get_style(tag: str) -> ResolvedStyle:
-    return abs_default_style | element_styles[tag]
-
-
 ###########################  CSS-Parsing ############################
 class CustomCSSParser(tinycss.CSS21Parser):
     def parse_declaration(self, tokens: list[tinycss.token_data.Token]):
@@ -1057,7 +1020,11 @@ def parse_sheet(source: str) -> SourceSheet:
     tiny_sheet: tinycss.css21.Stylesheet = Parser.parse_stylesheet(source)
     for error in tiny_sheet.errors:
         log_error(error)
-    return SourceSheet(handle_rule(rule) for rule in tiny_sheet.rules)
+    return handle_rules(tiny_sheet.rules)
+
+
+def handle_rules(rules: list):
+    return SourceSheet(filter(None, (handle_rule(rule) for rule in rules)))
 
 
 def handle_rule(
@@ -1066,27 +1033,32 @@ def handle_rule(
     | tinycss.css21.MediaRule
     | tinycss.css21.PageRule
     | tinycss.css21.AtRule,
-) -> Rule:
+) -> Rule | None:
     """
     Converts a tinycss rule into an appropriate Rule
     """
     if isinstance(rule, tinycss.css21.RuleSet):
-        return (
-            Selector.parse_selector(rule.selector.as_css()),
-            frozendict(
-                process(
-                    [
-                        (decl.name, (decl.value.as_css().strip(), bool(decl.priority)))
-                        for decl in rule.declarations
-                    ]
-                )
-            ),
-        )
+        try:
+            return (
+                Selector.parse_selector(rule.selector.as_css()),
+                frozendict(
+                    process(
+                        [
+                            (
+                                decl.name,
+                                (decl.value.as_css().strip(), bool(decl.priority)),
+                            )
+                            for decl in rule.declarations
+                        ]
+                    )
+                ),
+            )
+        except Selector.InvalidSelector:
+            log_error("Invalid Selector:", rule.selector.as_css())
+            return None
     elif isinstance(rule, tinycss.css21.MediaRule):
         assert rule.at_keyword == "@media"
-        return MediaRule(
-            rule.media, SourceSheet(handle_rule(rule) for rule in rule.rules)
-        )
+        return MediaRule(rule.media, handle_rules(rule.rules))
     else:
         raise NotImplementedError("Not implemented AtRule: " + type(rule).__name__)
 
@@ -1239,22 +1211,18 @@ def process_input(d: list[tuple[str, str]]) -> dict[str, CompValue]:
     Unpacks shorthands and filters and reports invalid declarations
     """
     done: dict[str, CompValue] = {}
-    todo: list[tuple[str, str]] = d
-    while todo:
-        _todo = todo
-        todo = []
-        for k, v in _todo:
-            try:
-                processed = process_property(k, v)
-                if isinstance(processed, list):
-                    todo.extend(processed)
-                else:
-                    done[k] = processed
-            except BugError:
-                raise
-            except AssertionError as e:
-                reason = e.args[0] if e.args else "Invalid Property"
-                log_error(f"CSS: {reason} ({k}: {v})")
+    for k, v in d:
+        try:
+            processed = process_property(k, v)
+            if isinstance(processed, list):
+                done.update(process_input(processed))
+            else:
+                done[k] = processed
+        except BugError:
+            raise
+        except AssertionError as e:
+            reason = e.args[0] if e.args else "Invalid Property"
+            log_error(f"CSS: {reason} ({k}: {v})")
     return done
 
 
@@ -1324,3 +1292,41 @@ def pack_longhands(d: ResolvedStyle | FullyComputedStyle) -> ResolvedStyle:
             case _:
                 d["shorthand"] = " ".join(longhands)
     return d
+
+
+element_styles: dict[str, dict[str, str]] = defaultdict(
+    dict,
+    {
+        k: process_input(list(v.items()))
+        for k, v in {
+            "html": {
+                **{k: attr.initial for k, attr in style_attrs.items() if attr.inherits},
+                "display": "block",
+            },
+            "head": {
+                "display": "none",
+            },
+            "body": {
+                "display": "block",
+            },
+            "span": {"display": "inline"},
+            "img": {"display": "block"},
+            "h1": {"display": "block", "font-size": "2em", "margin": ".1em 0"},
+            "h2": {
+                "display": "block",
+                "font-size": "1.5em",
+                "margin": ".1em 0",
+            },
+            "p": {
+                "display": "block",
+                "margin": "1em 0",
+            },
+            "br": {"width": "100%", "height": "1em"},
+        }.items()
+    },
+)
+
+
+@cache
+def get_style(tag: str) -> ResolvedStyle:
+    return abs_default_style | element_styles[tag]
