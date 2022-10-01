@@ -17,7 +17,7 @@ from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from functools import cache
 from types import FunctionType
-from typing import Callable, Iterable, Literal, Sequence
+from typing import Callable, Coroutine, Iterable, Literal, Sequence
 from urllib.parse import unquote_plus, urlparse
 
 import aiofiles
@@ -32,8 +32,8 @@ from watchdog.observers import Observer
 # fmt: off
 from config import g
 from own_types import (CO_T, K_T, V_T, BugError, Cache, Color, Coordinate,
-                       Event, Font, Index, OpenMode, OpenModeReading,
-                       OpenModeWriting, Rect, Surface, Vector2, _XMLElement)
+                       Font, Index, OpenMode, OpenModeReading, OpenModeWriting,
+                       Rect, Surface, Vector2, loadpage_event)
 
 # fmt: on
 
@@ -72,9 +72,7 @@ class FileWatcher(FileSystemEventHandler):
     def on_modified(self, event: FileSystemEvent):
         logging.debug(f"File modified: {event.src_path}")
         if event.src_path in self.files and (t := time.monotonic()) - self.last_hit > 1:
-            g["reload"] = True
-            pg.event.clear(eventtype=pg.QUIT)
-            pg.event.post(Event(pg.QUIT))
+            pg.event.post(loadpage_event(g["route"]))
             self.last_hit = t
 
 
@@ -120,7 +118,7 @@ def abs_div(x):
     return 1 / x if x < 1 else x
 
 
-def get_tag(elem: _XMLElement) -> str:
+def get_tag(elem) -> str:
     """
     Get the tag of an _XMLElement or "comment" if the element has no valid tag
     """
@@ -175,7 +173,7 @@ def find(__iterable: Iterable[V_T], key: Callable[[V_T], bool]):
 
 def find_index(__iterable: Iterable[V_T], key: Callable[[V_T], bool]):
     """
-    Find the first element in the iterable that is accepted by the key
+    Find the first elements index in the iterable that is accepted by the key
     """
     for i, x in enumerate(__iterable):
         if key(x):
@@ -227,6 +225,16 @@ def tup_replace(
     return
 
 
+async def call(callback, *args, **kwargs):
+    try:
+        rv = callback(*args, **kwargs)
+    except TypeError:
+        rv = callback()
+    if isinstance(callback, Coroutine):
+        rv = await rv
+    return rv
+
+
 ####################################################################
 
 ############################## I/O #################################
@@ -235,17 +243,36 @@ class Task(asyncio.Task):
         super().__init__(*args, **kwargs)
         self.sync = sync
 
+    @classmethod
+    def create(
+        cls,
+        coro,
+        sync: bool = False,
+        callback: Callable[[asyncio.Future], None] | None = None,
+        **kwargs,
+    ):
+        task = cls(sync, coro, **kwargs)
+        if callback is not None:
+            task.add_done_callback(callback)
+        return task
+
 
 def create_task(
     coro,
     sync: bool = False,
-    callback: Callable[[asyncio.Future], None] = noop,
+    callback: Callable[[asyncio.Future], None] | None = None,
     **kwargs,
 ):
-    task = Task(sync, coro)
-    task.add_done_callback(callback)
+    """
+    This creates a task and adds it to the global task queue
+    """
+    task = Task.create(coro, sync, callback, **kwargs)
     g["tasks"].append(task)
     return task
+
+
+async def gather_tasks(tasks: list[Task]):
+    return await asyncio.gather(*(task for task in consume_list(tasks) if task.sync))
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,6 +284,8 @@ class File:
     name: str
     mime_type: str | None = None
     encoding: str | None = None
+
+    # TODO: init from file like buffer
 
     @property
     def ext(self) -> str:
@@ -285,6 +314,9 @@ def is_online() -> bool:
     return own_adress != "127.0.0.1"
 
 
+created_files: set[str] = set()
+
+
 def _make_new_name(name):
     def lamda(groups: list[str]):
         return f"({int(groups[0]) + 1})"
@@ -298,18 +330,6 @@ def _make_new_name(name):
         return f"{name} (2){ext}"
 
 
-created_files: set[str] = set()
-
-
-async def delete_created_files():
-    global created_files
-    logging.info(f"Deleting: {created_files}")
-    await asyncio.gather(*(aiofiles.os.remove(file) for file in created_files))
-
-
-save_dir = os.environ.get("TEMP") or "."
-
-
 def create_file(file_name: str) -> str:
     """
     Definitely create a new file
@@ -321,6 +341,16 @@ def create_file(file_name: str) -> str:
             return file_name
     except FileExistsError:
         return create_file(_make_new_name(file_name))
+
+
+async def delete_created_files():
+    global created_files
+    if created_files:
+        logging.info(f"Deleting: {created_files}")
+        await asyncio.gather(*(aiofiles.os.remove(file) for file in created_files))
+
+
+save_dir = os.environ.get("TEMP") or "."
 
 
 @dataclass
@@ -388,7 +418,7 @@ def parse_media_type(
     return _mime_type or mime_type, _charset or charset
 
 
-media_type_pattern = re.compile(rf"[\w\-]+\/[\w\-]+(\;\w+\=\w+)*")  # don't capture this
+media_type_pattern = re.compile(rf"[\w\-]+\/[\w\-]+(?:\;\w+\=\w+)*")
 
 
 async def fetch(url: str, raw: bool = False) -> Response:
@@ -419,7 +449,7 @@ async def fetch(url: str, raw: bool = False) -> Response:
         data       := *urlchar
         parameter  := attribute "=" value
         """
-        url = re.sub("\s*", "", url)  # remove all whitespace
+        url = re.sub(r"\s*", "", url)  # remove all whitespace
         url = url[5:]
         parser = GeneralParser(url)
         media_type = parser.consume(media_type_pattern)
@@ -483,144 +513,6 @@ async def download(url: str) -> str:
             raise ValueError("Invalid Path")
 
 
-# async def download(url: str, dir: str = save_dir, fast: bool = True) -> File:
-#     """
-#     Downloads a file from the given url as a stream into the given directory
-
-#     Raises Request Errors, OSErrors, or URLErrors.
-#     """
-#     # TODO: Use Multiprocessing to really improve downloads
-#     # https://docs.python.org/3/library/asyncio-task.html
-#     # sleep() always suspends the current task, allowing other tasks to run.
-#     # Setting the delay to 0 provides an optimized path to allow other tasks to run.
-#     # This can be used by long-running functions to avoid blocking the event loop
-#     # for the full duration of the function call.
-#     if (_url := download_cache.get(url)) is not None and os.path.exists(
-#         _url.name
-#     ):  # this might not be a good idea if the file can be changed
-#         return _url
-#     with suppress(OSError):
-#         if os.path.exists(url):
-#             return File(os.path.abspath(url))
-#     ext: str | None
-#     mime_type: str | None
-#     chardet: str | None
-#     sleep = (not fast) * 0.01
-#     parse_result = urlparse(url)
-#     if parse_result.scheme == "file":
-#         if os.path.exists(path := parse_result.path.removeprefix("/")):
-#             return File(path)
-#         else:
-#             raise URLError("File doesn't exist", url)
-#     elif parse_result.scheme == "":
-#         # try https:// then http://
-#         httpurl = url + ("/" if "/" not in url else "")
-#         with suppress(Exception):
-#             return await download("https://" + httpurl, dir, fast)
-#         with suppress(Exception):
-#             return await download("http://" + httpurl, dir, fast)
-#         raise URLError("Could not find file or uri: " + url)
-#     response = requests.get(url, stream=True)
-#     response.raise_for_status()
-#     name, ext = os.path.splitext(os.path.basename(parse_result.path))
-#     name = name or tldextract.extract(parse_result.netloc).domain
-#     # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
-#     # TODO: multipart with boundaries
-#     if (_content_type := response.headers.get("Content-Type")) is not None:
-#         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
-#         content_type = [x.strip() for x in _content_type.split(";")]
-#         chardet_bgn = "chardet="
-#         match content_type:
-#             case [mime_type]:
-#                 chardet = mimetypes.guess_type(url)[1]
-#             case [mime_type, chardet] if chardet.startswith(chardet_bgn):
-#                 chardet = chardet[len(chardet_bgn) :]
-#             case _:
-#                 raise BugError(f"Unknown content type: {content_type}")
-#         ext = ext or mimetypes.guess_extension(mime_type)
-#     else:
-#         mime_type, chardet = mimetypes.guess_type(url)
-#     if ext is None:
-#         raise BugError(
-#             f"Couldn't guess extension for file: {url}->{name,ext}, Content-Type: {content_type}"
-#         )
-#     filename = create_file(os.path.abspath(os.path.join(dir, name + ext)))
-#     with open(filename, "wb") as f:
-#         chunk: bytes
-#         for chunk in response.iter_content():
-#             f.write(chunk)
-#             await asyncio.sleep(sleep)
-#     logging.debug(f"Downloaded {url} into {filename}")
-#     # TODO: guess mime type and encoding from content if None
-#     return File(filename, mime_type, chardet)
-
-
-# def sync_download(url: str, dir: str = save_dir) -> File:
-#     """
-#     Downloads a file from the given url as a stream into the given directory
-#     Raises RequestException, OSErrors, or URLErrors.
-#     """
-#     # TODO: Use Multiprocessing to really improve downloads
-#     if (_url := download_cache.get(url)) is not None and os.path.exists(
-#         _url.name
-#     ):  # this might not be a good idea if the file can be changed
-#         return _url
-#     with suppress(OSError):
-#         if os.path.exists(url):
-#             return File(os.path.abspath(url))
-#     ext: str | None
-#     mime_type: str | None
-#     chardet: str | None
-#     parse_result = urlparse(url)
-#     if parse_result.scheme == "file":
-#         if os.path.exists(path := parse_result.path.removeprefix("/")):
-#             return File(path)
-#         else:
-#             raise URLError("File not found: " + url)
-#     elif parse_result.scheme in ("http", "https"):
-#         response = requests.get(url, stream=True)
-#         response.raise_for_status()
-#         name, ext = os.path.splitext(os.path.basename(parse_result.path))
-#         name = name or tldextract.extract(parse_result.netloc).domain
-#         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
-#         # TODO: multipart with boundaries
-#         if (_content_type := response.headers.get("Content-Type")) is not None:
-#             # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type
-#             content_type = [x.strip() for x in _content_type.split(";")]
-#             chardet_bgn = "chardet="
-#             match content_type:
-#                 case [mime_type]:
-#                     chardet = mimetypes.guess_type(url)[1]
-#                 case [mime_type, chardet] if chardet.startswith(chardet_bgn):
-#                     chardet = chardet[len(chardet_bgn) :]
-#                 case _:
-#                     raise BugError(f"Unknown content type: {content_type}")
-#             ext = ext or mimetypes.guess_extension(mime_type)
-#         else:
-#             mime_type, chardet = mimetypes.guess_type(url)
-#         if ext is None:
-#             raise BugError(
-#                 f"Couldn't guess extension for file: {url}->{name,ext}, Content-Type: {content_type}"
-#             )
-#         filename = create_file(os.path.abspath(os.path.join(dir, name + ext)))
-#         with open(filename, "wb") as f:
-#             chunk: bytes
-#             for chunk in response.iter_content():
-#                 f.write(chunk)
-#         logging.debug(f"Downloaded {url} into {filename}")
-#     elif parse_result.scheme == "":
-#         # try https:// then http://
-#         httpurl = url + ("/" if "/" not in url else "")
-#         with suppress(requests.exceptions.RequestException, OSError, URLError):
-#             return sync_download("https://" + httpurl, dir)
-#         with suppress(requests.exceptions.RequestException, OSError, URLError):
-#             return sync_download("http://" + httpurl, dir)
-#         raise URLError("Could not find file or uri: " + url)
-#     else:
-#         raise URLError("Could not find file or uri: " + url)
-#     return File(filename, mime_type, chardet)
-
-
 async def fetch_txt(src: str) -> str:
     return (await fetch(src)).text
 
@@ -659,7 +551,7 @@ def get_groups(s: str, p: re.Pattern) -> list[str] | None:
 def re_join(*args: str) -> str:
     """
     Example:
-    x in ("px","%","em") -> re.match(re_join("px","%","em"), x)
+    x in ("px","%","em") <-> re.match(re_join("px","%","em"), x)
     """
     return "|".join(re.escape(x) for x in args)
 

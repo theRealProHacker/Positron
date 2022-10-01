@@ -24,7 +24,7 @@ from own_types import (CO_T, V_T, Angle, Auto, AutoLP, AutoType,
                        BugError, CSSDimension, Color, CompStr, Drawable, Float4Tuple,
                        FontStyle, Length, LengthPerc, Number, Percentage, Resolution,
                        Sentinel, Str4Tuple, StrSent, Time, frozendict)
-from util import (GeneralParser, fetch_txt, find_index,
+from util import (GeneralParser, consume_list, fetch_txt, find_index,
                   get_groups, group_by_bool, hsl2rgb, hwb2rgb, in_bounds, log_error,
                   make_default, noop, print_once, re_join, tup_replace)
 
@@ -771,6 +771,7 @@ AALP = StyleAttr(
     auto,
     length_percentage,
 )
+ALP0 = StyleAttr("0", auto, length_percentage)
 
 BorderWidthAttr: StyleAttr[Length] = StyleAttr("medium", abs_border_width, length)
 BorderStyleAttr: StyleAttr[str] = StyleAttr(
@@ -816,7 +817,7 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
         "static", {"static", "relative", "absolute", "sticky", "fixed"}
     ),
     "box-sizing": StyleAttr("content-box", {"content-box", "border-box"}),
-    **{key: AALP for key in chain(inset_keys, pad_keys, marg_keys)},
+    **{key: ALP0 for key in chain(inset_keys, pad_keys, marg_keys)},
     **{key: BorderWidthAttr for key in bw_keys},
     **{key: BorderStyleAttr for key in bs_keys},
     **{key: BorderColorAttr for key in bc_keys},
@@ -1208,14 +1209,15 @@ def process_property(key: str, value: str) -> list[tuple[str, str]] | CompValue 
 
 def process_input(d: list[tuple[str, str]]) -> dict[str, CompValue]:
     """
-    Unpacks shorthands and filters and reports invalid declarations
+    Unpacks shorthands and filters and reports invalid declarations.
     """
+    d = d.copy()
     done: dict[str, CompValue] = {}
-    for k, v in d:
+    for k, v in consume_list(d):
         try:
             processed = process_property(k, v)
             if isinstance(processed, list):
-                done.update(process_input(processed))
+                d.extend(processed)
             else:
                 done[k] = processed
         except BugError:

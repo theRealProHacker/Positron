@@ -149,6 +149,18 @@ class Image:
         return not (self.is_loaded or self.is_loading)
 
 
+def LinearGradient(Image):
+    """
+    A LinearGradient takes any number of colors and an angle
+    """
+    """
+    https://stackoverflow.com/questions/726549/algorithm-for-additive-color-mixing-for-rgb-values
+    https://www.pygame.org/wiki/GradientCode
+    https://stackoverflow.com/questions/40589624/generating-colour-image-gradient-using-numpy
+    """
+    # TODO
+
+
 # TODO: stream audio directly from the internet
 # https://stackoverflow.com/a/46782229/15046005
 class Audio:
