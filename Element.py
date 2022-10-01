@@ -6,6 +6,8 @@ This includes:
 """
 
 from __future__ import annotations
+
+from __future__ import annotations
 import asyncio
 from contextlib import suppress
 from dataclasses import dataclass
@@ -125,6 +127,7 @@ class Element(Element_P):
 
     # Dynamic states
     active: bool = False
+    active: bool = False
     focus: bool = False
     hover: bool = False
 
@@ -242,10 +245,45 @@ class Element(Element_P):
         for c in self.children:
             c.rel_pos(self.box.content_box.topleft)
 
+    def is_block(self) -> bool:
+        """
+        Returns whether an element is a block.
+        Includes side effects (as a feature) that automatically adjusts false inline elements to block layout
+        """
+        self.display = self.cstyle["display"]
+        if self.display != "none":
+            if any(
+                [child.is_block() for child in self.children]
+            ):  # set all children to block
+                self.display = "block"
+                for child in self.children:
+                    child.display = "block"
+        self.layout_type = self.display
+        return self.display == "block"
+
+    def get_height(self) -> float:
+        """
+        Gets the known height
+        """
+        # -1 is a sentinel for height not set yet
+        return (
+            self.box.height
+            if self.box.height != -1
+            else self.parent.get_height()
+            if self.parent is not None
+            else 0
+        )
+
+    def rel_pos(self, pos: Coordinate):
+        self.box.pos += pos
+        for c in self.children:
+            c.rel_pos(self.box.content_box.topleft)
+
     def layout(self, width: float) -> None:
         """
         Layout an element. Gets the width it has available
         """
+        assert self.parent is not None
         assert self.parent is not None
         self.layout_type = self.display
         if self.display == "none":
@@ -464,6 +502,7 @@ class Element(Element_P):
         while (parent := elem.parent) is not None:
             yield parent
             elem = parent
+            elem = parent
 
     def iter_desc(self) -> Iterable[Element]:
         """Iterates over all descendants *including* this element"""
@@ -527,6 +566,8 @@ class HTMLElement(Element):
         super().layout_children(partial(setattr, self.box, "height"))
         # all children correct their position
         super().rel_pos((0, 0))
+        # all children correct their position
+        super().rel_pos((0, 0))
 
     def draw(self, screen):
         for c in self.children:
@@ -549,6 +590,9 @@ class MetaElement(Element):
         self.attrs = attrs
         # parse element style and update default
         self.istyle = {}
+
+    def rel_pos(self, *args):
+        pass
 
     def rel_pos(self, *args):
         pass
@@ -630,6 +674,11 @@ class LinkElement(MetaElement):
         with suppress(Exception):
             self.src_sheet = future.result()
             add_sheet(self.src_sheet)
+
+
+class ReplacedElement(Element):
+    def _text_iter_desc(self) -> Iterable[Element | TextElement]:
+        yield self
 
 
 class ReplacedElement(Element):
@@ -747,6 +796,10 @@ class TextElement:
 
     def is_block(self):
         return False
+
+    def rel_pos(self, pos: Coordinate):
+        if hasattr(self, "box"):
+            self.box.pos += pos
 
     def rel_pos(self, pos: Coordinate):
         if hasattr(self, "box"):
