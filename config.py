@@ -1,7 +1,10 @@
 """ Any global variables are stored here"""
 import math
 from typing import Any
-from own_types import Color, Cache, FrozenDCache, Length
+
+import pygame as pg
+
+from own_types import Cache, Color, FrozenDCache, Length, Vector2
 
 # This problem is proof that typing in python doesn't work
 # For typing GlobalDict needs access to Element (a Protocol doesn't make sense, because the Protocol would just be
@@ -23,26 +26,29 @@ g: dict[str, Any] = {
     "allow_screen_saver": True,     # bool
     "icon": None,                   # None or Image
     "default_font_size": 16,        # float
+    "key_repeat": 0,                # float
     "zoom": 1,                      # float
-    "FPS": 30,                      # float
+    "FPS": 60,                      # float
     # reserved
     "root": None,                   # the html element
-    "file_watcher": None,           # the file watcher
+    "route": "",                    # the current route
+    "file_watcher": None,           # util.FileWatcher
+    "event_manager": None,          # Eventmanager
+    "aiosession": None,             # aiohttp.ClientSession
     "screen": None,                 # pg.Surface
     "default_task": None,           # util.Task
-    "aiosession": None,             # aiohttp.ClientSession
     "tasks": []                     # list of tasks that are started in synchronous functions
 }
 
 def reset_config():
     global g
+    # all of this is route specific
     # TODO: split cstyles into two styles. inherited and not inherited
     g.update({
-        "lang": "",                 # str # the document language. this is set in Element.py by the HTMLElement
         "title": "",                # str # the document title. this is set in Element.py by the title element
         "icon_srcs":[],             # list[str] specified icon srcs
+        # css
         "recompute": True,          # bool
-        "reload": False,            # bool
         "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache
         "css_sheets": Cache(),      # Cache[SourceSheet] # a list of external css SourceSheets
         "css_dirty": False,         # bool: does css need to be applied
@@ -65,6 +71,25 @@ def watch_file(file: str) -> str:
     The caller has to hold on to the file until it shouldn't be watched anymore
     """
     return g["file_watcher"].add_file(file)
+
+
+# def set_mode(mode: dict[str, Any] = {}):
+#     g.update(mode)
+async def set_mode():
+    """
+    Call this after setting g manually. This will probably change to an API function
+    """
+    # icon
+    if _icon := g["icon"]:
+        if await _icon.loading_task is not None:
+            pg.display.set_icon(_icon.surf)
+    # Display Mode
+    flags = pg.SCALED | pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
+    g["screen"] = pg.display.set_mode((g["W"], g["H"]), flags)
+    # Screen Saver
+    pg.display.set_allow_screensaver(g["allow_screen_saver"])
+    # key repeat
+    pg.key.set_repeat(int(g["key_repeat"] or 0.1))
 
 
 ################################ constant data ########################
