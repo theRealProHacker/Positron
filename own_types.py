@@ -2,6 +2,7 @@
 A single source of thruth for types that are used in the other modules.
 Instead of importing Rects or Vectors from pygame, import them from here. 
 """
+from __future__ import annotations
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import Enum as _Enum
@@ -10,10 +11,9 @@ from operator import or_
 
 # fmt: off
 from typing import (Any, Generator, Generic, Hashable, Iterable, Literal,
-                    Mapping, Protocol, TypeVar, Union)
+                    Mapping, Optional, Protocol, TypeVar, Union)
 # fmt: on
 from weakref import WeakValueDictionary
-from xml.etree.ElementTree import Element as _XMLElement
 
 import pygame as pg
 from frozendict import FrozenOrderedDict as _frozendict
@@ -25,7 +25,7 @@ from pygame.surface import Surface
 
 
 class BugError(AssertionError):
-    """A type of error that should never occur. If it occurs it needs to be fixed."""
+    """A type of error that should never occur. If it occurs, something needs to be fixed. Please report any BugErrors found."""
 
 
 # Aliases
@@ -52,6 +52,12 @@ K_T = TypeVar("K_T", bound=Hashable)
 V_T = TypeVar("V_T")
 CO_T = TypeVar("CO_T", covariant=True)
 
+LOADPAGE = pg.event.custom_type()
+
+
+def loadpage_event(route: str):
+    return Event(LOADPAGE, route=route)
+
 
 ############################ Some Classes ##############################
 class Drawable(Protocol):
@@ -66,9 +72,9 @@ class Element_P(Protocol):
 
     tag: str
     attrs: dict[str, Any]
-    parent: "Element_P"
+    parent: Element_P | None
 
-    def iter_anc(self) -> Iterable["Element_P"]:
+    def iter_anc(self) -> Iterable[Element_P]:
         ...
 
 
@@ -305,17 +311,14 @@ class CompStr(str):
 class Sentinel(Enum):
     Auto = "auto"
     Normal = "normal"
-    # None_ = "none"
 
 
 # Type Aliases
 AutoType = Literal[Sentinel.Auto]
 NormalType = Literal[Sentinel.Normal]
-# NoneType_ = Literal[Sentinel.None_]
 
 Auto: AutoType = Sentinel.Auto
 Normal: NormalType = Sentinel.Normal
-# None_: NoneType_ = Sentinel.None_
 
 #################################################
 

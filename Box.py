@@ -103,7 +103,7 @@ class Box:
     ):
         self.t = t
         self.margin = margin
-        self.border = tuple(int(not_neg(x)) for x in border)
+        self.border: tuple[int, int, int, int] = tuple(int(not_neg(x)) for x in border)  # type: ignore
         self.padding = padding
         self.x, self.y = pos
         self.width = (

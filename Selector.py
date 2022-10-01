@@ -3,10 +3,11 @@ Handles everything revolving Selectors.
 Includes parsing (text->Selector) and matching
 """
 
+from __future__ import annotations
 from dataclasses import dataclass
-from functools import cache, cached_property, reduce
+from functools import cache, cached_property, partial, reduce
 import re
-from typing import Callable, Iterable, Protocol, Union
+from typing import Callable, Iterable, Protocol
 from own_types import BugError, Element_P
 from util import get_groups
 
@@ -24,15 +25,26 @@ def add_specs(t1: Spec, t2: Spec) -> Spec:
     return (id1 + id2, cls1 + cls2, tag1 + tag2)
 
 
-sum_specs: Callable[[Iterable[Spec]], Spec] = lambda specs: reduce(add_specs, specs)
+sum_specs: Callable[[Iterable[Spec]], Spec] = partial(reduce, add_specs)  # type: ignore
 
 ################################# Selectors #######################################
 # https://www.w3.org/TR/selectors-3/
+class Selector(Protocol):
+    """
+    A Selector represents a CSS-Selector
+    and has two attributes:
+    spec: The specificity of the selector
+    Calling the Selector given an Element returns whether the Element matches the Selector
+    (Or whether the Selector matches the Element)
+    """
 
-Selector = Union["SingleSelector", "CompositeSelector"]
+    spec: Spec
+
+    def __call__(self, elem: Element_P) -> bool:
+        ...
 
 
-class SingleSelector(Protocol):
+class SingleSelector(Selector):
     spec: Spec
 
     def __call__(self, elem: Element_P) -> bool:
@@ -122,9 +134,9 @@ class NeverSelector:
 
 
 ################################## Composite Selectors ###############################
-class CompositeSelector:
+class CompositeSelector(Selector):
     selectors: tuple[Selector, ...]
-    spec: cached_property[Spec]
+    spec: cached_property[Spec]  # type: ignore
 
     def __call__(self, elem: Element_P) -> bool:
         ...
