@@ -5,6 +5,10 @@ import asyncio
 import logging
 import os
 from contextlib import redirect_stdout
+from typing import Callable
+
+from EventManager import EventManager
+from own_types import LOADPAGE, loadpage_event
 
 uses_aioconsole = True
 try:
@@ -17,54 +21,39 @@ with open(os.devnull, "w") as f, redirect_stdout(f):
     import pygame as pg
 
 import aiohttp
+
+import Media
 import util
-from config import g, reset_config, watch_file
+from config import g, reset_config, set_mode
 from Element import HTMLElement, apply_style
 from J import J, SingleJ  # for console
-import Media
-from own_types import Surface, Vector2
 
 # setup
 pg.init()
+pg.key.start_text_input()
 logging.basicConfig(level=logging.INFO)
 
-running = False
-
 CLOCK = pg.time.Clock()
-DEBUG = False
+DEBUG = True
 uses_aioconsole &= DEBUG
-# These aren't actually constant
-W: float
-H: float
-DIM: Vector2
-SCREEN: Surface
+routes: dict[str, Callable] = {}
 
 
-# def set_mode(mode: dict[str, Any] = {}):
-#     g.update(mode)
-async def set_mode():
-    """
-    Call this after setting g manually. This will probably change to an API function
-    """
-    global SCREEN, DIM, W, H
-    # icon
-    _icon: None | Media.Image
-    if _icon := g["icon"]:
-        if await _icon.loading_task is not None:
-            pg.display.set_icon(_icon.surf)
-    # Display Mode
-    W, H = DIM = Vector2((g["W"], g["H"]))
-    flags = pg.SCALED | pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
-    g["screen"] = SCREEN = pg.display.set_mode(DIM, flags)
-    # Screen Saver
-    pg.display.set_allow_screensaver(g["allow_screen_saver"])
+def add_route(route: str):
+    if not isinstance(route, str):
+        raise ValueError("route must be a String")
+
+    def inner(route_func: Callable):
+        routes[route] = route_func
+
+    return inner
 
 
 def e(q: str):
     """
-    Helper for the console: Try `e("p")` and you will get the first p element
+    Helper for console: Try `e("p")` and you will get the first p element
     """
-    return SingleJ(q).elem
+    return SingleJ(q)._elem
 
 
 async def Console():
@@ -86,46 +75,46 @@ async def Console():
             print("Console error:", e)
 
 
-async def main(file: str):
+async def main(route: str) -> str:
     """The main function that includes the main event-loop"""
-    tree: HTMLElement
-    global running
-    if running:
-        raise RuntimeError("Already running")
-    running = True
-    reset_config()
-    g["file_watcher"] = util.FileWatcher()
-    file = watch_file(file)
-    html = await util.fetch_txt(file)
-    g["root"] = tree = parse_dom(html)
-    logging.debug(tree.to_html())
-    pg.display.set_caption(g["title"])
-    if _icon_srcs := g["icon_srcs"]:
-        _icon: Media.Image = Media.Image(_icon_srcs)
-        await _icon.loading_task
-        if _icon.is_loaded:
-            pg.display.set_icon(_icon.surf)
-            _icon.unload()
-    await asyncio.gather(
-        *(task for task in util.consume_list(g["tasks"]) if task.sync),
-        return_exceptions=False,
-    )
-    await set_mode()
+    if "?" in route:
+        route, _args = route.split("?")
+        route_kwargs = dict(
+            item for arg in _args.split("&") if len(item := arg.split("=")) == 2
+        )
+    else:
+        route_kwargs = {}
+    try:
+        await util.call(routes[route], **route_kwargs)
+        g["route"] = route
+        reset_config()
+        pg.display.set_caption(g["title"])
+        if _icon_srcs := g["icon_srcs"]:
+            _icon: Media.Image = Media.Image(_icon_srcs)
+            await _icon.loading_task
+            if _icon.is_loaded:
+                pg.display.set_icon(_icon.surf)
+                _icon.unload()
+        await util.gather_tasks(g["tasks"])
+    except KeyError as e:
+        util.log_error(f"Probably unknown route {e.args[0]!r}")
+    except Exception as e:
+        util.log_error(e)
+        # TODO: do something cool like a 404 page, showing the user how to contact the developer
+        raise
+    if pg.display.get_surface() is None:
+        await set_mode()
     while True:
-        end = False
-        for event in pg.event.get():
-            if event.type == pg.QUIT:
-                end = True
-            elif event.type == pg.WINDOWRESIZED:
-                g["W"] = event.x
-                g["H"] = event.y
-                await set_mode()
-                g["css_dirty"] = True
-        if end:
-            break
+        if pg.event.peek(pg.QUIT):
+            return ""
+        elif load_events := pg.event.get(LOADPAGE):
+            return load_events[-1].route
+        tree: HTMLElement = g["root"]
+        screen: pg.Surface = g["screen"]
+        event_manager: EventManager = g["event_manager"]
+        await event_manager.handle_events(pg.event.get())
         # Await the next tick. In this spare time all async tasks can be run.
         await asyncio.to_thread(CLOCK.tick, g["FPS"])
-
         if g["css_dirty"] or g["css_sheet_len"] != len(
             g["css_sheets"]
         ):  # addition or subtraction (or both)
@@ -136,54 +125,85 @@ async def main(file: str):
             g["recompute"] = False
         tree.layout()
 
-        SCREEN.fill(g["window_bg"])
-        tree.draw(SCREEN, (0, 0))
+        screen.fill(g["window_bg"])
+        tree.draw(screen)
         if DEBUG:
             util.draw_text(
-                SCREEN,
+                screen,
                 str(round(CLOCK.get_fps())),
                 pg.font.SysFont("Arial", 18),
                 "black",
                 topleft=(20, 20),
             )
         pg.display.flip()
-    running = False
 
 
-async def run(file: str):
+async def run(route: str = "/"):
     """
     Runs the application
     """
     logging.info("Starting")
     g["default_task"] = util.create_task(asyncio.sleep(0), True)
-    task = (
+    g["file_watcher"] = util.FileWatcher()
+    g["event_manager"] = EventManager()
+    g["aiosession"] = aiohttp.ClientSession()
+    console_task = (
         asyncio.create_task(Console())
         if uses_aioconsole
         else asyncio.create_task(asyncio.sleep(0))
     )
     try:
-        g["aiosession"] = aiohttp.ClientSession()
-        await main(file)
-        while g["reload"]:
+        while route := await main(route):
             logging.info("Reloading")
-            await main(file)
     except asyncio.exceptions.CancelledError:
         return
     finally:
-        await g["aiosession"].close()
-        task.cancel()
-        await task
-        if True:
-            await util.delete_created_files()
-        pg.quit()
         logging.info("Exiting")
-        await asyncio.sleep(0.5)
+        pg.quit()
+        await g["aiosession"].close()
+        console_task.cancel()
+        tasks: list[util.Task] = g["tasks"]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, console_task, util.delete_created_files())
+        await asyncio.sleep(1)
 
 
-async def user_main():
-    # User code would come here
-    await run("example.html")
+def goto(route: str):
+    pg.event.post(loadpage_event(route))
+
+
+def load_dom(file: str):
+    g["root"] = parse_dom(util.File(file).read())
+
+
+async def aload_dom(url: str):
+    g["root"] = parse_dom(await util.fetch_txt(url))
+
+
+##### User code ########
+@add_route("/")  # the index route
+def startpage():
+    load_dom("example.html")
+
+    # def load_next_page():
+    #     goto("/nextpage?firstname=John&lastname=Doe")
+
+    colors = ["red", "green", "lightblue", "yellow"]
+
+    def button_callback(event):
+        color = colors.pop(0)
+        colors.append(color)
+        event.target.set_style("background-color", color)
+
+    J("#button").on("click", button_callback)
+
+
+# TODO: add jinja support
+# @add_route("/nextpage")
+# def nextpage(*, firstname: str, lastname: str):
+#     load_dom("nextpage.jinja", name=f"{firstname} {lastname}")
 
 
 if __name__ == "__main__":
-    asyncio.run(user_main())
+    asyncio.run(run())

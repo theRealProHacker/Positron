@@ -4,6 +4,7 @@ concepts
 .pytest_cache
 .mypy_cache
 .vscode
+.dmypy.json
 
 error.log
 test.*

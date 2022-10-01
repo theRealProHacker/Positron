@@ -99,32 +99,6 @@ either {
 // <end>;
 
 
-// url
-let .httpurl {
-  either {
-    "http";
-    "https";
-  }
-  "://";
-  some of <word>;
-  any of match {
-    ".";
-    some of <word>;
-  }
-  "/"
-}
-let .url_func = {
-  "url";
-  "(";
-  either{
-    .httpurl;
-    // .fileurl;
-    // .path;
-    // .dataurl;
-  }
-  ")";
-}
-
 // decimal
 let .decimal {
   option of `[+-]`;
