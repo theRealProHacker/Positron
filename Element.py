@@ -158,7 +158,7 @@ class Element(Element_P):
     active: bool = False
     focus: bool = False
     hover: bool = False
-    visited: bool = False # <a>
+    visited: bool = False  # <a>
     # Not always present
     inline_items: list[InlineItem]  # only if layout_type is "inline"
 
@@ -187,8 +187,8 @@ class Element(Element_P):
                         return target
                 elif isinstance(item, TextDrawItem):
                     if Rect(item.pos, (item.width, item.height)).collidepoint(
-                        pos
-                    ):  # type: ignore
+                        pos # type: ignore
+                    ):
                         return item.parent
         if self.box.border_box.collidepoint(pos):
             return self
@@ -599,9 +599,10 @@ class AnchorElement(Element):
     def on_click(self):
         # TODO: respect other aspects like target
         # TODO: goto
-        if href:=self.attrs.get("href"):
+        if href := self.attrs.get("href"):
             if not webbrowser.get().open_new_tab(href):
                 import main
+
                 main.goto(href)
             else:
                 self.visited = True
@@ -625,7 +626,7 @@ class MetaElement(Element):
     tag: str
     display: DisplayType = "none"
 
-    def __init__(self, attrs: dict[str, str], txt: str, parent: "Element"):
+    def __init__(self, attrs: dict[str, str], txt: str, parent: Element | None):
         self.children = []
         self.parent = parent
         self.attrs = attrs
@@ -813,7 +814,7 @@ class TextElement:
 
     def collide(self, pos: Coordinate):
         assert self.display == "block"
-        if self.box.border_box.collidepoint(pos):  # type: ignore
+        if self.box.border_box.collidepoint(pos):
             return self.parent
 
     def compute(self):
