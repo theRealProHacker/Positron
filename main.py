@@ -8,7 +8,7 @@ from contextlib import redirect_stdout
 from typing import Callable
 
 from EventManager import EventManager
-from own_types import LOADPAGE, loadpage_event
+from own_types import LOADPAGE, Cache, FrozenDCache, loadpage_event
 
 uses_aioconsole = True
 try:
@@ -22,10 +22,11 @@ with open(os.devnull, "w") as f, redirect_stdout(f):
 
 import aiohttp
 
+import Element
 import Media
+import Style
 import util
-from config import g, reset_config, set_mode
-from Element import HTMLElement, apply_style
+from config import g, set_mode
 from J import J, SingleJ  # for console
 
 # setup
@@ -45,9 +46,28 @@ def add_route(route: str):
 
     def inner(route_func: Callable):
         routes[route] = route_func
+        return route_func
 
     return inner
 
+
+def _reset_config():
+    # all of this is route specific
+    # TODO: split cstyles into two styles. inherited and not inherited
+    css_sheets = Cache[Style.SourceSheet]()
+    css_sheets.add(
+        Style.parse_sheet("") # TODO: for example `a:visited {color: purple}`
+    )
+    g.update({
+        "icon_srcs":[],             # list[str] specified icon srcs
+        # css
+        "recompute": True,          # bool
+        "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache
+        "css_sheets": css_sheets,   # a list of used css SourceSheets
+        "css_dirty": False,         # bool
+        "css_sheet_len": 1,         # int
+    })
+    # add a default StyleSheet
 
 def e(q: str):
     """
@@ -77,6 +97,8 @@ async def Console():
 
 async def main(route: str) -> str:
     """The main function that includes the main event-loop"""
+    # TODO: wrap the route getting into a seperate function
+    _reset_config()
     if "?" in route:
         route, _args = route.split("?")
         route_kwargs = dict(
@@ -87,8 +109,13 @@ async def main(route: str) -> str:
     try:
         await util.call(routes[route], **route_kwargs)
         g["route"] = route
-        reset_config()
-        pg.display.set_caption(g["title"])
+        title = None
+        root: Element.HTMLElement = g["root"]
+        for elem in root.children[0].children:
+            if elem.tag == "title":
+                title = elem.text
+        if title is not None:
+            pg.display.set_caption(title)
         if _icon_srcs := g["icon_srcs"]:
             _icon: Media.Image = Media.Image(_icon_srcs)
             await _icon.loading_task
@@ -109,24 +136,22 @@ async def main(route: str) -> str:
             return ""
         elif load_events := pg.event.get(LOADPAGE):
             return load_events[-1].route
-        tree: HTMLElement = g["root"]
+        root: Element.HTMLElement = g["root"]
         screen: pg.Surface = g["screen"]
         event_manager: EventManager = g["event_manager"]
-        await event_manager.handle_events(pg.event.get())
         # Await the next tick. In this spare time all async tasks can be run.
-        await asyncio.to_thread(CLOCK.tick, g["FPS"])
         if g["css_dirty"] or g["css_sheet_len"] != len(
             g["css_sheets"]
         ):  # addition or subtraction (or both)
-            apply_style()
+            Element.apply_style()
             g["recompute"] = True
         if g["recompute"]:
-            tree.compute()
+            root.compute()
             g["recompute"] = False
-        tree.layout()
+        root.layout()
 
         screen.fill(g["window_bg"])
-        tree.draw(screen)
+        root.draw(screen)
         if DEBUG:
             util.draw_text(
                 screen,
@@ -136,6 +161,8 @@ async def main(route: str) -> str:
                 topleft=(20, 20),
             )
         pg.display.flip()
+        await asyncio.to_thread(CLOCK.tick, g["FPS"])
+        await event_manager.handle_events(pg.event.get(exclude=(pg.QUIT, LOADPAGE)))
 
 
 async def run(route: str = "/"):
@@ -186,9 +213,6 @@ async def aload_dom(url: str):
 def startpage():
     load_dom("example.html")
 
-    # def load_next_page():
-    #     goto("/nextpage?firstname=John&lastname=Doe")
-
     colors = ["red", "green", "lightblue", "yellow"]
 
     def button_callback(event):
@@ -200,9 +224,9 @@ def startpage():
 
 
 # TODO: add jinja support
-# @add_route("/nextpage")
-# def nextpage(*, firstname: str, lastname: str):
-#     load_dom("nextpage.jinja", name=f"{firstname} {lastname}")
+@add_route("/secondpage")
+def nextpage():
+    load_dom("example.jinja")
 
 
 if __name__ == "__main__":

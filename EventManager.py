@@ -33,6 +33,8 @@ class _Event:
     type: str
     target: Element.Element
     cancelled: bool = False
+    propagation: bool = True
+    immediate_propagation: bool = True
 
     # mouse events
     pos: tuple[int, int] = (0, 0)
@@ -69,32 +71,20 @@ class _Event:
 
 
 # Events to implement
-# contextmenu (right click) TODO
-# focus and blur
-# cut & copy & paste TODO
-# drag, dragend, dragenter, dragleave, dragover, dragstart, drop TODO
-# keydown, keyup TODO
-# mousedown, mouseenter, mouseleave, mousemove, mouseover, mouseout, mouseup, wheel TODO
-# scroll (element specific) TODO
-
-# input, change, play and similar are all on elements
-
-# Event Attributes
-# For KeyEvents https://w3c.github.io/uievents/#idl-keyboardevent
-# key: Which key was pressed (str). default "" # just like pg.Event.unicode or "Shift" or "Dead" for example when pressing `
-# code: which code the pressed key corresponds to (str). default "" just like pg.event.key
-# location: the physical location of the key pressed (int). default 0
-# mods: ctrl, shiftkey, altkey, metakey (only MacOS) see pygame documentation
-# repeat: Whether the key was pressed continiously (and not the first time) (bool). default False
-
+# https://w3c.github.io/uievents/
 # File dropping can be done by looking for the DROPBEGIN Event.
 # Then we can track the mouse position to tell elements, we are currently dragging something.
+# Drag links:
+#   https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
+#   https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#specifying_drop_targets
+#   https://developer.mozilla.org/en-US/docs/Web/API/DataTransfer/types
+#   https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragstart_event
+#   https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragend_event
+#   https://html.spec.whatwg.org/multipage/dnd.html#dnd
 
 Callback = Callable
 CallbackItem = tuple[Callback, int]
 
-# TODO: Add more events and implement `stopPropagation` and `preventDefault`
-# This includes implementing bubbling in general
 # bubbles: bool = False
 # attrs: tuple = ()
 supported_events: dict[str, dict[str, Any]] = {
@@ -147,7 +137,7 @@ class EventManager:
     def __init__(self):
         self.callbacks = defaultdict(partial(defaultweakdict, list))
 
-    async def release_event(self, type_: str, **kwargs):
+    async def release_event(self, type_: str, target: Element.Element | None = None, **kwargs):
         """
         Release an event with the type_ and the keyword arguments.
         This deals with calling all appropriate callbacks
@@ -156,17 +146,33 @@ class EventManager:
         # then we call all callbacks registered on this event_type and target
         # Every callback has a number of times it will be executed.
         # This number is decreased and if it falls to 0, the callback is removed.
-        target = kwargs.pop("target", g["root"])
+        target: Element.Element = util.make_default(target, g["root"])
         event = _Event(time.monotonic(), type_, target, kwargs)
+        old_callbacks: list[CallbackItem] = self.callbacks[type_][target]
         new_callbacks: list[CallbackItem] = []
-        for callback, repeat in self.callbacks[type_][target]:
+        for callback, repeat in util.consume_list(old_callbacks):
             try:
                 await util.call(callback, event)
             except Exception as e:
                 util.log_error(f"Exception in callback: {e}")
             if repeat != 1:
                 new_callbacks.append((callback, repeat - 1))
-        self.callbacks[type_][target] = new_callbacks
+            # MDN: "If stopImmediatePropagation is invoked during one such call[back], no remaining listeners will be called."
+            if not event.immediate_propagation:
+                break
+        self.callbacks[type_][target] = new_callbacks + old_callbacks
+        if (
+            not event.cancelled
+            and (callback := getattr(target, f"on_{type_}", None)) is not None
+        ):
+            await util.call(callback, event)
+        if (
+            event.propagation
+            and (event_data := supported_events.get(type_)) is not None
+            and event_data.get("bubbles")
+            and target.parent is not None
+        ):
+            await self.release_event(type_, target=target.parent, **kwargs)
 
     async def handle_events(self, events: list[pg.event.Event]):
         # online, offline
@@ -188,7 +194,7 @@ class EventManager:
                     button = event.button
                 root = g["root"]
                 _pos = getattr(event, "pos", self.mouse_pos)
-                collisions = list(root.collide(_pos))
+                collisions = [root.collide(_pos)]
             if event.type == pg.MOUSEBUTTONDOWN:
                 self.buttons_down.add(button)
                 for elem in collisions:
@@ -282,7 +288,14 @@ class EventManager:
                         delta=(event.x, event.y),
                     )
                 # TODO: emit the scroll event on the first scollable element
-            ########################## KeyBoard Events ############################################
+            ########################## Keyboard Events ############################################
+            # For KeyEvents https://w3c.github.io/uievents/#idl-keyboardevent
+            # key: Which key was pressed (str). default "" # just like pg.Event.unicode or "Shift" or "Dead" for example when pressing `
+            # code: which code the pressed key corresponds to (str). default "" just like pg.event.key
+            # location: the physical location of the key pressed (int). default 0
+            # mods: ctrl, shiftkey, altkey, metakey (only MacOS) see pygame documentation
+            # repeat: Whether the key was pressed continiously (and not the first time) (bool). default False
+
             elif event.type == pg.KEYDOWN:
                 await self.release_event(
                     "keydown",

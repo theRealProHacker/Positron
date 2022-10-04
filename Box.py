@@ -26,8 +26,8 @@ def box_sizing(name: str):
     return _name
 
 
-_horizontal = slice(1, None, 2)  # [1::2]
-_vertical = slice(None, None, 2)  # [::2]
+_horizontal = slice(1, None, 2)  # [1::2] # right, left
+_vertical = slice(None, None, 2)  # [::2] # top, bottom
 part_slices: Mapping[str, Index] = {
     **{k: v for v, k in enumerate(directions)},
     **{"horizontal": _horizontal, "vertical": _vertical},
@@ -128,10 +128,11 @@ class Box:
     def pos(self, pos: Coordinate):
         self.x, self.y = pos
 
-    def set_pos(self, pos: tuple[float, float], t: str = "outer-box"):
+    def set_pos(self, pos: Coordinate, t: str = "outer-box"):
         _t = box_sizing(t)
-        for attr, val in zip(("x", "y"), pos):
-            self._set(attr, val, _t)
+        x, y = pos
+        self._set("x", x, _t)
+        self._set("y", y, _t)
         return self
 
     @property

@@ -9,13 +9,14 @@ from own_types import BugError
 
 elem_type_map: dict[str, type[Element.Element]] = {
     "html": Element.HTMLElement,
-    "img": Element.ImgElement,
+    "img": Element.ImageElement,
     "audio": Element.AudioElement,
     "br": Element.BrElement,
     "title": Element.TitleElement,
     "link": Element.LinkElement,
     "style": Element.StyleElement,
     "comment": Element.CommentElement,
+    "a": Element.AnchorElement,
 }
 
 
@@ -25,14 +26,12 @@ def lxml_to_element(lxml_elem, parent: Element.Element | None) -> Element.Elemen
     type_ = elem_type_map.get(tag, Element.Element)
     children: list[Element.Element | Element.TextElement] = []
     text = (lxml_elem.text or "").strip()
-    if type_ is Element.HTMLElement:
-        elem = Element.HTMLElement("html", {}, None)
+
+    assert type_ is Element.HTMLElement or parent is not None
+    if issubclass(type_, Element.MetaElement):
+        elem = type_(lxml_elem.attrib, text, parent)
     else:
-        assert parent is not None
-        if issubclass(type_, Element.MetaElement):
-            elem = type_(lxml_elem.attrib, text, parent)
-        else:
-            elem = type_(tag, lxml_elem.attrib, parent)
+        elem = type_(tag, lxml_elem.attrib, parent)
     children = []
     if text:
         children.append(Element.TextElement(text, elem))

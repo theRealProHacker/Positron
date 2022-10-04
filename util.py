@@ -215,7 +215,7 @@ def tup_replace(
     t: tuple[CO_T, ...], slice_: int | tuple[int, int], elem
 ) -> tuple[CO_T, ...]:
     """
-    Replace the part of the tuple given by slice with elem
+    Replace the part of the tuple given by slice with `elem`
     """
     if isinstance(slice_, int):
         return *t[:slice_], elem, *t[slice_:]
@@ -226,6 +226,9 @@ def tup_replace(
 
 
 async def call(callback, *args, **kwargs):
+    """
+    TODO: actually look at the functions definition and match them to the given arguments
+    """
     try:
         rv = callback(*args, **kwargs)
     except TypeError:

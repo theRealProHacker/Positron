@@ -10,8 +10,8 @@ from functools import reduce
 from operator import or_
 
 # fmt: off
-from typing import (Any, Generator, Generic, Hashable, Iterable, Literal,
-                    Mapping, Optional, Protocol, TypeVar, Union)
+from typing import (TYPE_CHECKING, Any, Generator, Generic, Hashable, Iterable, Literal,
+                    Mapping, Optional, Protocol, TypeVar, Union, overload)
 # fmt: on
 from weakref import WeakValueDictionary
 

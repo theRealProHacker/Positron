@@ -1,4 +1,3 @@
-import util
 from config import g
 from Element import Element
 from Selector import Selector, parse_selector
@@ -56,6 +55,9 @@ class SingleJ:
 
     def __eq__(self, other):
         return self.elem is other.elem
+
+    def data(self):
+        return {k[5:]: v for k, v in self._elem.attrs if k.startswith("data-")}
 
 
 class J:

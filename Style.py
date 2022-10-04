@@ -17,16 +17,18 @@ import tinycss.token_data
 
 import Media
 import Selector
-from config import (abs_angle_units, abs_resolution_units, abs_time_units, abs_border_width, abs_font_size,
-                    abs_font_weight, abs_length_units, g, rel_font_size,
-                    rel_length_units)
-from own_types import (CO_T, V_T, Angle, Auto, AutoLP, AutoType,
-                       BugError, CSSDimension, Color, CompStr, Drawable, Float4Tuple,
-                       FontStyle, Length, LengthPerc, Number, Percentage, Resolution,
-                       Sentinel, Str4Tuple, StrSent, Time, frozendict)
+from config import (abs_angle_units, abs_border_width, abs_font_size,
+                    abs_font_weight, abs_length_units, abs_resolution_units,
+                    abs_time_units, g, rel_font_size, rel_length_units)
+from own_types import (CO_T, V_T, Angle, Auto, AutoLP, AutoType, BugError,
+                       Color, CompStr, CSSDimension, Drawable, Float4Tuple,
+                       FontStyle, Length, LengthPerc, Number, Percentage,
+                       Resolution, Sentinel, Str4Tuple, StrSent, Time,
+                       frozendict)
 from util import (GeneralParser, consume_list, fetch_txt, find_index,
-                  get_groups, group_by_bool, hsl2rgb, hwb2rgb, in_bounds, log_error,
-                  make_default, noop, print_once, re_join, tup_replace)
+                  get_groups, group_by_bool, hsl2rgb, hwb2rgb, in_bounds,
+                  log_error, make_default, noop, print_once, re_join,
+                  tup_replace)
 
 # fmt: on
 
@@ -1324,6 +1326,10 @@ element_styles: dict[str, dict[str, str]] = defaultdict(
                 "margin": "1em 0",
             },
             "br": {"width": "100%", "height": "1em"},
+            "a": {
+                "color": "blue",
+                # "text-decoration": "underline"
+            }
         }.items()
     },
 )

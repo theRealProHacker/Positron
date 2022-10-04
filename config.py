@@ -4,7 +4,7 @@ from typing import Any
 
 import pygame as pg
 
-from own_types import Cache, Color, FrozenDCache, Length, Vector2
+from own_types import Color, Length
 
 # This problem is proof that typing in python doesn't work
 # For typing GlobalDict needs access to Element (a Protocol doesn't make sense, because the Protocol would just be
@@ -30,7 +30,7 @@ g: dict[str, Any] = {
     "zoom": 1,                      # float
     "FPS": 60,                      # float
     # reserved
-    "root": None,                   # the html element
+    "root": None,                   # the root HTMLElement
     "route": "",                    # the current route
     "file_watcher": None,           # util.FileWatcher
     "event_manager": None,          # Eventmanager
@@ -40,20 +40,6 @@ g: dict[str, Any] = {
     "tasks": []                     # list of tasks that are started in synchronous functions
 }
 
-def reset_config():
-    global g
-    # all of this is route specific
-    # TODO: split cstyles into two styles. inherited and not inherited
-    g.update({
-        "title": "",                # str # the document title. this is set in Element.py by the title element
-        "icon_srcs":[],             # list[str] specified icon srcs
-        # css
-        "recompute": True,          # bool
-        "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache
-        "css_sheets": Cache(),      # Cache[SourceSheet] # a list of external css SourceSheets
-        "css_dirty": False,         # bool: does css need to be applied
-        "css_sheet_len": 0,         # int
-    })
 # fmt: on
 
 
