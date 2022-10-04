@@ -56,18 +56,21 @@ def _reset_config():
     # TODO: split cstyles into two styles. inherited and not inherited
     css_sheets = Cache[Style.SourceSheet]()
     css_sheets.add(
-        Style.parse_sheet("") # TODO: for example `a:visited {color: purple}`
+        Style.parse_sheet("")  # TODO: for example `a:visited {color: purple}`
     )
-    g.update({
-        "icon_srcs":[],             # list[str] specified icon srcs
-        # css
-        "recompute": True,          # bool
-        "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache
-        "css_sheets": css_sheets,   # a list of used css SourceSheets
-        "css_dirty": False,         # bool
-        "css_sheet_len": 1,         # int
-    })
+    g.update(
+        {
+            "icon_srcs": [],  # list[str] specified icon srcs
+            # css
+            "recompute": True,  # bool
+            "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache
+            "css_sheets": css_sheets,  # a list of used css SourceSheets
+            "css_dirty": False,  # bool
+            "css_sheet_len": 1,  # int
+        }
+    )
     # add a default StyleSheet
+
 
 def e(q: str):
     """
@@ -98,6 +101,7 @@ async def Console():
 async def main(route: str) -> str:
     """The main function that includes the main event-loop"""
     # TODO: wrap the route getting into a seperate function
+    root: Element.HTMLElement
     _reset_config()
     if "?" in route:
         route, _args = route.split("?")
@@ -110,8 +114,8 @@ async def main(route: str) -> str:
         await util.call(routes[route], **route_kwargs)
         g["route"] = route
         title = None
-        root: Element.HTMLElement = g["root"]
-        for elem in root.children[0].children:
+        root = g["root"]
+        for elem in root.children[0].children:  # type: ignore
             if elem.tag == "title":
                 title = elem.text
         if title is not None:
@@ -136,7 +140,7 @@ async def main(route: str) -> str:
             return ""
         elif load_events := pg.event.get(LOADPAGE):
             return load_events[-1].route
-        root: Element.HTMLElement = g["root"]
+        root = g["root"]
         screen: pg.Surface = g["screen"]
         event_manager: EventManager = g["event_manager"]
         # Await the next tick. In this spare time all async tasks can be run.

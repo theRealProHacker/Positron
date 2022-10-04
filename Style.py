@@ -1329,7 +1329,7 @@ element_styles: dict[str, dict[str, str]] = defaultdict(
             "a": {
                 "color": "blue",
                 # "text-decoration": "underline"
-            }
+            },
         }.items()
     },
 )

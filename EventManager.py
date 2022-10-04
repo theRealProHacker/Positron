@@ -137,7 +137,9 @@ class EventManager:
     def __init__(self):
         self.callbacks = defaultdict(partial(defaultweakdict, list))
 
-    async def release_event(self, type_: str, target: Element.Element | None = None, **kwargs):
+    async def release_event(
+        self, type_: str, target: Element.Element | None = None, **kwargs
+    ):
         """
         Release an event with the type_ and the keyword arguments.
         This deals with calling all appropriate callbacks
