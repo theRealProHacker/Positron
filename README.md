@@ -34,32 +34,25 @@ Thats really it.
 This code
 #### example.html
 ```html
-<html>
-    <title>
-        Hero Banner Example
-    </title>
-    <style src="example.css"></style>
-    <body> 
-        <div class="hero-banner">
-            <div>
-                <h1>
-                    A useless hero banner
-                </h1>
-                <h3>
-                    And a subtitle, no one is going to ever read (apart from you)
-                </h3>
-            </div>
-        </div>
-        <div class="container">
-            <h1>
-                Here is the content header
-            </h1>
-            <p>
-                Lorem, ipsum dolor sit amet consectetur adipisicing elit. Dolores ut modi ratione. Mollitia consequuntur voluptatem alias, commodi illum dolore odit voluptas animi ipsum velit quasi, nam necessitatibus provident. Deserunt, impedit!
-            </p>
-        </div>
-    </body>
-</html>
+<title>Document</title>
+<style>
+    body {
+        margin-left: 100px;
+    }
+    a:hover {
+        color: green;
+    }
+    button {
+        display: block;
+    }
+</style>
+
+<p>
+    <a href="/secondpage">
+        Second page
+    </a>
+</p>
+<button>Click Me!</button>
 ```
 #### example.jinja
 ```html
