@@ -35,7 +35,7 @@ pg.key.start_text_input()
 logging.basicConfig(level=logging.INFO)
 
 CLOCK = pg.time.Clock()
-DEBUG = True
+DEBUG = False
 uses_aioconsole &= DEBUG
 routes: dict[str, Callable] = {}
 
@@ -144,8 +144,8 @@ async def main(route: str) -> str:
         screen: pg.Surface = g["screen"]
         event_manager: EventManager = g["event_manager"]
         # Await the next tick. In this spare time all async tasks can be run.
-        if g["css_dirty"] or g["css_sheet_len"] != len(
-            g["css_sheets"]
+        if (
+            g["css_dirty"] or g["css_sheet_len"] != len(g["css_sheets"]) or True
         ):  # addition or subtraction (or both)
             Element.apply_style()
             g["recompute"] = True
@@ -224,7 +224,7 @@ def startpage():
         colors.append(color)
         event.target.set_style("background-color", color)
 
-    J("#button").on("click", button_callback)
+    J("button").on("click", button_callback)
 
 
 # TODO: add jinja support

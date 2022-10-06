@@ -79,6 +79,18 @@ class ClassSelector:
 
 
 @dataclass(frozen=True, slots=True)
+class StateSelector:
+    state: str
+    spec = 0, 1, 0
+
+    def __call__(self, elem: Element_P) -> bool:
+        return getattr(elem, self.state, False)
+
+    def __str__(self):
+        return ":" + self.state
+
+
+@dataclass(frozen=True, slots=True)
 class HasAttrSelector:
     name: str
     spec = 0, 1, 0
@@ -196,7 +208,7 @@ class ChildSelector(CompositeSelector):
 s = r"\s*"
 _id = r"[\w\-]+"
 sngl_p = re.compile(
-    rf"((?:\*|(?:#{_id})|(?:\.{_id})|(?:\[\s*{_id}\s*\])|(?:\[\s*{_id}\s*[~|^$*]?=\s*{_id}\s*\])|(?:{_id})))$"
+    rf"((?:\*|(?:#{_id})|(?:\.{_id})|(?:\[\s*{_id}\s*\])|(?:\[\s*{_id}\s*[~|^$*]?=\s*{_id}\s*\])|(?:\:{_id})|(?:{_id})))$"
 )
 rel_p = re.compile(r"\s*([>+~ ])\s*$")  # pretty simple
 
@@ -292,6 +304,9 @@ def proc_single(s: str) -> Selector:
                 return selector(*groups)
         raise BugError(f"Invalid attribute selector: {s}")
     elif s[0] == ":":  # pseudoclass
-        raise RuntimeError("Pseudoclasses are not supported yet")
+        pseudoclass = s[1:]
+        if pseudoclass.isidentifier():  # :hover, :active
+            return StateSelector(pseudoclass)
+        raise RuntimeError("Special pseudoclasses are not supported yet")
     else:
         return TagSelector(s)
