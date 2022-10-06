@@ -227,7 +227,6 @@ def startpage():
     J("button").on("click", button_callback)
 
 
-# TODO: add jinja support
 @add_route("/secondpage")
 def nextpage():
     load_dom("example.jinja")

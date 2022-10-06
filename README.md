@@ -7,9 +7,32 @@
 
 **E**lectron uses **E**CMAScript and **P**ositron uses **P**ython 
 
+# Motivation
+
+When you use Python and you want to visualize something you have following routes:
+1. `tkinter` or other GUI libraries like `QT`
+2. `matplotlib`
+3. Creating an HTML file and opening it in the system browser. 
+
+If you however want to have the feel of a real system application then you will need to use a "real" GUI library. An alternative is using Electron that calls python code. However, the problems of Electron are well known. 
+
+Specifically, Electron creates a server and a Chromium client that communicate per IPC. This makes Electron both relatively slow and also it uses **huge** amounts of memory. Apps that use Electron like VSCode or Discord pretty quickly add up to GBs of RAM usage. 4GB vanish quickly when you for example have 2 Browsers and 2 Electron apps open. When the os has little RAM left it will start swapping RAM in and out of disk and this will make your whole computer lag a lot.
+
+Also, Electron has pretty slow load times. If you start any other regular app (a Flutter app for example), it seems like it opens almost instantly. However, Electron takes a few seconds to load and it really becomes obvious to the user. 
+
+Apart from this little thing, Electron is really great, if you know how to use it.
+
+## How can Positron be fast with Python?
+
+1. Most of the work is done in C: IO, graphics, numpy and other calculations
+2. Asynchronous programming
+
+Thats really it.
+
 # Screen cast
 
 This code
+#### example.html
 ```html
 <html>
     <title>
@@ -38,35 +61,33 @@ This code
     </body>
 </html>
 ```
-```css
-body {
-    background-color: grey;
-    height: 100%;
-}
-.hero-banner {
-    background-image: url(https://sitefarm.ucdavis.edu/sites/g/files/dgvnsk511/files/styles/sf_title_banner/public/media/images/lighthouse-pixabay-lumix2004.jpg?h=2ed12e5b&itok=ES3yBdhi);
-    width: 100%;
-    height: 300px;
-}
-.hero-banner>div{
-    display: block;
-    margin: 10% auto;
-    font-size: x-large;
-    width: 90%;
-}
-.hero-banner h1{
-    color: rgb(75, 73, 73);
-}
-.container{
-    width: auto;
-    margin: 20px 30px;
-    background-color: blanchedalmond;
-    padding: 20px;
-}
+#### example.jinja
+```html
+<h1>Second Page</h1>
+<a href="/">Back</a>
+```
+#### main.py
+```python	
+@add_route("/")  # the index route
+def startpage():
+    load_dom("example.html")
+
+    colors = ["red", "green", "lightblue", "yellow"]
+
+    def button_callback(event):
+        color = colors.pop(0)
+        colors.append(color)
+        event.target.set_style("background-color", color)
+
+    J("button").on("click", button_callback)
+
+@add_route("/secondpage")
+def nextpage():
+    load_dom("example.jinja")
 ```
 creates this result  
 
-![A Screenshot of the result](https://i.ibb.co/47d9kLy/Screenshot-2022-09-22-201336.png)
+[![A Screenshot of the result](https://i.ytimg.com/vi_webp/rDf5UI9oLa8/maxresdefault.webp)](https://www.youtube.com/watch?v=rDf5UI9oLa8)
 
 # How to run this
 You need Python 3.10 and Git installed
