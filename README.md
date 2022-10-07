@@ -79,8 +79,7 @@ def nextpage():
     load_dom("example.jinja")
 ```
 creates this result  
-
-[![A Screenshot of the result](https://i.ytimg.com/vi_webp/rDf5UI9oLa8/maxresdefault.webp)](https://www.youtube.com/watch?v=rDf5UI9oLa8)
+<iframe width="560" height="315" src="https://www.youtube.com/embed/rDf5UI9oLa8" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
 # How to run this
 You need Python 3.10 and Git installed
@@ -134,6 +133,7 @@ To achieve asynchronous code you need two methods:
 - Profiling: 
     - https://www.youtube.com/watch?v=m_a0fN48Alw
     - https://pythonspot.com/python-profiling/
+- Find in page feature
 
 ## Use less RegEx
 Many consider regular expressions to be the best thing if it comes to text processing. 
