@@ -8,8 +8,9 @@ from dataclasses import dataclass
 from functools import cache, cached_property, partial, reduce
 import re
 from typing import Callable, Iterable, Protocol
+import Style
 from own_types import BugError, Element_P
-from util import get_groups
+from util import find_index, get_groups
 
 
 ########################## Specificity and Rules #############################
@@ -45,6 +46,7 @@ class Selector(Protocol):
 
 
 class SingleSelector(Selector):
+    # https://drafts.csswg.org/selectors/#simple
     spec: Spec
 
     def __call__(self, elem: Element_P) -> bool:
@@ -94,6 +96,10 @@ class StateSelector:
 class HasAttrSelector:
     name: str
     spec = 0, 1, 0
+
+    def __post_init__(self):
+        object.__setattr__(self, "name", self.name.lower())
+
     __call__ = lambda self, elem: self.name in elem.attrs
     __str__ = lambda self: f"[{self.name}]"  # type: ignore[attr-defined]
 
@@ -104,12 +110,15 @@ def make_attr_selector(sign: str, validator):
     regex = re.compile(
         rf'\[{s}(\w+){s}{sign}={s}"(\w+)"{s}\]|\[{s}(\w+){s}{sign}={s}(\w+){s}\]'
     )
-
+    # TODO: https://html.spec.whatwg.org/multipage/semantics-other.html#case-sensitivity-of-selectors
     @dataclass(frozen=True, slots=True)
     class AttributeSelector:
         name: str
         value: str
         spec = 0, 1, 0
+
+        def __post_init__(self):
+            object.__setattr__(self, "name", self.name.lower())
 
         def __call__(self, elem: Element_P):
             return (value := elem.attrs.get(self.name)) is not None and validator(
@@ -120,6 +129,21 @@ def make_attr_selector(sign: str, validator):
             return f'[{self.name}{sign}="{self.value}"]'
 
     return regex, AttributeSelector
+
+
+@dataclass(frozen=True, slots=True)
+class NotSelector(Selector):
+    selector: Selector
+
+    @property
+    def spec(self):
+        return self.selector.spec
+
+    def __call__(self, elem):
+        return not self.selector(elem)
+
+    def __str__(self):
+        return f":not({self.selector})"
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,14 +171,17 @@ class NeverSelector:
 
 ################################## Composite Selectors ###############################
 class CompositeSelector(Selector):
+    # Officially a complex selector
+    # https://drafts.csswg.org/selectors/#complex
     selectors: tuple[Selector, ...]
     spec: cached_property[Spec]  # type: ignore
+    delim: str
 
     def __call__(self, elem: Element_P) -> bool:
         ...
 
-    def __hash__(self) -> int:
-        return super().__hash__()
+    def __str__ (self): 
+        return self.delim.join(str(s) for s in self.selectors)
 
 
 joined_specs = lambda self: sum_specs(f.spec for f in self.selectors)
@@ -164,22 +191,25 @@ joined_specs = lambda self: sum_specs(f.spec for f in self.selectors)
 class AndSelector(CompositeSelector):
     selectors: tuple[Selector, ...]
     spec = cached_property(joined_specs)
+    delim = ""
     __call__ = lambda self, elem: all(sel(elem) for sel in self.selectors)
-    __str__ = lambda self: "".join(str(s) for s in self.selectors)  # type: ignore[attr-defined]
 
 
 @dataclass(frozen=True, slots=True)
 class OrSelector(CompositeSelector):
+    # https://drafts.csswg.org/selectors/#list-of-simple-selectors
     selectors: tuple[Selector, ...]
     spec = cached_property(joined_specs)
-    __call__ = lambda self, elem: any(sel(elem) for sel in self.selectors)
-    __str__ = lambda self: ", ".join(str(s) for s in self.selectors)  # type: ignore[attr-defined]
+    delim = ", "
+    def __call__(self, elem): 
+        return any(sel(elem) for sel in self.selectors)
 
 
 @dataclass(frozen=True, slots=True)
 class DirectChildSelector(CompositeSelector):
     selectors: tuple[Selector, Selector]
     spec = cached_property(joined_specs)
+    delim = " > "
 
     def __call__(self, elem: Element_P):
         if not elem.parent:
@@ -187,13 +217,12 @@ class DirectChildSelector(CompositeSelector):
         p_sel, e_sel = self.selectors
         return p_sel(elem.parent) and e_sel(elem)
 
-    __str__ = lambda self: " > ".join(str(s) for s in self.selectors)  # type: ignore[attr-defined]
-
 
 @dataclass(frozen=True, slots=True)
 class ChildSelector(CompositeSelector):
     selectors: tuple[Selector, Selector]
     spec = cached_property(joined_specs)
+    delim = " "
 
     def __call__(self, elem: Element_P):
         p_sel, e_sel = self.selectors
@@ -201,7 +230,35 @@ class ChildSelector(CompositeSelector):
             return False
         return any(p_sel(p) for p in elem.iter_anc())
 
-    __str__ = lambda self: " ".join(str(s) for s in self.selectors)  # type: ignore[attr-defined]
+@dataclass(frozen=True, slots=True)
+class SubseqeuntSiblingSelector(CompositeSelector):
+    selectors: tuple[Selector, Selector]
+    delim = " ~ "
+
+    def call(self, elem: Element_P):
+        sib_sel, e_sel = self.selectors
+        if not elem.parent or not e_sel(elem):
+            return False
+        for sibling in elem.parent.children:
+            if sibling is elem:
+                return False
+            elif sib_sel(elem):
+                return True
+        return False
+
+@dataclass(frozen=True, slots=True)
+class NextSiblingSelector(CompositeSelector):
+    selectors: tuple[Selector, Selector]
+    delim = " + "
+    def call(self, elem: Element_P):
+        sib_sel, e_sel = self.selectors
+        if not elem.parent or not e_sel(elem):
+            return False
+        elem_index = find_index(elem.parent.children, lambda x: x is elem)
+        if elem_index:
+            return sib_sel(elem.parent.children[elem_index-1])
+        return False
+
 
 
 ########################################## Parser #######################################################
@@ -243,6 +300,11 @@ class InvalidSelector(ValueError):
 
 @cache
 def parse_selector(s: str) -> Selector:
+    """
+    Parses a selector string. Raises an InvalidSelector exception when unparsable.
+    https://drafts.csswg.org/selectors/#grammar
+    https://drafts.csswg.org/css-syntax-3/#parse-comma-list
+    """
     s = start = s.strip()
     if not s:
         raise InvalidSelector("Empty selector")
@@ -270,9 +332,9 @@ def parse_selector(s: str) -> Selector:
                     case ">":
                         return DirectChildSelector((parse_selector(s), sngl_selector))
                     case "+":
-                        raise NotImplementedError("+ is not implemented yet")
+                        return NextSiblingSelector((parse_selector(s), sngl_selector))
                     case "~":
-                        raise NotImplementedError("~ is not implemented yet")
+                        return SubseqeuntSiblingSelector((parse_selector(s), sngl_selector))
                     case _:
                         raise BugError(f"Invalid relative selector ({rel})")
             else:
@@ -304,9 +366,11 @@ def proc_single(s: str) -> Selector:
                 return selector(*groups)
         raise BugError(f"Invalid attribute selector: {s}")
     elif s[0] == ":":  # pseudoclass
-        pseudoclass = s[1:]
+        pseudoclass = s[1:].replace("-", "_")
         if pseudoclass.isidentifier():  # :hover, :active
-            return StateSelector(pseudoclass)
-        raise RuntimeError("Special pseudoclasses are not supported yet")
+            return StateSelector(pseudoclass.lower())
+        elif args := Style.css_func(pseudoclass, "not"):
+            return NotSelector(parse_selector(",".join(args)))
+        raise RuntimeError("Many pseudoclasses are not supported yet")
     else:
         return TagSelector(s)

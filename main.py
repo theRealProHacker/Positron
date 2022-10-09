@@ -5,10 +5,9 @@ import asyncio
 import logging
 import os
 from contextlib import redirect_stdout
-from typing import Callable
 
 from EventManager import EventManager
-from own_types import LOADPAGE, Cache, FrozenDCache, loadpage_event
+from own_types import LOADPAGE, Cache, FrozenDCache
 
 uses_aioconsole = True
 try:
@@ -35,29 +34,25 @@ pg.key.start_text_input()
 logging.basicConfig(level=logging.INFO)
 
 CLOCK = pg.time.Clock()
-DEBUG = False
+DEBUG = True
 uses_aioconsole &= DEBUG
-routes: dict[str, Callable] = {}
-
-
-def add_route(route: str):
-    if not isinstance(route, str):
-        raise ValueError("route must be a String")
-
-    def inner(route_func: Callable):
-        routes[route] = route_func
-        return route_func
-
-    return inner
+default_sheet = Style.parse_sheet(
+    """
+a:visited{
+    color: purple
+}
+a:active {
+    color: yellow !important;
+}
+"""
+)
 
 
 def _reset_config():
     # all of this is route specific
     # TODO: split cstyles into two styles. inherited and not inherited
     css_sheets = Cache[Style.SourceSheet]()
-    css_sheets.add(
-        Style.parse_sheet("")  # TODO: for example `a:visited {color: purple}`
-    )
+    css_sheets.add(default_sheet)
     g.update(
         {
             "icon_srcs": [],  # list[str] specified icon srcs
@@ -69,7 +64,6 @@ def _reset_config():
             "css_sheet_len": 1,  # int
         }
     )
-    # add a default StyleSheet
 
 
 def e(q: str):
@@ -98,60 +92,55 @@ async def Console():
             print("Console error:", e)
 
 
-async def main(route: str) -> str:
+async def main(route: str):
     """The main function that includes the main event-loop"""
-    # TODO: wrap the route getting into a seperate function
+    util.goto(route)
     root: Element.HTMLElement
-    _reset_config()
-    if "?" in route:
-        route, _args = route.split("?")
-        route_kwargs = dict(
-            item for arg in _args.split("&") if len(item := arg.split("=")) == 2
-        )
-    else:
-        route_kwargs = {}
-    try:
-        await util.call(routes[route], **route_kwargs)
-        g["route"] = route
-        title = None
-        root = g["root"]
-        for elem in root.children[0].children:  # type: ignore
-            if elem.tag == "title":
-                title = elem.text
-        if title is not None:
-            pg.display.set_caption(title)
-        if _icon_srcs := g["icon_srcs"]:
-            _icon: Media.Image = Media.Image(_icon_srcs)
-            await _icon.loading_task
-            if _icon.is_loaded:
-                pg.display.set_icon(_icon.surf)
-                _icon.unload()
-        await util.gather_tasks(g["tasks"])
-    except KeyError as e:
-        util.log_error(f"Probably unknown route {e.args[0]!r}")
-    except Exception as e:
-        util.log_error(e)
-        # TODO: do something cool like a 404 page, showing the user how to contact the developer
-        raise
     if pg.display.get_surface() is None:
         await set_mode()
     while True:
         if pg.event.peek(pg.QUIT):
-            return ""
+            return
         elif load_events := pg.event.get(LOADPAGE):
-            return load_events[-1].route
+            try:
+                event = load_events[-1]
+                _reset_config()
+                await util.call(event.callback, **event.kwargs)
+                g["route"] = event.url
+                if event.target:
+                    elem = SingleJ("#"+event.target)
+                logging.info(f"Going To: {event.url!r}")
+                # get the title
+                title: str | None = None
+                for elem in SingleJ("head")._elem.children:
+                    if elem.tag == "title":
+                        title = elem.text
+                if title is not None:
+                    pg.display.set_caption(title)
+                # get the icon
+                if _icon_srcs := g["icon_srcs"]:
+                    _icon: Media.Image = Media.Image(_icon_srcs)
+                    await _icon.loading_task
+                    if _icon.is_loaded:
+                        pg.display.set_icon(_icon.surf)
+                        _icon.unload()
+                # await all tasks like style parsing and icon loading in sync mode
+                await util.gather_tasks(g["tasks"])
+            except Exception as e:
+                util.log_error(e)
+                # TODO: do something cool like a 404 page, showing the user how to contact the developer
+                raise
         root = g["root"]
         screen: pg.Surface = g["screen"]
         event_manager: EventManager = g["event_manager"]
-        # Await the next tick. In this spare time all async tasks can be run.
-        if (
-            g["css_dirty"] or g["css_sheet_len"] != len(g["css_sheets"]) or True
-        ):  # addition or subtraction (or both)
-            Element.apply_style()
-            g["recompute"] = True
-        if g["recompute"]:
-            root.compute()
-            g["recompute"] = False
+        # if g["css_dirty"] or g["css_sheet_len"] != len(
+        #     g["css_sheets"]
+        # ):  # addition or subtraction (or both)
+        Element.apply_style()
+        # g["recompute"] = True
+        # if g["recompute"]:
+        root.compute()
+        # g["recompute"] = False
         root.layout()
 
         screen.fill(g["window_bg"])
@@ -178,16 +167,16 @@ async def run(route: str = "/"):
     g["file_watcher"] = util.FileWatcher()
     g["event_manager"] = EventManager()
     g["aiosession"] = aiohttp.ClientSession()
+    g["jinja_env"] = None  # TODO
     console_task = (
         asyncio.create_task(Console())
         if uses_aioconsole
         else asyncio.create_task(asyncio.sleep(0))
     )
     try:
-        while route := await main(route):
-            logging.info("Reloading")
+        await main(route)
     except asyncio.exceptions.CancelledError:
-        return
+        pass
     finally:
         logging.info("Exiting")
         pg.quit()
@@ -200,8 +189,9 @@ async def run(route: str = "/"):
         await asyncio.sleep(1)
 
 
-def goto(route: str):
-    pg.event.post(loadpage_event(route))
+# Exports
+add_route = util.add_route
+goto = util.goto
 
 
 def load_dom(file: str):

@@ -17,8 +17,9 @@ from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from functools import cache
 from types import FunctionType
-from typing import Callable, Coroutine, Iterable, Literal, Sequence
-from urllib.parse import unquote_plus, urlparse
+from typing import Callable, Coroutine, Iterable, Literal, Sequence, TypeVar
+from urllib.parse import parse_qsl, unquote_plus, urlparse
+import webbrowser
 
 import aiofiles
 import aiofiles.os
@@ -31,7 +32,7 @@ from watchdog.observers import Observer
 
 # fmt: off
 from config import g
-from own_types import (CO_T, K_T, V_T, BugError, Cache, Color, Coordinate,
+from own_types import (CO_T, K_T, V_T, BugError, Color, Coordinate,
                        Font, Index, OpenMode, OpenModeReading, OpenModeWriting,
                        Rect, Surface, Vector2, loadpage_event)
 
@@ -55,7 +56,7 @@ class FileWatcher(FileSystemEventHandler):
 
     def __init__(self):
         self.last_hit = time.monotonic()  # this doesn't need to be extremely accurate
-        self.files = Cache[str]()
+        self.files = set[str]()
         self.dirs = set[str]()
 
     def add_file(self, file: str):
@@ -72,7 +73,8 @@ class FileWatcher(FileSystemEventHandler):
     def on_modified(self, event: FileSystemEvent):
         logging.debug(f"File modified: {event.src_path}")
         if event.src_path in self.files and (t := time.monotonic()) - self.last_hit > 1:
-            pg.event.post(loadpage_event(g["route"]))
+            g["event_manager"].release_event("file_modified", path=event.src_path)
+            pg.event.post(goto(g["route"]))  # reload the current page
             self.last_hit = t
 
 
@@ -194,6 +196,12 @@ def consume_dict(d: dict[K_T, V_T]):
     """
     while d:
         yield d.popitem()
+
+V_T2 = TypeVar("V_T2")
+def map_dvals(d: dict[K_T, V_T], func: Callable[[V_T],V_T2])->dict[K_T, V_T2]:
+    return {
+        k: func(v) for k,v in d.items()
+    }
 
 
 # tuple mutations
@@ -666,11 +674,60 @@ def hwb2rgb(h: float, w: float, b: float):
 
 ##########################################################################
 
+############################# Site navigation ############################
+
+routes: dict[str, Callable] = {}
+
+
+def add_route(route: str):
+    if not isinstance(route, str):
+        raise ValueError("route must be a String")
+
+    def inner(route_func: Callable):
+        routes[route] = route_func
+        return route_func
+
+    return inner
+
+
+def goto(url: str, **kwargs: str):
+    """
+    Make the browser display a different page if it is a registered route or open the page
+    Raises a KeyError if the route is invalid.
+    """
+    # TODO:
+    visited: dict[str, Literal["browser", "internal", "invalid"]] = g["visited_links"]
+    status = visited.get(url, "internal")
+    if status == "invalid":
+        return  # we already reported that the url is invalid
+    elif status == "internal":
+        parsed_result = urlparse(url)
+        route = parsed_result.path
+        try:
+            pg.event.post(
+                loadpage_event(
+                    url=url,
+                    callback=routes[route],
+                    kwargs=dict(parse_qsl(parsed_result.query)) | kwargs,
+                    target=parsed_result.fragment,
+                )
+            )
+        except KeyError:
+            status = "browser"
+    if status == "browser":
+        if not webbrowser.open_new_tab(url):
+            status = "invalid"
+            log_error(f"Invalid route: {url!r}")
+    visited[url] = status
+
+
+##########################################################################
+
 ############################# Pygame related #############################
 
 pg.init()
 
-# https://stackoverflow.com/questions/40094938/numpy-how-i-can-determine-if-all-elements-of-numpy-array-are-equal-to-a-number
+
 def surf_opaque(surf: Surface):
     return np.all(pg.surfarray.array_alpha(surf) == 255)
 

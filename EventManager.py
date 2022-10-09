@@ -88,10 +88,13 @@ CallbackItem = tuple[Callback, int]
 # bubbles: bool = False
 # attrs: tuple = ()
 supported_events: dict[str, dict[str, Any]] = {
-    "click": {
-        "bubbles": True,
-        "attrs": ("pos", "mods", "button", "buttons", "detail"),
-    },
+    **dict.fromkeys(
+        ("click", "auxclick"),
+        {
+            "bubbles": True,
+            "attrs": ("pos", "mods", "button", "buttons", "detail"),
+        },
+    ),
     "mousedown": {
         "bubbles": True,
         "attrs": ("pos", "mods", "buttons"),
@@ -115,27 +118,35 @@ for x in ("windowmoved", "windowsizechanged"):
     supported_events[x]["attrs"] = ("x", "y")
 
 
-class defaultweakdict(Generic[K_T, V_T], defaultdict[K_T, V_T], WeakKeyDictionary):  # type: ignore
-    pass
-
-
 class EventManager:
-    callbacks: defaultdict[str, defaultweakdict[Element.Element, list[CallbackItem]]]
+    callbacks: defaultdict[str, WeakKeyDictionary[Element.Element, list[CallbackItem]]]
     last_click: tuple[float, tuple[int, int]] = (0, (-1, -1))
     click_count: int = 0
     mouse_pos = pg.mouse.get_pos()
     mods: int = pg.key.get_mods()
-    drag: None | tuple[tuple[int, int], None | Element.Element] = None
     online = util.is_online()
     keys_down: set[int] = set()
     buttons_down: set[int] = set()
+    cursor: Any = pg.cursors.Cursor()
+
+    drag: Element.Element | None = None
+    focus: Element.Element | None = None
+    active: Element.Element | None = None
+    hover: Element.Element | None = None
 
     @property
     def buttons(self):
         sum(2 ** (x - 1) for x in self.buttons_down)
 
     def __init__(self):
-        self.callbacks = defaultdict(partial(defaultweakdict, list))
+        self.callbacks = defaultdict(WeakKeyDictionary)
+
+    def change(self, name: str, value: Any)->bool:
+        if getattr(self, name) == value:
+            return True
+        else:
+            setattr(self, name, value)
+            return False
 
     async def release_event(
         self, type_: str, target: Element.Element | None = None, **kwargs
@@ -150,7 +161,7 @@ class EventManager:
         # This number is decreased and if it falls to 0, the callback is removed.
         target: Element.Element = util.make_default(target, g["root"])
         event = _Event(time.monotonic(), type_, target, kwargs)
-        old_callbacks: list[CallbackItem] = self.callbacks[type_][target]
+        old_callbacks: list[CallbackItem] = self.callbacks[type_].get(target, [])
         new_callbacks: list[CallbackItem] = []
         for callback, repeat in util.consume_list(old_callbacks):
             try:
@@ -170,8 +181,7 @@ class EventManager:
             await util.call(callback, event)
         if (
             event.propagation
-            and (event_data := supported_events.get(type_)) is not None
-            and event_data.get("bubbles")
+            and supported_events.get(type_, {}).get("bubbles")
             and target.parent is not None
         ):
             await self.release_event(type_, target=target.parent, **kwargs)
@@ -179,11 +189,8 @@ class EventManager:
     async def handle_events(self, events: list[pg.event.Event]):
         # online, offline
         online = util.is_online()
-        if self.online and not online:
-            await self.release_event("offline")
-        elif not self.online and online:
-            await self.release_event("online")
-        self.online = online
+        if self.change("online", online):
+            await self.release_event("online" if online else "offline")
         # event handling
         root: Element.Element
         # TODO: What is event.window?
@@ -196,36 +203,38 @@ class EventManager:
                     button = event.button
                 root = g["root"]
                 _pos = getattr(event, "pos", self.mouse_pos)
-                collisions = [root.collide(_pos)]
+                self.hover = hov_elem = root.collide(_pos)
+                if hov_elem:
+                    cursor = hov_elem.cstyle["cursor"]
+                    if self.change("cursor", cursor):
+                        pg.mouse.set_cursor(cursor)
             if event.type == pg.MOUSEBUTTONDOWN:
                 self.buttons_down.add(button)
-                for elem in collisions:
-                    await self.release_event(
-                        "mousedown",
-                        target=elem,
-                        pos=_pos,
-                        mods=self.mods,
-                        button=button,
-                    )
+                self.active = hov_elem
+                await self.release_event(
+                    "mousedown",
+                    target=hov_elem,
+                    pos=_pos,
+                    mods=self.mods,
+                    button=button,
+                )
                 self.mouse_down = _pos
             elif event.type == pg.MOUSEBUTTONUP:
                 self.buttons_down.remove(button)
+                await self.release_event(
+                    "mouseup",
+                    target=hov_elem,
+                    pos=_pos,
+                    mods=self.mods,
+                    buttons=self.buttons,
+                )
                 if self.drag:
-                    for elem in collisions:
-                        await self.release_event(
-                            "mouseup",
-                            target=elem,
-                            pos=_pos,
-                            mods=self.mods,
-                            buttons=self.buttons,
-                        )
                     # dragend/drop
-                    pos, dragged_elem = self.drag
+                    await self.release_event(
+                        "dragend",
+                        target=self.drag,
+                    )
                     self.drag = None
-                    if dragged_elem is not None:
-                        await self.release_event(
-                            "dragend", target=dragged_elem, frm=pos, to=event.pos
-                        )
                 else:
                     # click
                     # there is no current drag and the primary mouse button goes down
@@ -236,60 +245,42 @@ class EventManager:
                     ):
                         self.click_count = 0
                     self.click_count += 1
-                    for elem in collisions:
-                        await self.release_event(
-                            "mouseup",
-                            target=elem,
-                            pos=event.pos,
-                            mods=self.mods,
-                            buttons=self.buttons,
-                        )
+                    if hov_elem is self.active:
                         await self.release_event(
                             "click" if button == 1 else "auxclick",
-                            target=elem,
+                            target=hov_elem,
                             pos=event.pos,
                             mods=self.mods,
                             button=button,
                             buttons=self.buttons,
                             detail=self.click_count,
                         )
+                    else:
+                        self.active = None
                     self.last_click = (time.monotonic(), _pos)
             elif event.type == pg.MOUSEMOTION:
                 self.mouse_pos = _pos
-                for elem in collisions:
-                    await self.release_event(
-                        "mousemove",
-                        target=elem,
-                        pos=_pos,
-                        mods=self.mods,
-                        buttons=event.buttons,
-                    )
-                # TODO: hover elements
-                for elem in root.iter_desc():
-                    hover = elem in collisions
-                    if elem.hover and not hover:
-                        # mouseleave
-                        pass
-                    elif not elem.hover and hover:
-                        # mouseenter
-                        pass
-                    elem.hover = hover
-
+                await self.release_event(
+                    "mousemove",
+                    target=hov_elem,
+                    pos=_pos,
+                    mods=self.mods,
+                    buttons=event.buttons,
+                )
                 # if not self.drag and self.mouse_down:
                 #     # TODO: get the first draggable element colliding with the mouse
                 #     self.drag = (self.mouse_down, None)
             elif event.type == pg.MOUSEWHEEL:
                 # TODO: What is flipped?
-                for elem in collisions:
-                    await self.release_event(
-                        "wheel",
-                        target=elem,
-                        pos=_pos,
-                        mods=self.mods,
-                        buttons=self.buttons,
-                        delta=(event.x, event.y),
-                    )
-                # TODO: emit the scroll event on the first scollable element
+                await self.release_event(
+                    "wheel",
+                    target=hov_elem,
+                    pos=_pos,
+                    mods=self.mods,
+                    buttons=self.buttons,
+                    delta=(event.x, event.y),
+                )
+                # TODO: emit the scroll event on the first scrollable element
             ########################## Keyboard Events ############################################
             # For KeyEvents https://w3c.github.io/uievents/#idl-keyboardevent
             # key: Which key was pressed (str). default "" # just like pg.Event.unicode or "Shift" or "Dead" for example when pressing `
@@ -333,36 +324,23 @@ class EventManager:
         __callback: Callback,
         __repeat: int = -1,
         target: None | Element.Element = None,
+        path: None | str = None,
     ):
         """
         Register a callback to be called when the events of type __type occur.
         It will be called __repeat many times or infinite times if < 0.
         Also you can give a target to attach to the event.
         The callback will only be called when the target matches the specified
+        if you want to hook into a file-modified event set path to the path that
+        should be observed.
         """
+        __type = __type.lower()
         _target = target if target is not None else g["root"]
         if __repeat:
-            self.callbacks[__type.lower()][_target].append((__callback, __repeat))
-
-
-# @dataclass
-# class Key:
-#     key: int
-#     modifiers: list[int] = field(default_factory=list)
-
-
-# class Keys:
-#     keys: set[Key]
-
-#     def __init__(self, any: Any):
-#         if isinstance(any, int):
-#             self.keys = {Key(int)}
-#         elif isinstance(any, Key):
-#             self.keys = {any}
-#         elif isinstance(any, Iterable):
-#             self.keys = set(any)
-#         elif isinstance(any, str):
-#             self.keys = self.from_string(any)
-
-#     def from_string(s: str) -> set[Key]:
-#         """ """
+            self.callbacks[__type][target] = [*self.callbacks[__type].get(_target, []), (__callback, __repeat)]
+        if __type == "file-modified":
+            if path is None:
+                raise ValueError(
+                    "You must set path when hooking into a file-modified event"
+                )
+            g["file_watcher"].add_file(path)
