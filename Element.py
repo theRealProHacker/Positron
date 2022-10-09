@@ -22,7 +22,7 @@ import Style
 from config import add_sheet, g, watch_file
 from own_types import (Auto, AutoLP4Tuple, AutoType, Color, Coordinate,
                        DisplayType, Drawable, Element_P, Float4Tuple, Font,
-                       FontStyle, Length, Number, Percentage, Radii, Rect,
+                       FontStyle, Leaf_P, Length, Number, Percentage, Radii, Rect,
                        Surface, Vector2)
 from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys,
                    calculator, get_style, has_prio, inset_getter, is_custom,
@@ -157,12 +157,15 @@ class Element(Element_P):
     inline_items: list[InlineItem]  # only if layout_type is "inline"
     # Dynamic states https://html.spec.whatwg.org/multipage/semantics-other.html#pseudo-classes
     @property
-    def active(self)->bool:
+    def active(self) -> bool:
         return self is g["event_manager"].active
+
     focus: bool = False
+
     @property
-    def hover(self)->bool:
+    def hover(self) -> bool:
         return self is g["event_manager"].hover
+
     defined: bool = True
 
     @property
@@ -183,12 +186,15 @@ class Element(Element_P):
     invalid: bool = False
     required: bool = False
     optional: bool = False
+
     @property
     def first_child(self):
         return self.parent and self.parent.children and self.parent.children[0] is self
+
     @property
     def last_child(self):
         return self.parent and self.parent.children and self.parent.children[-1] is self
+
     @property
     def only_child(self):
         return self.parent and len(self.parent.children) == 1
@@ -852,7 +858,7 @@ class BrElement(ReplacedElement):
         pass
 
 
-class TextElement:
+class TextElement(Leaf_P):
     """Special element that represents any raw text"""
 
     text: str

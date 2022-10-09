@@ -108,13 +108,13 @@ async def main(route: str):
                 await util.call(event.callback, **event.kwargs)
                 g["route"] = event.url
                 if event.target:
-                    elem = SingleJ("#"+event.target)
+                    elem = SingleJ("#" + event.target)
                 logging.info(f"Going To: {event.url!r}")
                 # get the title
                 title: str | None = None
-                for elem in SingleJ("head")._elem.children:
-                    if elem.tag == "title":
-                        title = elem.text
+                for head_elem in SingleJ("head")._elem.children:
+                    if head_elem.tag == "title":
+                        title = head_elem.text
                 if title is not None:
                     pg.display.set_caption(title)
                 # get the icon

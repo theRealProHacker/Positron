@@ -829,19 +829,22 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
     "outline-style": BorderStyleAttr,
     "outline-color": BorderColorAttr,
     "outline-offset": StyleAttr("0", acc=length),
-    "cursor": StyleAttr("auto", {
-        "auto": pg.cursors.Cursor(),
-        # TODO: "none"
-        "default":pg.cursors.Cursor(),
-        "pointer": pg.cursors.arrow,
-        "text": pg.cursors.Cursor(pg.SYSTEM_CURSOR_IBEAM),
-        "wait": pg.cursors.Cursor(pg.SYSTEM_CURSOR_WAIT),
-        "crosshair": pg.cursors.Cursor(pg.SYSTEM_CURSOR_CROSSHAIR),
-        "move": pg.cursors.Cursor(pg.SYSTEM_CURSOR_SIZEALL),
-        "grab": pg.cursors.Cursor(pg.SYSTEM_CURSOR_HAND),
-        # "zoom-in": pg.cursors.Cursor(pg.SYSTEM),
-        # "zoom-out": pg.cursors.Cursor(pg.SYSTEM_CURSOR_HAND),
-    })
+    "cursor": StyleAttr(
+        "auto",
+        {
+            "auto": pg.cursors.Cursor(),
+            # TODO: "none"
+            "default": pg.cursors.Cursor(),
+            "pointer": pg.cursors.arrow,
+            "text": pg.cursors.Cursor(pg.SYSTEM_CURSOR_IBEAM),
+            "wait": pg.cursors.Cursor(pg.SYSTEM_CURSOR_WAIT),
+            "crosshair": pg.cursors.Cursor(pg.SYSTEM_CURSOR_CROSSHAIR),
+            "move": pg.cursors.Cursor(pg.SYSTEM_CURSOR_SIZEALL),
+            "grab": pg.cursors.Cursor(pg.SYSTEM_CURSOR_HAND),
+            # "zoom-in": pg.cursors.Cursor(pg.SYSTEM),
+            # "zoom-out": pg.cursors.Cursor(pg.SYSTEM_CURSOR_HAND),
+        },
+    ),
 }
 
 abs_default_style: dict[str, str] = {

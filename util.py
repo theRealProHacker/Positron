@@ -197,11 +197,12 @@ def consume_dict(d: dict[K_T, V_T]):
     while d:
         yield d.popitem()
 
+
 V_T2 = TypeVar("V_T2")
-def map_dvals(d: dict[K_T, V_T], func: Callable[[V_T],V_T2])->dict[K_T, V_T2]:
-    return {
-        k: func(v) for k,v in d.items()
-    }
+
+
+def map_dvals(d: dict[K_T, V_T], func: Callable[[V_T], V_T2]) -> dict[K_T, V_T2]:
+    return {k: func(v) for k, v in d.items()}
 
 
 # tuple mutations

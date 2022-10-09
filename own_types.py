@@ -11,7 +11,7 @@ from operator import or_
 
 # fmt: off
 from typing import (Any, Generator, Generic, Hashable, Iterable, Literal,
-                    Mapping, Protocol, TypeVar, Union)
+                    Mapping, Protocol, Sequence, TypeVar, Union)
 # fmt: on
 from weakref import WeakValueDictionary
 
@@ -65,6 +65,10 @@ class Drawable(Protocol):
         pass
 
 
+class Leaf_P(Protocol):
+    parent: Element_P
+
+
 class Element_P(Protocol):
     """
     A Protocol that just represents an Element
@@ -73,6 +77,8 @@ class Element_P(Protocol):
     tag: str
     attrs: dict[str, Any]
     parent: Element_P | None
+    children: Sequence[Element_P | Leaf_P]
+
     def iter_anc(self) -> Iterable[Element_P]:
         ...
 

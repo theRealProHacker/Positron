@@ -180,7 +180,7 @@ class CompositeSelector(Selector):
     def __call__(self, elem: Element_P) -> bool:
         ...
 
-    def __str__ (self): 
+    def __str__(self):
         return self.delim.join(str(s) for s in self.selectors)
 
 
@@ -201,7 +201,8 @@ class OrSelector(CompositeSelector):
     selectors: tuple[Selector, ...]
     spec = cached_property(joined_specs)
     delim = ", "
-    def __call__(self, elem): 
+
+    def __call__(self, elem):
         return any(sel(elem) for sel in self.selectors)
 
 
@@ -230,6 +231,7 @@ class ChildSelector(CompositeSelector):
             return False
         return any(p_sel(p) for p in elem.iter_anc())
 
+
 @dataclass(frozen=True, slots=True)
 class SubseqeuntSiblingSelector(CompositeSelector):
     selectors: tuple[Selector, Selector]
@@ -246,19 +248,20 @@ class SubseqeuntSiblingSelector(CompositeSelector):
                 return True
         return False
 
+
 @dataclass(frozen=True, slots=True)
 class NextSiblingSelector(CompositeSelector):
     selectors: tuple[Selector, Selector]
     delim = " + "
+
     def call(self, elem: Element_P):
         sib_sel, e_sel = self.selectors
         if not elem.parent or not e_sel(elem):
             return False
         elem_index = find_index(elem.parent.children, lambda x: x is elem)
         if elem_index:
-            return sib_sel(elem.parent.children[elem_index-1])
+            return sib_sel(elem.parent.children[elem_index - 1])
         return False
-
 
 
 ########################################## Parser #######################################################
@@ -334,7 +337,9 @@ def parse_selector(s: str) -> Selector:
                     case "+":
                         return NextSiblingSelector((parse_selector(s), sngl_selector))
                     case "~":
-                        return SubseqeuntSiblingSelector((parse_selector(s), sngl_selector))
+                        return SubseqeuntSiblingSelector(
+                            (parse_selector(s), sngl_selector)
+                        )
                     case _:
                         raise BugError(f"Invalid relative selector ({rel})")
             else:

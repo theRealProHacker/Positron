@@ -141,7 +141,7 @@ class EventManager:
     def __init__(self):
         self.callbacks = defaultdict(WeakKeyDictionary)
 
-    def change(self, name: str, value: Any)->bool:
+    def change(self, name: str, value: Any) -> bool:
         if getattr(self, name) == value:
             return True
         else:
@@ -337,7 +337,10 @@ class EventManager:
         __type = __type.lower()
         _target = target if target is not None else g["root"]
         if __repeat:
-            self.callbacks[__type][target] = [*self.callbacks[__type].get(_target, []), (__callback, __repeat)]
+            self.callbacks[__type][_target] = [
+                *self.callbacks[__type].get(_target, []),
+                (__callback, __repeat),
+            ]
         if __type == "file-modified":
             if path is None:
                 raise ValueError(
