@@ -29,6 +29,7 @@ g: dict[str, Any] = {
     "key_repeat": 0,                # float
     "zoom": 1,                      # float
     "FPS": 60,                      # float
+    "jinja_env": None,              # The global jinja Environment
     # reserved
     "root": None,                   # the root HTMLElement
     "route": "",                    # the current route
@@ -37,9 +38,9 @@ g: dict[str, Any] = {
     "aiosession": None,             # aiohttp.ClientSession
     "screen": None,                 # pg.Surface
     "default_task": None,           # util.Task
-    "tasks": []                     # list of tasks that are started in synchronous functions
+    "tasks": [],                    # list of tasks that are started in synchronous functions
+    "visited_links": {}             # dict[str, Literal["browser", "internal", "invalid"]]
 }
-
 # fmt: on
 
 

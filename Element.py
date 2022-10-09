@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-import webbrowser
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import cache, partial
@@ -23,12 +22,12 @@ import Style
 from config import add_sheet, g, watch_file
 from own_types import (Auto, AutoLP4Tuple, AutoType, Color, Coordinate,
                        DisplayType, Drawable, Element_P, Float4Tuple, Font,
-                       FontStyle, Length, Number, Percentage, Radii, Rect,
+                       FontStyle, Leaf_P, Length, Number, Percentage, Radii, Rect,
                        Surface, Vector2)
 from Style import (SourceSheet, bc_getter, br_getter, bs_getter, bw_keys,
                    calculator, get_style, has_prio, inset_getter, is_custom,
                    pack_longhands, parse_file, parse_sheet)
-from util import (GeneralParser, create_task, draw_text, group_by_bool,
+from util import (GeneralParser, create_task, draw_text, goto, group_by_bool,
                   log_error, make_default)
 
 # fmt: on
@@ -154,13 +153,51 @@ class Element(Element_P):
     display: DisplayType
     layout_type: DisplayType
     position: str
-    # Dynamic states
-    active: bool = False
-    focus: bool = False
-    hover: bool = False
-    visited: bool = False  # <a>
     # Not always present
     inline_items: list[InlineItem]  # only if layout_type is "inline"
+    # Dynamic states https://html.spec.whatwg.org/multipage/semantics-other.html#pseudo-classes
+    @property
+    def active(self) -> bool:
+        return self is g["event_manager"].active
+
+    focus: bool = False
+
+    @property
+    def hover(self) -> bool:
+        return self is g["event_manager"].hover
+
+    defined: bool = True
+
+    @property
+    def empty(self) -> bool:
+        return not self.children and self.text.isspace()
+
+    # <a>, <area>
+    visited: bool = False
+    link: bool = False
+    all_link: bool = False  # TODO: do we really need this? Isn't `[href]` sufficient?
+    # input elements and their associated form elements
+    enabled: bool = False
+    disabled: bool = False
+    checked: bool = False
+    blank: bool = False
+    placeholder_shown: bool = False
+    valid: bool = False
+    invalid: bool = False
+    required: bool = False
+    optional: bool = False
+
+    @property
+    def first_child(self):
+        return self.parent and self.parent.children and self.parent.children[0] is self
+
+    @property
+    def last_child(self):
+        return self.parent and self.parent.children and self.parent.children[-1] is self
+
+    @property
+    def only_child(self):
+        return self.parent and len(self.parent.children) == 1
 
     def __init__(self, tag: str, attrs: dict[str, str], parent: Element | None):
         self.tag = tag
@@ -168,6 +205,13 @@ class Element(Element_P):
         self.children = []
         self.parent = parent
         self.istyle = Style.parse_inline_style(attrs.get("style", ""))
+
+    def set_attr(self, name: str, value: str):
+        self.attrs[name] = value
+        if name == "style":
+            self.istyle = Style.parse_inline_style(value)
+        elif name in ("id", "class"):
+            pass  # TODO: add and remove element to and from the global map
 
     ####################################  Main functions ######################################################
     def collide(self, pos: Coordinate) -> Element | None:
@@ -596,18 +640,32 @@ class HTMLElement(Element):
 
 
 class AnchorElement(Element):
-    def on_click(self):
-        # TODO: respect other aspects like target
-        # TODO: goto
-        if href := self.attrs.get("href"):
-            if not webbrowser.get().open_new_tab(href):
-                import main
+    @property
+    def link(self):
+        return (href := self.attrs.get("href")) and href not in g["visited_links"]
 
-                main.goto(href)
-            else:
-                self.visited = True
+    @property
+    def visited(self):
+        # XXX: is not `not self.link`
+        return (href := self.attrs.get("href")) and href in g["visited_links"]
+
+    @property
+    def all_link(self):
+        return "href" in self.attrs
+
+    def on_click(self):
+        # TODO: respect other aspects like target?
+        if href := self.attrs.get("href"):
+            goto(href)
         else:
-            log_error("Empty href")
+            log_error("Anchor without href clicked")
+
+    def on_auxclick(self):
+        # Always new tab?
+        if href := self.attrs.get("href"):
+            goto(href)
+        else:
+            log_error("Anchor without href alt-clicked")
 
     def on_drag_start(self):
         pass
@@ -615,7 +673,7 @@ class AnchorElement(Element):
 
 class MetaElement(Element):
     """
-    A MetaElement is a Element thats sole purpose is conveying information
+    A MetaElement is an Element thats sole purpose is conveying information
     to the runtime and is not for display or interaction.
     It has no style, the display is "none"
 
@@ -794,9 +852,13 @@ class BrElement(ReplacedElement):
 
     def layout(self, given_width):
         self.box = Box.Box("content-box", width=given_width, height=self.line_height)
+        self.inline_items = [TextDrawItem("\n", self)]
+
+    def draw(self, *args):
+        pass
 
 
-class TextElement:
+class TextElement(Leaf_P):
     """Special element that represents any raw text"""
 
     text: str

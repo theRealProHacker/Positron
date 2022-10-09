@@ -12,6 +12,7 @@ from operator import add, itemgetter, mul, sub, truediv
 from typing import (Any, Callable, Generic, Iterable, Literal, Mapping,
                     Protocol, TypeVar, Union, cast, overload)
 
+import pygame as pg
 import tinycss
 import tinycss.token_data
 
@@ -27,8 +28,8 @@ from own_types import (CO_T, V_T, Angle, Auto, AutoLP, AutoType, BugError,
                        frozendict)
 from util import (GeneralParser, consume_list, fetch_txt, find_index,
                   get_groups, group_by_bool, hsl2rgb, hwb2rgb, in_bounds,
-                  log_error, make_default, noop, print_once, re_join,
-                  tup_replace)
+                  log_error, make_default, noop, print_once,
+                  re_join, tup_replace)
 
 # fmt: on
 
@@ -828,6 +829,22 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
     "outline-style": BorderStyleAttr,
     "outline-color": BorderColorAttr,
     "outline-offset": StyleAttr("0", acc=length),
+    "cursor": StyleAttr(
+        "auto",
+        {
+            "auto": pg.cursors.Cursor(),
+            # TODO: "none"
+            "default": pg.cursors.Cursor(),
+            "pointer": pg.cursors.arrow,
+            "text": pg.cursors.Cursor(pg.SYSTEM_CURSOR_IBEAM),
+            "wait": pg.cursors.Cursor(pg.SYSTEM_CURSOR_WAIT),
+            "crosshair": pg.cursors.Cursor(pg.SYSTEM_CURSOR_CROSSHAIR),
+            "move": pg.cursors.Cursor(pg.SYSTEM_CURSOR_SIZEALL),
+            "grab": pg.cursors.Cursor(pg.SYSTEM_CURSOR_HAND),
+            # "zoom-in": pg.cursors.Cursor(pg.SYSTEM),
+            # "zoom-out": pg.cursors.Cursor(pg.SYSTEM_CURSOR_HAND),
+        },
+    ),
 }
 
 abs_default_style: dict[str, str] = {

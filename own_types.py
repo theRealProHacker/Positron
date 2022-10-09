@@ -10,8 +10,8 @@ from functools import reduce
 from operator import or_
 
 # fmt: off
-from typing import (TYPE_CHECKING, Any, Generator, Generic, Hashable, Iterable, Literal,
-                    Mapping, Optional, Protocol, TypeVar, Union, overload)
+from typing import (Any, Generator, Generic, Hashable, Iterable, Literal,
+                    Mapping, Protocol, Sequence, TypeVar, Union)
 # fmt: on
 from weakref import WeakValueDictionary
 
@@ -55,14 +55,18 @@ CO_T = TypeVar("CO_T", covariant=True)
 LOADPAGE = pg.event.custom_type()
 
 
-def loadpage_event(route: str):
-    return Event(LOADPAGE, route=route)
+def loadpage_event(**kwargs):
+    return Event(LOADPAGE, **kwargs)
 
 
 ############################ Some Classes ##############################
 class Drawable(Protocol):
     def draw(self, surf: Surface, pos: Coordinate):
         pass
+
+
+class Leaf_P(Protocol):
+    parent: Element_P
 
 
 class Element_P(Protocol):
@@ -73,6 +77,7 @@ class Element_P(Protocol):
     tag: str
     attrs: dict[str, Any]
     parent: Element_P | None
+    children: Sequence[Element_P | Leaf_P]
 
     def iter_anc(self) -> Iterable[Element_P]:
         ...

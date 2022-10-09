@@ -1,4 +1,3 @@
-
 [![Join the chat at https://gitter.im/Positron-Contributors/community](https://badges.gitter.im/Positron-Contributors/community.svg)](https://gitter.im/Positron-Contributors/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 ![Github CI workflow badge](https://github.com/theRealProHacker/Positron/actions/workflows/run-test.yml/badge.svg)
@@ -12,11 +11,11 @@
 When you use Python and you want to visualize something you have following routes:
 1. `tkinter` or other GUI libraries like `QT`
 2. `matplotlib`
-3. Creating an HTML file and opening it in the system browser. 
+3. Creating an HTML file and opening it in the default browser. 
 
 If you however want to have the feel of a real system application then you will need to use a "real" GUI library. An alternative is using Electron that calls python code. However, the problems of Electron are well known. 
 
-Specifically, Electron creates a server and a Chromium client that communicate per IPC. This makes Electron both relatively slow and also it uses **huge** amounts of memory. Apps that use Electron like VSCode or Discord pretty quickly add up to GBs of RAM usage. 4GB vanish quickly when you for example have 2 Browsers and 2 Electron apps open. When the os has little RAM left it will start swapping RAM in and out of disk and this will make your whole computer lag a lot.
+Specifically, Electron creates a server and a Chromium client that communicate per IPC. This makes Electron both relatively slow and also it uses **huge** amounts of memory. Apps that use Electron like VSCode or Discord pretty quickly add up to GBs of RAM usage. 4GB vanish quickly when you for example have 2 Browsers and 2 Electron apps open. When the OS has little RAM left it will start swapping RAM in and out of disk and this will make your whole computer lag a lot.
 
 Also, Electron has pretty slow load times. If you start any other regular app (a Flutter app for example), it seems like it opens almost instantly. However, Electron takes a few seconds to load and it really becomes obvious to the user. 
 
@@ -134,6 +133,8 @@ To achieve asynchronous code you need two methods:
 - Profiling: 
     - https://www.youtube.com/watch?v=m_a0fN48Alw
     - https://pythonspot.com/python-profiling/
+- Text Search (Ctrl+F)
+- [`alpine.js`](https://alpinejs.dev/) port
 
 ## Use less RegEx
 Many consider regular expressions to be the best thing if it comes to text processing. 
@@ -173,6 +174,7 @@ For exampe you could use a `GeneralParser`, which is an easy way to tokenize a s
 - Coming: `mouseleave`/`mouseout` and `mouseenter`/`mouseover`
 
 ## Keyboard Events
+TODO
 - keydown:
     - 
 - keyup:
@@ -185,8 +187,6 @@ Window Events only fire on the html element/the document. So call them by doing 
     - size = (width,height)
 - All other pygame events (except for `WINDOWRESIZED`) lowercased.  
 The arguments of the event are copied from pygame, so look into the [documentation](https://www.pygame.org/docs/ref/event.html)
-
-# CSS
 
 ## Documented differences to the specifications
 

@@ -58,3 +58,4 @@ These specify the attributes with their types and constraints. Every computed ty
 - word-spacing: 
     - From: `length-percentage`, `normal`
     - To: `Length` or `Percentage` or `Auto` or `BinOp`
+- cursor: a pygame.cursors.Cursor
