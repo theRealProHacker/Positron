@@ -89,3 +89,15 @@ Here again we use ordering. We start with the #navbar because it's an `IdSelecto
 If you master all of these difficulties you will eventually get faster Selector matching. 
 
 Until someone comes with `* * * * * * * * * * * * * *` (all Elements at least 14 levels deep) or something similarly disturbing. 
+
+# [Pseudoclasses](https://drafts.csswg.org/selectors/#pseudo-classes)
+
+Pseudoclasses are classes of the form `:pseudoclass` and they are currently implemented followingly:
+
+The selector `StateSelector("pseudoclass")` matches exactly all elements that have an attribute `pseudoclass` that is also set to True. `-` is replaced with `_` as almost always when converting identifiers from css to Python. 
+
+So called functional pseudoclasses are not supported yet. They look like a regular css function prepended with a `:`.
+Examples are `nth-child` or `is`. 
+
+Instead of having `nth-last-child(x)` in this pythonic environment you should write `nth-child(-x)`.  
+`nth-child(0)` never matches/is invalid
