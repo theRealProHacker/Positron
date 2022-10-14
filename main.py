@@ -231,4 +231,4 @@ def nextpage():
 
 
 if __name__ == "__main__":
-    asyncio.run(run("/#link""/#link"))
+    asyncio.run(run("/#link" "/#link"))
