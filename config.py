@@ -55,7 +55,7 @@ async def set_mode():
         if await _icon.loading_task is not None:
             pg.display.set_icon(_icon.surf)
     # Display Mode
-    flags = pg.SCALED | pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
+    flags = pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
     g["screen"] = pg.display.set_mode((g["W"], g["H"]), flags)
     # Screen Saver
     pg.display.set_allow_screensaver(g["allow_screen_saver"])
