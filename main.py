@@ -18,12 +18,14 @@ with open(os.devnull, "w") as f, redirect_stdout(f):
 
 import aiohttp
 import jinja2
+import jinja2
 
 import Element
 import Media
 import Style
 import util
-from config import default_style_sheet, g, set_mode
+from config import default_style_sheet, default_style_sheet, g, set_mode
+from EventManager import EventManager
 from EventManager import EventManager
 from J import J, SingleJ  # for console
 from own_types import LOADPAGE, FrozenDCache, Event
@@ -43,11 +45,13 @@ default_sheet = Style.parse_sheet(default_style_sheet)
 def _reset_config():
     # all of this is route specific
     # TODO: split cstyles into two styles. inherited and not inherited
-    # css_sheets = Cache[Style.SourceSheet]()
+    # # css_sheets = Cache[Style.SourceSheet]()
+    css_sheets = WeakSet[Style.SourceSheet]()
     css_sheets = WeakSet[Style.SourceSheet]()
     css_sheets.add(default_sheet)
     g.update(
         {
+            "target": None,  # the target of the url fragment
             "target": None,  # the target of the url fragment
             "icon_srcs": [],  # list[str] specified icon srcs
             # css
@@ -69,7 +73,7 @@ def e(q: str):
 
 async def Console():
     """
-    The Console takes input asynchronously and executes it. For debugging purposes only
+    The Console takes input asynchhronously and executes it. For debugging purposes only
     """
     while True:
         try:
@@ -189,6 +193,7 @@ async def run(route: str = "/"):
 add_route = util.add_route
 goto = util.goto
 reload = util.reload
+reload = util.reload
 
 
 def load_dom(file: str):
@@ -226,4 +231,4 @@ def nextpage():
 
 
 if __name__ == "__main__":
-    asyncio.run(run("/#link"))
+    asyncio.run(run("/#link""/#link"))
