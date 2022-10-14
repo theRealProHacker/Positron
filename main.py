@@ -22,6 +22,7 @@ import jinja2
 
 import Element
 import Media
+import Selector
 import Style
 import util
 from config import default_style_sheet, default_style_sheet, g, set_mode
@@ -113,7 +114,7 @@ async def main(route: str):
         if event is not None:
             g["route"] = event.url
             if event.target:
-                with suppress(RuntimeError):
+                with suppress(Selector.InvalidSelector):
                     g["target"] = SingleJ("#" + event.target)._elem
             logging.info(f"Going To: {event.url!r}")
             # get the title
@@ -193,7 +194,6 @@ async def run(route: str = "/"):
 add_route = util.add_route
 goto = util.goto
 reload = util.reload
-reload = util.reload
 
 
 def load_dom(file: str):
@@ -231,4 +231,4 @@ def nextpage():
 
 
 if __name__ == "__main__":
-    asyncio.run(run("/#link" "/#link"))
+    asyncio.run(run("/#link"))
