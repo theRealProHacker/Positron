@@ -18,15 +18,17 @@ with open(os.devnull, "w") as f, redirect_stdout(f):
 
 import aiohttp
 import jinja2
+import jinja2
 
 import Element
 import Media
 import Style
 import util
-from config import default_style_sheet, g, set_mode
+from config import default_style_sheet, default_style_sheet, g, set_mode
+from EventManager import EventManager
 from EventManager import EventManager
 from J import J, SingleJ  # for console
-from own_types import LOADPAGE, FrozenDCache
+from own_types import LOADPAGE, FrozenDCache, Event
 from parse_html import parse_dom
 
 # setup
@@ -43,11 +45,13 @@ default_sheet = Style.parse_sheet(default_style_sheet)
 def _reset_config():
     # all of this is route specific
     # TODO: split cstyles into two styles. inherited and not inherited
-    # css_sheets = Cache[Style.SourceSheet]()
+    # # css_sheets = Cache[Style.SourceSheet]()
+    css_sheets = WeakSet[Style.SourceSheet]()
     css_sheets = WeakSet[Style.SourceSheet]()
     css_sheets.add(default_sheet)
     g.update(
         {
+            "target": None,  # the target of the url fragment
             "target": None,  # the target of the url fragment
             "icon_srcs": [],  # list[str] specified icon srcs
             # css
@@ -69,7 +73,7 @@ def e(q: str):
 
 async def Console():
     """
-    The Console takes input asynchronously and executes it. For debugging purposes only
+    The Console takes input asynchhronously and executes it. For debugging purposes only
     """
     while True:
         try:
@@ -95,34 +99,38 @@ async def main(route: str):
     while True:
         if pg.event.peek(pg.QUIT):
             return
-        elif load_events := pg.event.get(LOADPAGE):
+        event: Event | None = None
+        while load_events := pg.event.get(LOADPAGE):
+            event = load_events[-1]
+            _reset_config()
             try:
-                event = load_events[-1]
-                _reset_config()
                 await util.call(event.callback, **event.kwargs)
-                g["route"] = event.url
-                if event.target:
-                    with suppress(RuntimeError):
-                        g["target"] = SingleJ("#" + event.target)._elem
-                logging.info(f"Going To: {event.url!r}")
-                # get the title
-                title: str | None = None
-                for head_elem in SingleJ("head")._elem.children:
-                    if head_elem.tag == "title":
-                        title = head_elem.text
-                if title is not None:
-                    pg.display.set_caption(title)
-                # get the icon
-                if _icon_srcs := g["icon_srcs"]:
-                    _icon: Media.Image = Media.Image(_icon_srcs)
-                    await _icon.loading_task
-                    if _icon.is_loaded:
-                        pg.display.set_icon(_icon.surf)
-                        _icon.unload()
             except Exception as e:
-                util.log_error(e)
+                util.log_error(f"Error in event route ({event.url!r})", e)
+                event = None
                 # TODO: do something cool like a 404 page, showing the user how to contact the developer
                 raise
+        if event is not None:
+            g["route"] = event.url
+            if event.target:
+                with suppress(RuntimeError):
+                    g["target"] = SingleJ("#" + event.target)._elem
+            logging.info(f"Going To: {event.url!r}")
+            # get the title
+            title: str | None = None
+            for head_child in SingleJ("head")._elem.children:
+                if head_child.tag == "title":
+                    title = head_child.text
+            if title is not None:
+                pg.display.set_caption(title)
+            # get the icon
+            if _icon_srcs := g["icon_srcs"]:
+                _icon: Media.Image = Media.Image(_icon_srcs)
+                await _icon.loading_task
+                if _icon.is_loaded:
+                    pg.display.set_icon(_icon.surf)
+                    _icon.unload()
+
         root = g["root"]
         screen: pg.Surface = g["screen"]
         event_manager: EventManager = g["event_manager"]
@@ -185,6 +193,7 @@ async def run(route: str = "/"):
 add_route = util.add_route
 goto = util.goto
 reload = util.reload
+reload = util.reload
 
 
 def load_dom(file: str):
@@ -222,4 +231,4 @@ def nextpage():
 
 
 if __name__ == "__main__":
-    asyncio.run(run("/#link"))
+    asyncio.run(run("/#link" "/#link"))

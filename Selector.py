@@ -231,6 +231,7 @@ class ChildSelector(CompositeSelector):
             return False
         return any(p_sel(p) for p in elem.iter_anc())
 
+
 @dataclass(frozen=True, slots=True)
 class SubseqeuntSiblingSelector(CompositeSelector):
     selectors: tuple[Selector, Selector]
