@@ -976,7 +976,6 @@ class BrElement(ReplacedElement):
     def layout(self, given_width):
         self.box = Box.Box("content-box", width=given_width, height=self.line_height)
         self.inline_items = [TextDrawItem("", self)]
-
     def draw(self, *args):
         pass
 

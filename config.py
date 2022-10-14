@@ -21,6 +21,7 @@ g: dict[str, Any] = {
     "key_repeat": 30,               # int in ms
     # "zoom": 1,                      # float
     "FPS": 60,                      # float
+    "jinja_env": None,              # The global jinja Environment
     # reserved
     "root": None,                   # the root HTMLElement
     "route": "",                    # the current route

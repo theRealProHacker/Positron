@@ -28,8 +28,8 @@ from own_types import (CO_T, V_T, Angle, Auto, AutoLP, AutoType, BugError,
                        Time, frozendict)
 from util import (GeneralParser, consume_list, fetch_txt, find_index,
                   get_groups, group_by_bool, hsl2rgb, hwb2rgb, in_bounds,
-                  log_error, make_default, noop, print_once, re_join,
-                  tup_replace)
+                  log_error, make_default, noop, print_once,
+                  re_join, tup_replace)
 
 # fmt: on
 
