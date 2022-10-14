@@ -239,9 +239,10 @@ class SubseqeuntSiblingSelector(CompositeSelector):
 
     def call(self, elem: Element_P):
         sib_sel, e_sel = self.selectors
-        if not elem.parent or not e_sel(elem):
+        if not e_sel(elem):
             return False
-        for sibling in elem.parent.children:
+        siblings = [*elem.iter_siblings()]
+        for sibling in siblings:
             if sibling is elem:
                 return False
             elif sib_sel(elem):
@@ -256,13 +257,16 @@ class NextSiblingSelector(CompositeSelector):
 
     def call(self, elem: Element_P):
         sib_sel, e_sel = self.selectors
-        if not elem.parent or not e_sel(elem):
+        if not e_sel(elem):
             return False
-        elem_index = find_index(elem.parent.children, lambda x: x is elem)
+        siblings = [*elem.iter_siblings()]
+        elem_index = find_index(siblings, lambda x: x is elem)
         if elem_index:
-            return sib_sel(elem.parent.children[elem_index - 1])
+            return sib_sel(siblings[elem_index - 1])
         return False
 
+
+# IDEA: A Within(selector) selector that matches all elements that match the selector and also the parents of those in the flat tree
 
 ########################################## Parser #######################################################
 s = r"\s*"

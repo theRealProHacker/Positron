@@ -4,63 +4,57 @@ The main file that runs the browser
 import asyncio
 import logging
 import os
-from contextlib import redirect_stdout
-
-from EventManager import EventManager
-from own_types import LOADPAGE, Cache, FrozenDCache
+from contextlib import redirect_stdout, suppress
+from weakref import WeakSet
 
 uses_aioconsole = True
 try:
     import aioconsole
 except ImportError:
     uses_aioconsole = False
-from parse_html import parse_dom
 
 with open(os.devnull, "w") as f, redirect_stdout(f):
     import pygame as pg
 
 import aiohttp
+import jinja2
 
 import Element
 import Media
 import Style
 import util
-from config import g, set_mode
+from config import default_style_sheet, g, set_mode
+from EventManager import EventManager
 from J import J, SingleJ  # for console
+from own_types import LOADPAGE, FrozenDCache
+from parse_html import parse_dom
 
 # setup
 pg.init()
-pg.key.start_text_input()
 logging.basicConfig(level=logging.INFO)
 
 CLOCK = pg.time.Clock()
 DEBUG = True
 uses_aioconsole &= DEBUG
-default_sheet = Style.parse_sheet(
-    """
-a:visited{
-    color: purple
-}
-a:active {
-    color: yellow !important;
-}
-"""
-)
+# TODO: find a better way for applying style to elements depending on their state
+default_sheet = Style.parse_sheet(default_style_sheet)
 
 
 def _reset_config():
     # all of this is route specific
     # TODO: split cstyles into two styles. inherited and not inherited
-    css_sheets = Cache[Style.SourceSheet]()
+    # css_sheets = Cache[Style.SourceSheet]()
+    css_sheets = WeakSet[Style.SourceSheet]()
     css_sheets.add(default_sheet)
     g.update(
         {
+            "target": None,  # the target of the url fragment
             "icon_srcs": [],  # list[str] specified icon srcs
             # css
             "recompute": True,  # bool
             "cstyles": FrozenDCache(),  # FrozenDCache[computed_style] # the style cache
             "css_sheets": css_sheets,  # a list of used css SourceSheets
-            "css_dirty": False,  # bool
+            "css_dirty": True,  # bool
             "css_sheet_len": 1,  # int
         }
     )
@@ -75,7 +69,7 @@ def e(q: str):
 
 async def Console():
     """
-    The Console takes input asyncronously and executes it. For debugging purposes only
+    The Console takes input asynchronously and executes it. For debugging purposes only
     """
     while True:
         try:
@@ -108,7 +102,8 @@ async def main(route: str):
                 await util.call(event.callback, **event.kwargs)
                 g["route"] = event.url
                 if event.target:
-                    elem = SingleJ("#" + event.target)
+                    with suppress(RuntimeError):
+                        g["target"] = SingleJ("#" + event.target)._elem
                 logging.info(f"Going To: {event.url!r}")
                 # get the title
                 title: str | None = None
@@ -124,8 +119,6 @@ async def main(route: str):
                     if _icon.is_loaded:
                         pg.display.set_icon(_icon.surf)
                         _icon.unload()
-                # await all tasks like style parsing and icon loading in sync mode
-                await util.gather_tasks(g["tasks"])
             except Exception as e:
                 util.log_error(e)
                 # TODO: do something cool like a 404 page, showing the user how to contact the developer
@@ -133,14 +126,12 @@ async def main(route: str):
         root = g["root"]
         screen: pg.Surface = g["screen"]
         event_manager: EventManager = g["event_manager"]
-        # if g["css_dirty"] or g["css_sheet_len"] != len(
-        #     g["css_sheets"]
-        # ):  # addition or subtraction (or both)
-        Element.apply_style()
-        # g["recompute"] = True
-        # if g["recompute"]:
+        await util.gather_tasks(g["tasks"])
+        if g["css_dirty"] or g["css_sheet_len"] != len(g["css_sheets"]):
+            root.apply_style(Style.SourceSheet.join(g["css_sheets"]))
+            g["css_dirty"] = False
+            g["css_sheet_len"] = len(g["css_sheets"])
         root.compute()
-        # g["recompute"] = False
         root.layout()
 
         screen.fill(g["window_bg"])
@@ -167,7 +158,8 @@ async def run(route: str = "/"):
     g["file_watcher"] = util.FileWatcher()
     g["event_manager"] = EventManager()
     g["aiosession"] = aiohttp.ClientSession()
-    g["jinja_env"] = None  # TODO
+    g["jinja_env"] = jinja2.Environment(loader=jinja2.loaders.FileSystemLoader("."))
+    g["event_loop"] = asyncio.get_running_loop()
     console_task = (
         asyncio.create_task(Console())
         if uses_aioconsole
@@ -192,14 +184,21 @@ async def run(route: str = "/"):
 # Exports
 add_route = util.add_route
 goto = util.goto
+reload = util.reload
 
 
 def load_dom(file: str):
-    g["root"] = parse_dom(util.File(file).read())
+    env: jinja2.Environment = g["jinja_env"]
+    html = env.from_string(util.File(file).read()).render()
+    g["root"] = parse_dom(html)
+    manager: EventManager = g["event_manager"]
+    manager.on("file-modified", reload, path=file)
 
 
 async def aload_dom(url: str):
-    g["root"] = parse_dom(await util.fetch_txt(url))
+    env: jinja2.Environment = g["jinja_env"]
+    html = await env.from_string(await util.fetch_txt(url)).render_async()
+    g["root"] = parse_dom(html)
 
 
 ##### User code ########
@@ -223,4 +222,4 @@ def nextpage():
 
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    asyncio.run(run("/#link"))

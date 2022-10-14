@@ -22,14 +22,14 @@ from config import (abs_angle_units, abs_border_width, abs_font_size,
                     abs_font_weight, abs_length_units, abs_resolution_units,
                     abs_time_units, g, rel_font_size, rel_length_units)
 from own_types import (CO_T, V_T, Angle, Auto, AutoLP, AutoType, BugError,
-                       Color, CompStr, CSSDimension, Drawable, Float4Tuple,
-                       FontStyle, Length, LengthPerc, Number, Percentage,
-                       Resolution, Sentinel, Str4Tuple, StrSent, Time,
-                       frozendict)
+                       Color, CompStr, CSSDimension, Cursor, Drawable,
+                       Float4Tuple, FontStyle, Length, LengthPerc, Number,
+                       Percentage, Resolution, Sentinel, Str4Tuple, StrSent,
+                       Time, frozendict)
 from util import (GeneralParser, consume_list, fetch_txt, find_index,
                   get_groups, group_by_bool, hsl2rgb, hwb2rgb, in_bounds,
-                  log_error, make_default, noop, print_once,
-                  re_join, tup_replace)
+                  log_error, make_default, noop, print_once, re_join,
+                  tup_replace)
 
 # fmt: on
 
@@ -832,17 +832,36 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
     "cursor": StyleAttr(
         "auto",
         {
-            "auto": pg.cursors.Cursor(),
-            # TODO: "none"
-            "default": pg.cursors.Cursor(),
-            "pointer": pg.cursors.arrow,
-            "text": pg.cursors.Cursor(pg.SYSTEM_CURSOR_IBEAM),
-            "wait": pg.cursors.Cursor(pg.SYSTEM_CURSOR_WAIT),
-            "crosshair": pg.cursors.Cursor(pg.SYSTEM_CURSOR_CROSSHAIR),
-            "move": pg.cursors.Cursor(pg.SYSTEM_CURSOR_SIZEALL),
-            "grab": pg.cursors.Cursor(pg.SYSTEM_CURSOR_HAND),
-            # "zoom-in": pg.cursors.Cursor(pg.SYSTEM),
-            # "zoom-out": pg.cursors.Cursor(pg.SYSTEM_CURSOR_HAND),
+            **auto,
+            "default": Cursor(),
+            # TODO: none
+            # TODO: context-menu
+            # TODO: help
+            "pointer": Cursor(pg.SYSTEM_CURSOR_HAND),
+            "progress": Cursor(pg.SYSTEM_CURSOR_WAITARROW),
+            "wait": Cursor(pg.SYSTEM_CURSOR_WAIT),
+            # TODO: cell
+            "crosshair": Cursor(pg.SYSTEM_CURSOR_CROSSHAIR),
+            "text": Cursor(pg.SYSTEM_CURSOR_IBEAM),
+            # TODO: vertical text
+            # TODO: alias, copy
+            "move": Cursor(pg.SYSTEM_CURSOR_SIZEALL),
+            "not-allowed": Cursor(pg.SYSTEM_CURSOR_NO),
+            # TODO: grab, grabbing
+            # TODO: resize
+            "n-resize": Cursor(pg.SYSTEM_CURSOR_SIZENS),
+            "e-resize": Cursor(pg.SYSTEM_CURSOR_SIZEWE),
+            "s-resize": Cursor(pg.SYSTEM_CURSOR_SIZENS),
+            "w-resize": Cursor(pg.SYSTEM_CURSOR_SIZEWE),
+            "ne-resize": Cursor(pg.SYSTEM_CURSOR_SIZENESW),
+            "nw-resize": Cursor(pg.SYSTEM_CURSOR_SIZENWSE),
+            "se-resize": Cursor(pg.SYSTEM_CURSOR_SIZENWSE),
+            "sw-resize": Cursor(pg.SYSTEM_CURSOR_SIZENESW),
+            "ew-resize": Cursor(pg.SYSTEM_CURSOR_SIZEWE),
+            "ns-resize": Cursor(pg.SYSTEM_CURSOR_SIZENS),
+            "nesw-resize": Cursor(pg.SYSTEM_CURSOR_SIZENESW),
+            "nwse-resize": Cursor(pg.SYSTEM_CURSOR_SIZENWSE)
+            # TODO: zoom-in and -out
         },
     ),
 }
@@ -1226,11 +1245,11 @@ def process_property(key: str, value: str) -> list[tuple[str, str]] | CompValue 
         return new_val
 
 
-def process_input(d: list[tuple[str, str]]) -> dict[str, CompValue]:
+def process_input(d: Iterable[tuple[str, str]]) -> dict[str, CompValue]:
     """
     Unpacks shorthands and filters and reports invalid declarations.
     """
-    d = d.copy()
+    d = list(d)
     done: dict[str, CompValue] = {}
     for k, v in consume_list(d):
         try:
@@ -1318,7 +1337,7 @@ def pack_longhands(d: ResolvedStyle | FullyComputedStyle) -> ResolvedStyle:
 element_styles: dict[str, dict[str, str]] = defaultdict(
     dict,
     {
-        k: process_input(list(v.items()))
+        k: process_input(v.items())
         for k, v in {
             "html": {
                 **{k: attr.initial for k, attr in style_attrs.items() if attr.inherits},
@@ -1345,7 +1364,16 @@ element_styles: dict[str, dict[str, str]] = defaultdict(
             "br": {"width": "100%", "height": "1em"},
             "a": {
                 "color": "blue",
+                "cursor": "pointer",
                 # "text-decoration": "underline"
+            },
+            "button": {
+                "cursor": "pointer",
+            },
+            "input": {
+                "border-style": "solid",
+                "border-radius": "3px",
+                "outline-offset": "1px",
             },
         }.items()
     },
