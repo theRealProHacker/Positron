@@ -1,22 +1,22 @@
 """
 An EventManager takes pygame events and handles them correctly. 
 """
+import re
+import time
 from collections import defaultdict
 from enum import IntEnum
-from functools import partial
-import time
-from typing import Any, Callable, Generic
+from typing import Any, Callable
 from weakref import WeakKeyDictionary
 
 import pygame as pg
 
 import Element
-from own_types import K_T, V_T
+from own_types import Cursor
 import util
 from config import g, set_mode
 
 
-class KeyLocation(IntEnum):
+class KeyboardLocation(IntEnum):
     INVALID = 0
     STANDARD = 1
     LEFT = 2
@@ -48,7 +48,7 @@ class _Event:
     # keyboard events
     key: str = ""
     code: str = ""
-    location: KeyLocation = KeyLocation.INVALID
+    location: KeyboardLocation = KeyboardLocation.INVALID
     # other
     x: int = 0
     y: int = 0
@@ -108,6 +108,10 @@ supported_events: dict[str, dict[str, Any]] = {
         "attrs": ("pos", "mods", "buttons"),
     },
     "wheel": {"bubbles": True, "attrs": ("pos", "mods", "buttons", "delta")},
+    "keydown": {
+        "bubbles": True,
+        "attrs": ("key", "code", "pgcode", "location", "mods", "repeat"),
+    },
     "online": {},
     "offline": {},
     "resize": {"attrs": ("size",)},
@@ -116,6 +120,22 @@ supported_events: dict[str, dict[str, Any]] = {
 }
 for x in ("windowmoved", "windowsizechanged"):
     supported_events[x]["attrs"] = ("x", "y")
+
+_ctrl_ident_re = re.compile(r"[\w_]+|.")
+
+
+def ctrl_del(v: str):
+    parser = util.GeneralParser(v)
+    if not parser.consume(Element.whitespace_re):
+        parser.consume(_ctrl_ident_re)
+    return parser.x
+
+
+def ctrl_backspace(v: str):
+    parser = util.GeneralParser(v[::-1])
+    parser.consume(Element.whitespace_re)
+    parser.consume(_ctrl_ident_re)
+    return parser.x[::-1]
 
 
 class EventManager:
@@ -127,7 +147,7 @@ class EventManager:
     online = util.is_online()
     keys_down: set[int] = set()
     buttons_down: set[int] = set()
-    cursor: Any = pg.cursors.Cursor()
+    cursor: Any = Cursor()
 
     drag: Element.Element | None = None
     focus: Element.Element | None = None
@@ -143,10 +163,10 @@ class EventManager:
 
     def change(self, name: str, value: Any) -> bool:
         if getattr(self, name) == value:
-            return True
+            return False
         else:
             setattr(self, name, value)
-            return False
+            return True
 
     async def release_event(
         self, type_: str, target: Element.Element | None = None, **kwargs
@@ -193,7 +213,15 @@ class EventManager:
             await self.release_event("online" if online else "offline")
         # event handling
         root: Element.Element
-        # TODO: What is event.window?
+        # TODO: What is event.window? Can we just ignore it?
+        async def edit(func):
+            try:
+                if self.focus:
+                    self.focus.editcontent(func)
+                    await self.release_event("input", self.focus)  # TODO: kwargs
+            except Element.NotEditable:
+                pass
+
         for event in events:
             ########################## Mouse Events ##############################################
             if (_type := pg.event.event_name(event.type).lower()).startswith("mouse"):
@@ -203,21 +231,32 @@ class EventManager:
                     button = event.button
                 root = g["root"]
                 _pos = getattr(event, "pos", self.mouse_pos)
-                self.hover = hov_elem = root.collide(_pos)
-                if hov_elem:
-                    cursor = hov_elem.cstyle["cursor"]
-                    if self.change("cursor", cursor):
-                        pg.mouse.set_cursor(cursor)
+                hov_elem = root.collide(_pos) or root
+                # assert hov_elem is not None TODO: why does this fail sometimes if `or root` is removed above
+                if self.change("hover", hov_elem):
+                    # TODO: mouseenter, mouseleave
+                    # TODO: mouseover, mouseout
+                    g["css_dirty"] = True  # :hover
+                cursor = hov_elem.cursor
+                if self.change("cursor", cursor):
+                    pg.mouse.set_cursor(cursor)
             if event.type == pg.MOUSEBUTTONDOWN:
                 self.buttons_down.add(button)
-                self.active = hov_elem
                 await self.release_event(
                     "mousedown",
                     target=hov_elem,
                     pos=_pos,
                     mods=self.mods,
                     button=button,
+                    buttons=self.buttons,
                 )
+                if button == 1:
+                    self.active = hov_elem
+                    # FIXME: This is ad-hoc focus
+                    # https://html.spec.whatwg.org/multipage/interaction.html#focusable-area
+                    if self.change("focus", hov_elem):
+                        g["css_dirty"] = True  # :focus
+                        await self.release_event("focus", hov_elem)
                 self.mouse_down = _pos
             elif event.type == pg.MOUSEBUTTONUP:
                 self.buttons_down.remove(button)
@@ -226,10 +265,12 @@ class EventManager:
                     target=hov_elem,
                     pos=_pos,
                     mods=self.mods,
+                    button=button,
                     buttons=self.buttons,
                 )
                 if self.drag:
                     # dragend/drop
+                    # TODO: emit more drag events
                     await self.release_event(
                         "dragend",
                         target=self.drag,
@@ -245,7 +286,7 @@ class EventManager:
                     ):
                         self.click_count = 0
                     self.click_count += 1
-                    if hov_elem is self.active:
+                    if hov_elem is self.active or button != 1:
                         await self.release_event(
                             "click" if button == 1 else "auxclick",
                             target=hov_elem,
@@ -255,6 +296,8 @@ class EventManager:
                             buttons=self.buttons,
                             detail=self.click_count,
                         )
+                        if button == 3:
+                            pass  # TODO: contextmenu
                     else:
                         self.active = None
                     self.last_click = (time.monotonic(), _pos)
@@ -269,9 +312,8 @@ class EventManager:
                 )
                 # if not self.drag and self.mouse_down:
                 #     # TODO: get the first draggable element colliding with the mouse
-                #     self.drag = (self.mouse_down, None)
             elif event.type == pg.MOUSEWHEEL:
-                # TODO: What is flipped?
+                # TODO: What is event.flipped?
                 await self.release_event(
                     "wheel",
                     target=hov_elem,
@@ -285,26 +327,38 @@ class EventManager:
             # For KeyEvents https://w3c.github.io/uievents/#idl-keyboardevent
             # key: Which key was pressed (str). default "" # just like pg.Event.unicode or "Shift" or "Dead" for example when pressing `
             # code: which code the pressed key corresponds to (str). default "" just like pg.event.key
-            # location: the physical location of the key pressed (int). default 0
-            # mods: ctrl, shiftkey, altkey, metakey (only MacOS) see pygame documentation
-            # repeat: Whether the key was pressed continiously (and not the first time) (bool). default False
+            # location: the physical location of the key pressed (KeyboardLocation). default INVALID
+            # mods: ctrl, shiftkey, altkey, metakey (only MacOS). see pygame documentation
+            # repeat: Whether the key was pressed continuously (and not the first time) (bool). default False
 
             elif event.type == pg.KEYDOWN:
                 await self.release_event(
                     "keydown",
+                    target=self.focus,
+                    key=event.unicode,
+                    code=pg.key.name(event.key),
+                    pgcode=event.key,  # inofficial
+                    # TODO: location
+                    mods=event.mod,
+                    # TODO: repeat = event.key in self.pressed_keys
                 )
+                if event.key == pg.K_BACKSPACE:
+                    await edit(
+                        ctrl_backspace if event.mod & pg.KMOD_CTRL else lambda v: v[:-1]
+                    )
+                elif event.key == pg.K_DELETE:
+                    await edit(
+                        ctrl_del if event.mod & pg.KMOD_CTRL else lambda v: v[1:]
+                    )
                 self.mods = event.mod
             elif event.type == pg.KEYUP:
                 self.mods = event.mod
             elif event.type == pg.TEXTEDITING:
-                # no idea what this even is exactly, cause I don't have any textediting software installed
+                # TODO: composition start
                 pass
             elif event.type == pg.TEXTINPUT:
-                if not any(event.type == pg.KEYDOWN for event in events):
-                    # repeating KEYDOWN
-                    pass
-                # text input
-                print(event)
+                # TODO: composition end (and start before if not started already)
+                await edit(lambda v: v + event.text)
             ########################## Window Events ##############################################
             elif event.type == pg.WINDOWRESIZED:
                 g["W"] = event.x

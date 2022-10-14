@@ -8,17 +8,16 @@ import pytest
 from pytest import raises
 
 import Box
-import Element
 import J
 import rounded_box
 import Style
 import util
 from Selector import (AndSelector, ClassSelector, DirectChildSelector,
-                     HasAttrSelector, IdSelector, Selector, TagSelector, matches, parse_selector,
+                     HasAttrSelector, IdSelector, TagSelector, matches, parse_selector,
                      rel_p, sngl_p)
 from own_types import Auto, Color, FrozenDCache, Length, Percentage, Rect
-
 # fmt: on
+
 # https://stackoverflow.com/a/70016047/15046005
 pytest_plugins = ("pytest_asyncio",)
 
@@ -313,6 +312,23 @@ async def test_async():
         await util.fetch_txt("data:text/html,<script>alert('hi');</script>")
         == "<script>alert('hi');</script>"
     )
+
+    def func(a):
+        return a
+
+    async def afunc(b):
+        return b
+
+    def kwfunc(a, b=2, d="123"):
+        return a, b, d
+
+    def kwargsfunc(a, b, d="123", **kwargs):
+        return a, b, d, kwargs
+
+    assert await util.call(func, 1, 2) == 1
+    assert await util.call(afunc, 1, 2) == 1
+    assert await util.call(kwfunc, 1, d=3) == (1, 2, 3)
+    assert await util.call(kwargsfunc, 1, 2, d=3, e=4) == (1, 2, 3, {"e": 4})
 
 
 if __name__ == "__main__":

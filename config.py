@@ -6,15 +6,6 @@ import pygame as pg
 
 from own_types import Color, Length
 
-# This problem is proof that typing in python doesn't work
-# For typing GlobalDict needs access to Element (a Protocol doesn't make sense, because the Protocol would just be
-# a copy of the Element class. So you would have two copies of the same class just for typing)
-# But Element itself needs access to config and to util, which needs access to config
-# The only solution would be to import everything into one file
-# But even then Box would also need to be in that file because it depends on util and Element depends on Box
-# So we would end up in one big file where every change had to be noted in different places all over a 1000s of lines long file
-# My advice to anyone trying to use typing in python: shoot yourself before it's too late
-
 # fmt: off
 g: dict[str, Any] = {
     # User settable
@@ -26,8 +17,9 @@ g: dict[str, Any] = {
     "allow_screen_saver": True,     # bool
     "icon": None,                   # None or Image
     "default_font_size": 16,        # float
-    "key_repeat": 0,                # float
-    "zoom": 1,                      # float
+    "key_delay": 500,               # int in ms
+    "key_repeat": 30,               # int in ms
+    # "zoom": 1,                      # float
     "FPS": 60,                      # float
     "jinja_env": None,              # The global jinja Environment
     # reserved
@@ -36,6 +28,8 @@ g: dict[str, Any] = {
     "file_watcher": None,           # util.FileWatcher
     "event_manager": None,          # Eventmanager
     "aiosession": None,             # aiohttp.ClientSession
+    "jinja_env": None,              # The global jinja Environment
+    "event_loop": None,             # asyncio.BaseEventLoop
     "screen": None,                 # pg.Surface
     "default_task": None,           # util.Task
     "tasks": [],                    # list of tasks that are started in synchronous functions
@@ -52,16 +46,6 @@ def add_sheet(sheet: Any):
     g["css_dirty"] = True
 
 
-def watch_file(file: str) -> str:
-    """
-    Add the file to the watched files.
-    The caller has to hold on to the file until it shouldn't be watched anymore
-    """
-    return g["file_watcher"].add_file(file)
-
-
-# def set_mode(mode: dict[str, Any] = {}):
-#     g.update(mode)
 async def set_mode():
     """
     Call this after setting g manually. This will probably change to an API function
@@ -76,7 +60,7 @@ async def set_mode():
     # Screen Saver
     pg.display.set_allow_screensaver(g["allow_screen_saver"])
     # key repeat
-    pg.key.set_repeat(int(g["key_repeat"] or 0.1))
+    pg.key.set_repeat(g["key_delay"], g["key_repeat"])
 
 
 ################################ constant data ########################
@@ -145,3 +129,13 @@ abs_time_units = {"s": 1, "ms": 1 / 1000}
 #     "khz": 1000
 # }
 abs_resolution_units = {"dpi": 1, "dpcm": 2.54, "x": 96, "dppx": 96}
+
+
+default_style_sheet = """
+a:visited{
+    color: purple
+}
+input:focus{
+    outline: solid rgb(45, 140, 180) medium;
+}
+"""

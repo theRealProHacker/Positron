@@ -5,6 +5,7 @@ Utilities for all kinds of needs (funcs, regex, etc...)
 import asyncio
 import binascii
 import errno
+import inspect
 import logging
 import mimetypes
 import os
@@ -17,7 +18,7 @@ from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from functools import cache
 from types import FunctionType
-from typing import Callable, Coroutine, Iterable, Literal, Sequence, TypeVar
+from typing import Awaitable, Callable, Iterable, Literal, Sequence, TypeVar
 from urllib.parse import parse_qsl, unquote_plus, urlparse
 import webbrowser
 
@@ -40,47 +41,10 @@ from own_types import (CO_T, K_T, V_T, BugError, Color, Coordinate,
 
 mimetypes.init()
 
-
+########################## Misc #########################
 def noop(*args, **kws):
     """A no operation function"""
     return None
-
-
-########################## FileWatcher #############################
-class FileWatcher(FileSystemEventHandler):
-    """
-    A FileWatcher is really just a watchdog Eventhandler that holds a set of files to be watched.
-    If any file changes, the app is asked to restart by setting the `g["reload"]` flag and sending a
-    Quit Event to the Event Queue
-    """
-
-    def __init__(self):
-        self.last_hit = time.monotonic()  # this doesn't need to be extremely accurate
-        self.files = set[str]()
-        self.dirs = set[str]()
-
-    def add_file(self, file: str):
-        file = os.path.abspath(file)
-        file = self.files.add(file)
-        new_dir = os.path.dirname(file)
-        if not new_dir in self.dirs:
-            self.dirs.add(new_dir)
-            ob = Observer()
-            ob.schedule(self, new_dir)
-            ob.start()
-        return file
-
-    def on_modified(self, event: FileSystemEvent):
-        logging.debug(f"File modified: {event.src_path}")
-        if event.src_path in self.files and (t := time.monotonic()) - self.last_hit > 1:
-            g["event_manager"].release_event("file_modified", path=event.src_path)
-            pg.event.post(goto(g["route"]))  # reload the current page
-            self.last_hit = t
-
-
-#########################################################
-
-########################## Misc #########################
 
 
 def get_dpi():  # TODO
@@ -236,13 +200,23 @@ def tup_replace(
 
 async def call(callback, *args, **kwargs):
     """
-    TODO: actually look at the functions definition and match them to the given arguments
+    Intelligently calls the callback with the given arguments, matching the most args
     """
-    try:
-        rv = callback(*args, **kwargs)
-    except TypeError:
-        rv = callback()
-    if isinstance(callback, Coroutine):
+    sig = inspect.signature(callback)
+    _args = args[
+        : min(
+            len(
+                [
+                    param
+                    for param in sig.parameters.values()
+                    if not param.kind is inspect.Parameter.KEYWORD_ONLY
+                ]
+            ),
+            len(args),
+        )
+    ]
+    rv = callback(*_args, **kwargs)
+    if isinstance(rv, Awaitable):
         rv = await rv
     return rv
 
@@ -263,7 +237,8 @@ class Task(asyncio.Task):
         callback: Callable[[asyncio.Future], None] | None = None,
         **kwargs,
     ):
-        task = cls(sync, coro, **kwargs)
+        loop: asyncio.BaseEventLoop = g["event_loop"]
+        task = cls(sync, coro, loop=loop, **kwargs)
         if callback is not None:
             task.add_done_callback(callback)
         return task
@@ -545,6 +520,42 @@ def clog_error():
 log_error = clog_error()(print)
 print_once = cache(print)
 log_error_once = cache(log_error)
+
+
+########################## FileWatcher #############################
+class FileWatcher(FileSystemEventHandler):
+    """
+    A FileWatcher is really just a watchdog Eventhandler that holds a set of files to be watched.
+    If any file changes, the app is asked to restart by setting the `g["reload"]` flag and sending a
+    Quit Event to the Event Queue
+    """
+
+    def __init__(self):
+        self.last_hit = time.monotonic()  # this doesn't need to be extremely accurate
+        self.files = set[str]()
+        self.dirs = set[str]()
+
+    def add_file(self, file: str):
+        file = os.path.abspath(file)
+        self.files.add(file)
+        new_dir = os.path.dirname(file)
+        if not new_dir in self.dirs:
+            self.dirs.add(new_dir)
+            ob = Observer()
+            ob.schedule(self, new_dir)
+            ob.start()
+        return file
+
+    def on_modified(self, event: FileSystemEvent):
+        logging.debug(f"File modified: {event.src_path}")
+        if event.src_path in self.files and (t := time.monotonic()) - self.last_hit > 1:
+            create_task(
+                g["event_manager"].release_event("file-modified", path=event.src_path),
+                sync=True,
+            )
+            self.last_hit = t
+
+
 ####################################################################
 
 ######################### Regexes ##################################
@@ -696,7 +707,6 @@ def goto(url: str, **kwargs: str):
     Make the browser display a different page if it is a registered route or open the page
     Raises a KeyError if the route is invalid.
     """
-    # TODO:
     visited: dict[str, Literal["browser", "internal", "invalid"]] = g["visited_links"]
     status = visited.get(url, "internal")
     if status == "invalid":
@@ -720,6 +730,10 @@ def goto(url: str, **kwargs: str):
             status = "invalid"
             log_error(f"Invalid route: {url!r}")
     visited[url] = status
+
+
+def reload():
+    goto(g["route"])
 
 
 ##########################################################################

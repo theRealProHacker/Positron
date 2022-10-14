@@ -1,15 +1,22 @@
+"""
+Implements drawing rounded boxes.
+Includes background, border and outline convenience functions
+"""
 # fmt: off
 import math
 from functools import cache
-from typing import Sequence, TypeVar
+from typing import Sequence
 
 import numpy as np
 import pygame as pg
 from pygame import gfxdraw
 
-from own_types import (V_T, BugError, Color, Coordinate, Float4Tuple, Radii, Rect,
-                       Surface, Vector2)
+import Box
+import Style
+from own_types import (V_T, BugError, Color, Coordinate, Drawable, Float4Tuple,
+                       Radii, Rect, Surface, Vector2)
 from util import all_equal
+
 # fmt: on
 
 
@@ -262,3 +269,43 @@ def round_surf(surf: Surface, size: Coordinate, radii: Radii):
         normalized = np.true_divide(result, factor).astype("uint8")
         np.copyto(surf_alpha, normalized)
     pass
+
+
+def radii_frm_(border_rect: Rect, style: Style.FullyComputedStyle):
+    return tuple(
+        (
+            int(Style.calculator(brx, perc_val=border_rect.width)),
+            int(Style.calculator(bry, perc_val=border_rect.height)),
+        )
+        for brx, bry in Style.br_getter(style)
+    )
+
+
+def draw_bg_and_border(surf: Surface, box: Box.Box, style: Style.FullyComputedStyle):
+    border_rect = box.border_box
+    radii = radii_frm_(border_rect, style)
+    # background
+    bg_img: Sequence[Drawable] = style["background-image"]
+    bg_color: Color = style["background-color"]
+    bg_size = border_rect.size
+    bg_surf = Surface(bg_size, pg.SRCALPHA)
+    bg_surf.fill(bg_color)
+    for drawable in bg_img:
+        drawable.draw(bg_surf, (0, 0))
+    round_surf(bg_surf, bg_size, radii)
+    surf.blit(bg_surf, border_rect.topleft)
+    # border
+    draw_rounded_border(surf, border_rect, Style.bc_getter(style), box.border, radii)
+
+
+def draw_outline(surf: Surface, box: Box.Box, style: Style.FullyComputedStyle):
+    border_rect = box.border_box
+    _out_width = int(Style.calculator(style["outline-width"]))
+    _out_off: float = style["outline-offset"].value + _out_width / 2
+    draw_rounded_border(
+        surf,
+        border_rect.inflate(2 * _out_off, 2 * _out_off),
+        colors=(style["outline-color"],) * 4,
+        widths=(_out_width,) * 4,
+        radii=radii_frm_(border_rect, style),
+    )
