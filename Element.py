@@ -6,32 +6,39 @@ The Element class and its descendants
 from __future__ import annotations
 
 import asyncio
+import operator
 import os
 import re
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cache, partial
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Protocol
+from typing import Callable, Iterable, Protocol
 
 import pygame as pg
+import lxml.html.html5parser as html5
 
 import Box
 import Media
 import rounded_box
 import Style
-from config import add_sheet, g
-from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Coordinate,
-                       Cursor, DisplayType, Element_P, Float4Tuple, Font,
-                       FontStyle, Leaf_P, Length, Number, Percentage, Rect,
-                       Surface, Vector2)
-from Style import (SourceSheet, bs_getter, bw_keys, calculator, has_prio,
-                   inset_getter, is_custom, pack_longhands, parse_file,
-                   parse_sheet)
-from util import (GeneralParser, create_task, draw_text, goto, group_by_bool,
-                  log_error, make_default)
+import util
+from config import add_sheet, cursors, g, input_type_check_res
+from ElementAttribute import (BooleanAttribute, ClassListAttribute,
+                              DataAttribute, GeneralAttribute, InputValueAttribute,
+                              NumberAttribute, Opposite, RangeAttribute, SameAs)
+from own_types import (V_T, Auto, AutoLP4Tuple, AutoType, BugError, Color,
+                       Coordinate, Cursor, DisplayType, Element_P, Float4Tuple,
+                       Font, FontStyle, Leaf_P, Length, Number, Percentage,
+                       Rect, Surface, Vector2)
+from Style import (FullyComputedStyle, SourceSheet, bs_getter, bw_keys,
+                   calculator, has_prio, inset_getter, is_custom,
+                   pack_longhands, parse_file, parse_sheet)
+from util import (GeneralParser, draw_text, get_tag, goto, group_by_bool, log_error,
+                  make_default, text_surf)
 
 # fmt: on
+parser = html5.HTMLParser()
 
 ################################# Globals ###################################
 class InlineItem(Protocol):
@@ -54,17 +61,19 @@ class TextDrawItem(InlineItem):
     text: str
     parent: Element
     whitespace: bool = True
+    extra_style: FullyComputedStyle = field(default_factory=dict)
 
     @property
     def pos(self):
         return self.xpos, self.ypos
 
     def draw(self, surf: Surface):
+        style = self.parent.cstyle | dict(self.extra_style)
         draw_text(
             surf,
             self.text,
             self.parent.font,
-            self.parent.cstyle["color"],
+            style["color"],
             topleft=self.pos,
         )
 
@@ -130,6 +139,13 @@ def calc_inset(inset: AutoLP4Tuple, width: float, height: float) -> Float4Tuple:
     )
 
 
+def set_title():
+    head = g["root"].children[0]
+    titles = [title.text for title in head.children if title.tag == "title"]
+    if titles:
+        pg.display.set_caption(titles[-1])
+
+
 class NotEditable(ValueError):
     pass
 
@@ -147,10 +163,13 @@ class Element(Element_P):
     """
 
     # General
-    tag: str
+    tag: str = ""
     attrs: dict[str, str]
     children: list[Element | TextElement]
     parent: Element | None
+    id = GeneralAttribute("id")
+    class_list = ClassListAttribute()
+    data = DataAttribute()
     # Style
     istyle: Style.Style  # inline style
     estyle: Style.Style  # external style
@@ -216,12 +235,36 @@ class Element(Element_P):
     def only_child(self):
         return self.parent and len(self.parent.children) == 1
 
-    def __init__(self, tag: str, attrs: dict[str, str], parent: Element | None):
-        self.tag = tag
+    def __init__(
+        self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
+    ):
+        if self.tag:
+            assert self.tag == tag
+        else:
+            self.tag = tag
         self.attrs = attrs
-        self.children = []
-        self.parent = parent
+        self.children = children
+        self.parent = None
         self.istyle = Style.parse_inline_style(attrs.get("style", ""))
+
+        for c in children:
+            c.parent = self
+
+    @classmethod
+    def from_lxml(cls, lxml) -> Element:
+        tag = get_tag(lxml)
+        type_: type[Element] = elem_type_map.get(tag, Element)
+        text = lxml.text or ""
+        attrs = dict(lxml.attrib)
+        children: list[Element | TextElement] = []
+        if text:
+            children.append(TextElement(text))
+        for _c in lxml:
+            c = Element.from_lxml(_c)
+            children.append(c)
+            if text := _c.tail:
+                children.append(TextElement(text))
+        return type_(tag, attrs, children)
 
     def set_attr(self, name: str, value: str):
         self.attrs[name] = value
@@ -284,6 +327,7 @@ class Element(Element_P):
         for k, v in parent_style.items():
             if is_custom(k):
                 input_style.setdefault(k, v)
+        # compute keys
         keys = sorted(input_style.keys(), key=has_prio, reverse=True)
         style: Style.FullyComputedStyle = {}
         for key in keys:
@@ -293,8 +337,6 @@ class Element(Element_P):
             if has_prio:
                 parent_style[key] = new_val
         # corrections
-        # mdn border-width: absolute length or 0 if border-style is none or hidden
-        # same for outline
         for bw_key, bstyle in zip(bw_keys, bs_getter(style)):
             if bstyle in ("none", "hidden"):
                 style[bw_key] = Length(0)
@@ -311,7 +353,7 @@ class Element(Element_P):
         self.line_height = (
             lh * fsize
             if isinstance(lh, Number)
-            else calculator(lh, auto_val=1.2 * fsize, perc_val=fsize)
+            else calculator(lh, auto_val=self.font.get_linesize(), perc_val=fsize)
         )
         # https://developer.mozilla.org/en-US/docs/Web/CSS/word-spacing#values
         wspace = style["word-spacing"]
@@ -320,7 +362,11 @@ class Element(Element_P):
         self.word_spacing = (calculator(wspace, 0, d_ws)) + d_ws
         self.position = str(style["position"])
         cursor: Cursor | AutoType = style["cursor"]
-        self.cursor = Cursor() if cursor is Auto else cursor
+        self.cursor = (
+            (Cursor() if self.parent is None else self.parent.cursor)
+            if cursor is Auto
+            else cursor
+        )
         # style sharing and child computing
         self.cstyle = g["cstyles"].add(style)
         for child in self.children:
@@ -632,10 +678,13 @@ class HTMLElement(Element):
     Represents the exact <html> element
     """
 
-    def __init__(self, tag: str, attrs: dict[str, str], parent: Element = None):
-        assert parent is None
-        assert tag == "html"
-        super().__init__("html", attrs, parent=None)
+    tag = "html"
+
+    @classmethod
+    def from_string(cls, html: str):
+        _root = html5.document_fromstring(html, parser=parser)
+        print(type(_root))
+        return cls.from_lxml(_root)
 
     def get_height(self) -> float:
         return self.box.height
@@ -654,13 +703,16 @@ class HTMLElement(Element):
 
 
 class AnchorElement(Element):
+    """
+    <a>
+    """
+
     @property
     def link(self):
         return (href := self.attrs.get("href")) and href not in g["visited_links"]
 
     @property
     def visited(self):
-        # XXX: is not `not self.link`
         return (href := self.attrs.get("href")) and href in g["visited_links"]
 
     @property
@@ -668,7 +720,6 @@ class AnchorElement(Element):
         return "href" in self.attrs
 
     def on_click(self):
-        # TODO: respect other aspects like target?
         if href := self.attrs.get("href"):
             goto(href)
         else:
@@ -695,15 +746,7 @@ class MetaElement(Element):
     `title`, `link`, `style` and also `meta` or `script` (not implemented)
     """
 
-    tag: str
     display: DisplayType = "none"
-
-    def __init__(self, attrs: dict[str, str], txt: str, parent: Element | None):
-        self.children = []
-        self.parent = parent
-        self.attrs = attrs
-        # parse element style and update default
-        self.istyle = {}
 
     def compute(self):
         pass
@@ -714,14 +757,16 @@ class StyleElement(MetaElement):
     inline_sheet: SourceSheet | None = None
     src_sheet: SourceSheet | None = None
 
-    def __init__(self, attrs: dict[str, str], txt: str, parent: "Element"):
-        super().__init__(attrs, txt, parent)
+    def __init__(
+        self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
+    ):
+        super().__init__(tag, attrs, children)
         if (src := attrs.get("src")) is not None:
             if os.path.isfile(src):
                 g["event_manager"].on("file-modified", self.reload_src, path=src)
-            create_task(parse_file(src), True, self.parse_callback)
-        if txt:
-            self.inline_sheet = parse_sheet(txt)
+            util.create_task(parse_file(src), True, self.parse_callback)
+        if self.text:
+            self.inline_sheet = parse_sheet(self.text)
             add_sheet(self.inline_sheet)
 
     def parse_callback(self, future: asyncio.Future):
@@ -731,11 +776,7 @@ class StyleElement(MetaElement):
 
     def reload_src(self, event):
         g["css_sheets"].remove(self.src_sheet)
-        create_task(parse_file(event.path), True, self.parse_callback)
-
-
-class TitleElement(MetaElement):
-    tag = "title"
+        util.create_task(parse_file(event.path), True, self.parse_callback)
 
 
 class CommentElement(MetaElement):
@@ -749,23 +790,27 @@ class CommentElement(MetaElement):
 
 
 class LinkElement(MetaElement):
+    # attrs: rel, href, (media, disabled, sizes, title)
     tag = "link"
     src_sheet: SourceSheet | None = None
 
-    def __init__(self, attrs: dict[str, str], txt: str, parent: "Element"):
-        super().__init__(attrs, txt, parent)
+    def __init__(
+        self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
+    ):
+        super().__init__(tag, attrs, children)
         # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link
         # TODO:
         # media -> depends on media query support
-        match attrs.get("rel"):
-            case "stylesheet" if (src := attrs.get("href")):
-                # TODO: disabled ?
-                # TODO: title ?
-                g["event_manager"].on("file-modified", self.on_change, path=src)
-                create_task(parse_file(src), True, self.parse_callback)
-            case "icon" if (src := attrs.get("href")):
-                # TODO: sizes ?
-                g["icon_srcs"].append(src)
+        rel = attrs.get("rel")
+        src = attrs.get("href")
+        if rel == "stylesheet" and src:
+            # TODO: disabled ?
+            # TODO: title ?
+            g["event_manager"].on("file-modified", self.on_change, path=src)
+            util.create_task(parse_file(src), True, self.parse_callback)
+        elif rel == "icon" and src:
+            # TODO: sizes ?
+            g["icon_srcs"].append(src)
 
     def parse_callback(self, future: asyncio.Future):
         with suppress(Exception):
@@ -774,7 +819,7 @@ class LinkElement(MetaElement):
 
     def on_change(self, event):
         g["css_sheets"].remove(self.src_sheet)
-        create_task(parse_file(event.path), True, self.parse_callback)
+        util.create_task(parse_file(event.path), True, self.parse_callback)
 
 
 class ReplacedElement(Element):
@@ -783,17 +828,20 @@ class ReplacedElement(Element):
 
 
 class ImageElement(ReplacedElement):
+    # attrs: src, loading, decoding, width, height
     size: None | tuple[int, int]
     given_size: tuple[int | None, int | None]
     image: Media.Image | None
 
-    def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
+    def __init__(
+        self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
+    ):
         # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img
         # TODO:
         # source element
         # usemap: points to a map
-        super().__init__(tag, attrs, parent)
         # urls = [] # TODO: actually fetch the images depending on the srcset and sizes
+        super().__init__(tag, attrs, children)
         try:
             self.image = Media.Image(
                 attrs["src"],
@@ -852,15 +900,17 @@ class ImageElement(ReplacedElement):
 
 
 class AudioElement(ReplacedElement):
-    def __init__(self, tag: str, attrs: dict[str, str], parent: "Element"):
+    # attrs: src, preload, loop, (autoplay, controls, muted, preload)
+    def __init__(
+        self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
+    ):
         # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/audio
         # TODO:
         # autoplay: right now autoplay is always on
         # controls: both draw and event handling
         # muted: right now muted is always off
         # preload: probably not gonna implement fully (is only a hint)
-        # events: ...
-        super().__init__(tag, attrs, parent)
+        super().__init__(tag, attrs, children)
         try:
             self.audio = Media.Audio(
                 attrs["src"],
@@ -872,100 +922,148 @@ class AudioElement(ReplacedElement):
             self.image = None
 
 
-if TYPE_CHECKING:
-
-    def Opposite(attr: str) -> bool:
-        ...
-
-else:
-
-    @dataclass
-    class Opposite:
-        attr: str
-
-        def __get__(self, obj, type=None) -> bool:
-            return not getattr(obj, self.attr)
-
-
-if TYPE_CHECKING:
-
-    def SameAs(attr: str) -> Any:
-        ...
-
-else:
-
-    @dataclass
-    class SameAs:
-        attr: str
-
-        def __get__(self, obj, type=None) -> bool:
-            return getattr(obj, self.attr)
-
-
 class InputElement(ReplacedElement):
-    changed: bool = True
+    """
+    attributes
+    TODO:
+        disabled, form, list, readonly, autofocus?
+    TODO:
+        accept -> file
+        max, min, step
+    """
 
+    # fmt: off
+    type = RangeAttribute("type", range = {
+        "text", "tel", "password", "number", "email", "url", "search",
+        "checkbox", "radio",
+        "file", "color", "hidden"
+    }, default="text")
+    value = InputValueAttribute()
+    # fmt: on
+    maxlength = NumberAttribute("maxlength", default=float("inf"))
+    minlength = NumberAttribute("minlength")
+    multiple = BooleanAttribute("multiple")
+    # States
+    changed: bool = False
+    checked: bool = False
     enabled: bool = Opposite("disabled")
-
-    @property
-    def disabled(self):
-        return self.attrs.get("disabled", "false") != "false"
-
-    @property
-    def checked(self):
-        return False  # TODO: depend on type
+    disabled: bool = BooleanAttribute("disabled")
 
     @property
     def blank(self):
-        return not self.attrs["value"]
+        return not self.attrs.get("value")  # value is either not set or empty.
 
-    placeholder_shown: bool = SameAs("blank")
+    placeholder_shown: bool = SameAs(
+        "blank"
+    )  # TODO: Does the input need to have a placeholder set for this to fire?
 
     @property
     def valid(self):
-        return True  # TODO: depend on type
+        type_ = self.type
+        value = self.attrs.get("value", "")
+        if (default_pattern := input_type_check_res.get(type_)) is not None:
+            if not value:
+                return not self.required
+            elif len(value) > self.maxlength:
+                return False
+            elif len(value) < self.minlength:
+                return False
+            values = (
+                [value]
+                if not (type_ in ("email", "file") and self.multiple)
+                else re.split(r"\s*,\s*", value)
+            )
+            if (pattern := self.attrs.get("pattern")) is not None and any(
+                not re.fullmatch(pattern, value) for value in values
+            ):
+                return False
+            if not all(default_pattern.fullmatch(value) for value in values):
+                return False
+        if type_ == "number":
+            value = value or "0"
+            for constraint, op in [
+                ("max", operator.gt),
+                ("min", operator.lt),
+            ]:
+                if constr := self.attrs.get(constraint):
+                    with suppress(ValueError):
+                        if op(float(value), float(constr)):
+                            return False
+        return True
 
     invalid: bool = Opposite("valid")
-
-    @property
-    def required(self):
-        return self.attrs.get("required", "false") != "false"
-
+    required = BooleanAttribute("required")
     optional: bool = Opposite("required")
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.attrs.setdefault("type", "text")
-        self.attrs.setdefault("value", "")
+    def __init__(self, *args):
+        super().__init__(*args)
+        if "checked" in self.attrs:
+            self.checked = True
+
+    def collide(self, pos: Coordinate) -> Element | None:
+        return self if self.box.border_box.collidepoint(pos) else None
+
+    def compute(self):
+        super().compute()
+        if self.cstyle["cursor"] is Auto:
+            self.cursor = cursors["text"]  # TODO: change this for other input types
+        if self.type == "hidden":
+            self.display = "none"
 
     def layout(self, width: float):
         if not self.parent:
             self.display = "none"
+            self.layout_type = "none"
             return
+        type_ = self.type
         self.layout_type = "inline"
         self.box, set_height = Box.make_box(
             width, self.cstyle, self.parent.box.width, self.parent.get_height()
         )
-        if self.attrs["type"] == "text":
-            # TODO: extract this kind of functionality
-            items: list[InlineItem] = []
-            xpos = 0
-            width = self.box.content_box.width
-            for word in self.attrs["value"].split():
-                item = TextDrawItem(word, self)
-                item.xpos = xpos
-                items.append(item)
-                xpos += item.width
-                if xpos >= width:
-                    break
-            self.inline_items = items
-            set_height(self.line_height)
+        if (_size := self.attrs.get("size", "20")).isnumeric():
+            # "0" from the ch unit
+            # fmt: off
+            avrg_letter_width = self.font.metrics(
+                "•" if type_ == "password" else "0"
+            )[0][4]
+            # fmt: on
+            self.box.set_width(int(_size) * avrg_letter_width, "content-box")
+        set_height(self.line_height)
+
+    def draw_content(self, surf: Surface):
+        if self.type in input_type_check_res:
+            text: str = self.attrs.get("value") or self.attrs.get("placeholder", "")  # type: ignore
+            if not self.placeholder_shown and self.type == "password":
+                text = "•" * len(text)
+            # what is happening below corresponds to the ::placeholder pseudo-element
+            color = Color(self.cstyle["color"])
+            if self.placeholder_shown:
+                color.a = int(0.4 * color.a)
+            rendered_text = text_surf(text, self.font, color)
+            rendered_rect = rendered_text.get_rect()
+            text_rect = self.box.content_box
+            window_l = (rendered_rect.right - text_rect.w) * (
+                rendered_rect.w > text_rect.w and not self.placeholder_shown
+            )
+            surf.blit(
+                rendered_text,
+                text_rect,
+                area=Rect(
+                    window_l, 0, min(rendered_rect.w, text_rect.w), rendered_rect.bottom
+                ),
+            )
         else:
             raise BugError("Disallowed input type")
 
     def editcontent(self, func: Callable[[str], str]):
         self.changed = True
-        self.attrs["value"] = func(self.attrs["value"])
+        g["css_dirty"] = True
+        # TODO: don't allow invalid character inputs (eg. no letters in type=number)
+        self.attrs["value"] = func(self.attrs.get("value", ""))
+
+    def on_wheel(self, event):
+        if self.type == "number":
+            self.value += event.delta[1]
 
 
 class BrElement(ReplacedElement):
@@ -994,9 +1092,8 @@ class TextElement(Leaf_P):
     def is_block(self):
         return False
 
-    def __init__(self, text: str, parent: Element):
+    def __init__(self, text: str):
         self.text = text
-        self.parent = parent
 
     def collide(self, pos: Coordinate):
         assert self.display == "block"
@@ -1057,3 +1154,19 @@ class TextElement(Leaf_P):
 
     def __repr__(self):
         return f"<Text: '{self.text}'>"
+
+
+meta_elements = {"head", "title"}
+
+elem_type_map: dict[str, type[Element]] = {
+    **{k: MetaElement for k in meta_elements},
+    "html": HTMLElement,
+    "img": ImageElement,
+    "audio": AudioElement,
+    "br": BrElement,
+    "link": LinkElement,
+    "style": StyleElement,
+    "comment": CommentElement,
+    "a": AnchorElement,
+    "input": InputElement,
+}

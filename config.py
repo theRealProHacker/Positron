@@ -1,10 +1,11 @@
 """ Any global variables are stored here"""
 import math
+import re
 from typing import Any
 
 import pygame as pg
 
-from own_types import Color, Length
+from own_types import Color, Length, Cursor
 
 # fmt: off
 g: dict[str, Any] = {
@@ -130,6 +131,47 @@ abs_time_units = {"s": 1, "ms": 1 / 1000}
 # }
 abs_resolution_units = {"dpi": 1, "dpcm": 2.54, "x": 96, "dppx": 96}
 
+cursors = {
+    "default": Cursor(),
+    # the cursor just vanishes by setting the smallest possible size full of zeros
+    "none": Cursor((8, 8), (0, 0), (0x00,) * 8, (0x00,) * 8),
+    # TODO: context-menu
+    # TODO: help
+    "pointer": Cursor(pg.SYSTEM_CURSOR_HAND),
+    "progress": Cursor(pg.SYSTEM_CURSOR_WAITARROW),
+    "wait": Cursor(pg.SYSTEM_CURSOR_WAIT),
+    # TODO: cell
+    "crosshair": Cursor(pg.SYSTEM_CURSOR_CROSSHAIR),
+    "text": Cursor(pg.SYSTEM_CURSOR_IBEAM),
+    # TODO: vertical text
+    # TODO: alias, copy
+    "move": Cursor(pg.SYSTEM_CURSOR_SIZEALL),
+    "not-allowed": Cursor(pg.SYSTEM_CURSOR_NO),
+    # TODO: grab, grabbing
+    # resize arrows are symmetrical
+    "n-resize": Cursor(pg.SYSTEM_CURSOR_SIZENS),
+    "e-resize": Cursor(pg.SYSTEM_CURSOR_SIZEWE),
+    "s-resize": Cursor(pg.SYSTEM_CURSOR_SIZENS),
+    "w-resize": Cursor(pg.SYSTEM_CURSOR_SIZEWE),
+    "ne-resize": Cursor(pg.SYSTEM_CURSOR_SIZENESW),
+    "nw-resize": Cursor(pg.SYSTEM_CURSOR_SIZENWSE),
+    "se-resize": Cursor(pg.SYSTEM_CURSOR_SIZENWSE),
+    "sw-resize": Cursor(pg.SYSTEM_CURSOR_SIZENESW),
+    "ew-resize": Cursor(pg.SYSTEM_CURSOR_SIZEWE),
+    "ns-resize": Cursor(pg.SYSTEM_CURSOR_SIZENS),
+    "nesw-resize": Cursor(pg.SYSTEM_CURSOR_SIZENESW),
+    "nwse-resize": Cursor(pg.SYSTEM_CURSOR_SIZENWSE)
+    # TODO: zoom-in and -out
+}
+
+input_type_check_res = {
+    **dict.fromkeys(("text", "password", "tel", "search"), re.compile(r".*")),
+    "number": re.compile(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"),
+    "email": re.compile(
+        r"[\w\d.!#$%&'*+/=?^_`{|}~-]+@[\w\d](?:[\w\d-]{0,61}[\w\d])?(?:\.[\w\d](?:[-\w\d]{0,61}[\w\d])?)*"
+    ),
+    "url": re.compile(r""),
+}
 
 default_style_sheet = """
 a:visited{

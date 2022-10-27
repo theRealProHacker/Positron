@@ -78,7 +78,9 @@ class Element_P(Protocol):
     """
 
     tag: str
-    attrs: dict[str, Any]
+    id: str
+    class_list: set[str]
+    attrs: dict[str, str]
     parent: Element_P | None
     children: Sequence[Element_P | Leaf_P]
 

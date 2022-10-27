@@ -18,7 +18,7 @@ from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from functools import cache
 from types import FunctionType
-from typing import Awaitable, Callable, Iterable, Literal, Sequence, TypeVar
+from typing import Any, Awaitable, Callable, Iterable, Literal, Sequence, TypeVar
 from urllib.parse import parse_qsl, unquote_plus, urlparse
 import webbrowser
 
@@ -219,6 +219,32 @@ async def call(callback, *args, **kwargs):
     if isinstance(rv, Awaitable):
         rv = await rv
     return rv
+
+
+def nice_number(num: complex) -> str:
+    """
+    Try to simplify the number as small as possible
+
+    1.0 -> 1
+
+    1.0+0.0j ->1
+    """
+    if isinstance(num, complex) and num.imag == 0:
+        return nice_number(num.real)
+    elif isinstance(num, float) and num.is_integer():
+        return str(int(num))
+    else:
+        return str(num)
+
+
+@contextmanager
+def set_context(obj, name: str, value):
+    old_value = getattr(obj, name)
+    try:
+        setattr(obj, name, value)
+        yield
+    finally:
+        setattr(obj, name, old_value)
 
 
 ####################################################################
@@ -723,8 +749,18 @@ def goto(url: str, **kwargs: str):
                     target=parsed_result.fragment,
                 )
             )
-        except KeyError:
-            status = "browser"
+        except KeyError:  # no registered route
+            if os.path.isfile(path := os.path.abspath(route)):
+                pg.event.post(
+                    loadpage_event(
+                        url=url,
+                        path=path,
+                        kwargs=dict(parse_qsl(parsed_result.query)) | kwargs,
+                        target=parsed_result.fragment,
+                    )
+                )
+            else:
+                status = "browser"
     if status == "browser":
         if not webbrowser.open_new_tab(url):
             status = "invalid"
@@ -745,6 +781,14 @@ pg.init()
 
 def surf_opaque(surf: Surface):
     return np.all(pg.surfarray.array_alpha(surf) == 255)
+
+
+def text_surf(text: str, font: Font, color: Color):
+    color = Color(color)
+    text_surf = font.render(text, True, color)
+    if color.a != 255:
+        text_surf.set_alpha(color.a)
+    return text_surf
 
 
 def draw_text(surf: Surface, text: str, font: Font, color, **kwargs):
