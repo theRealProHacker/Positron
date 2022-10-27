@@ -7,12 +7,11 @@ from collections import defaultdict, deque
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from functools import cache, partial
-from itertools import chain, islice
+from itertools import chain, islice, repeat
 from operator import add, itemgetter, mul, sub, truediv
 from typing import (Any, Callable, Generic, Iterable, Literal, Mapping,
                     Protocol, TypeVar, Union, cast, overload)
 
-import pygame as pg
 import tinycss
 import tinycss.token_data
 
@@ -20,9 +19,9 @@ import Media
 import Selector
 from config import (abs_angle_units, abs_border_width, abs_font_size,
                     abs_font_weight, abs_length_units, abs_resolution_units,
-                    abs_time_units, g, rel_font_size, rel_length_units)
+                    abs_time_units, g, rel_font_size, rel_length_units, cursors)
 from own_types import (CO_T, V_T, Angle, Auto, AutoLP, AutoType, BugError,
-                       Color, CompStr, CSSDimension, Cursor, Drawable,
+                       Color, CompStr, CSSDimension, Drawable,
                        Float4Tuple, FontStyle, Length, LengthPerc, Number,
                        Percentage, Resolution, Sentinel, Str4Tuple, StrSent,
                        Time, frozendict)
@@ -811,10 +810,12 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
     "font-style": StyleAttr("normal", acc=font_style, inherits=True),
     "line-height": StyleAttr("normal", normal, Calc(float, Length, Percentage), True),
     "word-spacing": StyleAttr("normal", normal, length_percentage, True),
+    # "vertical-align": ...,
+    # "text-align": ...,
     "display": StyleAttr("inline", {"inline", "block", "none"}),
     "background-color": StyleAttr("transparent", acc=color),
     "background-image": StyleAttr("none", {"none": tuple()}, background_image),
-    "width": AALP,
+    "width": AALP,  # TODO: max-content, min-content, fit-content
     "height": AALP,
     "position": StyleAttr(
         "static", {"static", "relative", "absolute", "sticky", "fixed"}
@@ -829,41 +830,7 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
     "outline-style": BorderStyleAttr,
     "outline-color": BorderColorAttr,
     "outline-offset": StyleAttr("0", acc=length),
-    "cursor": StyleAttr(
-        "auto",
-        {
-            **auto,
-            "default": Cursor(),
-            # TODO: none
-            # TODO: context-menu
-            # TODO: help
-            "pointer": Cursor(pg.SYSTEM_CURSOR_HAND),
-            "progress": Cursor(pg.SYSTEM_CURSOR_WAITARROW),
-            "wait": Cursor(pg.SYSTEM_CURSOR_WAIT),
-            # TODO: cell
-            "crosshair": Cursor(pg.SYSTEM_CURSOR_CROSSHAIR),
-            "text": Cursor(pg.SYSTEM_CURSOR_IBEAM),
-            # TODO: vertical text
-            # TODO: alias, copy
-            "move": Cursor(pg.SYSTEM_CURSOR_SIZEALL),
-            "not-allowed": Cursor(pg.SYSTEM_CURSOR_NO),
-            # TODO: grab, grabbing
-            # TODO: resize
-            "n-resize": Cursor(pg.SYSTEM_CURSOR_SIZENS),
-            "e-resize": Cursor(pg.SYSTEM_CURSOR_SIZEWE),
-            "s-resize": Cursor(pg.SYSTEM_CURSOR_SIZENS),
-            "w-resize": Cursor(pg.SYSTEM_CURSOR_SIZEWE),
-            "ne-resize": Cursor(pg.SYSTEM_CURSOR_SIZENESW),
-            "nw-resize": Cursor(pg.SYSTEM_CURSOR_SIZENWSE),
-            "se-resize": Cursor(pg.SYSTEM_CURSOR_SIZENWSE),
-            "sw-resize": Cursor(pg.SYSTEM_CURSOR_SIZENESW),
-            "ew-resize": Cursor(pg.SYSTEM_CURSOR_SIZEWE),
-            "ns-resize": Cursor(pg.SYSTEM_CURSOR_SIZENS),
-            "nesw-resize": Cursor(pg.SYSTEM_CURSOR_SIZENESW),
-            "nwse-resize": Cursor(pg.SYSTEM_CURSOR_SIZENWSE)
-            # TODO: zoom-in and -out
-        },
-    ),
+    "cursor": StyleAttr("auto", auto | cursors),
 }
 
 abs_default_style: dict[str, str] = {
@@ -1226,8 +1193,8 @@ def process_property(key: str, value: str) -> list[tuple[str, str]] | CompValue 
         assert len(arr) <= len(
             shorthand
         ), f"Too many values: {len(arr)}, max {len(shorthand)}"
-        if len(arr) == 1 and (global_value := arr[0]) in global_values:
-            return dict.fromkeys(shorthand, global_value)
+        if len(arr) == 1 and (_global := arr[0]) in global_values:
+            return [(k, _global) for k in shorthand]
         _shorthand = shorthand.copy()
         result: list[tuple[str, str]] = []
         for sub_value in arr:
@@ -1293,9 +1260,6 @@ def compute_style(
     match val:
         case "inherit":
             return p_style[key]
-        case "initial":
-            raise BugError("This case shouldn't happen")
-            return redirect(attr.initial)
         case "unset":
             return redirect(abs_default_style[key])
         case "revert":
@@ -1374,6 +1338,7 @@ element_styles: dict[str, dict[str, str]] = defaultdict(
                 "border-style": "solid",
                 "border-radius": "3px",
                 "outline-offset": "1px",
+                "padding": "3px",
             },
         }.items()
     },

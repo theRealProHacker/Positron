@@ -189,9 +189,10 @@ Window Events only fire on the html element/the document. So call them by doing 
 The arguments of the event are copied from pygame, so look into the [documentation](https://www.pygame.org/docs/ref/event.html)
 
 ## Documented differences to the specifications
-
+### CSS
 1. Numbers in CSS can be written with a trailing `.`  
 Example: `line-height: 1.`
+2. In CSS `-10` is parsed as the minus sign and a number token. However, I consider this a bug and it causes so many problems all over the place (`calc(12px+-10px)` is invalid and not parsed as (`12px`)`+`(`-10px`) which totally goes against the rule of maximal valid output from minimal valid input). Instead, parsing should be dependant on the context. 
 3. `margin: 0 0 inherit inherit` is also valid and maps to 
 ```css
 margin-top: 0;
@@ -202,10 +203,22 @@ margin-right: inherit;
 4. Also if any of the four values in `margin` were invalid, the rest would still be accepted.
 5. URLs can generally also be absolute or relative paths. `file`-URLs are not accepted
 
+### HTML
+- Many attributes like `srcset`, `cors` or `referer` are just unnecessary
+- Additionally, many `width` and `height` attributes will be ignored in favor of using css styling. 
+- `a`-Elements ignore `target`
+- `html` has its size set to the screens size (`body{height:100%}` works)
+- any `aria` attributes are ignored right now. 
+- To link CSS you can just use style tags. `<style src="style.css"></style>`
+    - [Why]https://youtu.be/zyNhxN6sToM?t=415
+
 # Rants
 ## Why Python is definitely better then JS
 From https://stackoverflow.com/a/2346626/15046005
 > technically javascript to python would be a decompiler
+
+From https://www.youtube.com/watch?v=G9QTBS2x8U4
+> JavaScript Was So Bad They Had To Add A Second Mode To Fix It
 
 ## Why the CSS-Specifications are pretty bad
 1. Many Inconsistencies. Very similar concepts have totally different syntaxes. 
@@ -215,3 +228,57 @@ From https://stackoverflow.com/a/2346626/15046005
 For example there are a million ways to say the same thing in CSS (colors, tranparency)
 4. But in general, CSS is a simple and effective language to describe how a webpage should look like. 
 5. Additionally, Positron has an advantage because it firstly doesn't need to support every feature or every device, currently. And secondly, anyone designing a desktop app with it doesn't need to care about supporting IE7 or similar, in contrast to some actual web-developers. 
+
+# But actually
+
+## ES6 is a pretty well rounded language with at least two features that Python developers are probably jealous of
+1. object unpacking
+```js
+my_object = {
+    "a": 1,
+    "b": 2,
+}
+{a,b} = my_object
+```
+2. anonomous functions that are actual functions
+```js
+inc = x => x+1
+```
+Python only has ugly lambdas
+```python
+inc = lambda x: x+1
+```
+This might not seem like that big of a difference, but it is, when callbacks become bigger
+```js
+window.onload = ()=>{
+    console.log("loaded")
+    x = 5
+    console.log(`I can do whatever I want in these anonymous functions $x`)
+    x += 1;
+    console.log("x is now", x)
+}
+```
+This is not possible in Python, which makes me at least jealous.
+However, there is a pretty valid workaround for this using python decorators. 
+```python	
+@window.onload
+def _():
+    print("loaded)
+    x = 5
+    print(f'I can do whatever I want in these anonymous functions {x}')
+    x += 1;
+    print("x is now", x)
+```	
+
+## the web specs are good too
+I like how there is this balance between parties and interests.
+
+First, you have web developers, second you have the spec authors and then you have the implementors. In some way you can think of these as the three powers of political systems. 
+1. L: spec authors
+2. E: implementors
+3. J: web developers
+
+> Note: Obviously, a single person can have several roles. So one person could be a web developer and also an implementor.
+
+The similarities might not be obvious but one example is how spec authors ask implementors before they adopt new "laws". However, one big difference is that implementors are independent and do **not** have to follow the "laws". Which is obviously totally different to the real world metaphor, however most laws are abided by. 
+And again, web developers have no real power. They can only put pressure on the other two parties. But apart from their powerlessness, they perfectly fit the role of judge. They judge the other results and give feedback like spec issues, implementation bugs and missing features. 

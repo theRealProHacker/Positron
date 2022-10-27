@@ -65,19 +65,26 @@ class TagSelector:
 
 
 @dataclass(frozen=True, slots=True)
-class IdSelector:
+class IdSelector(Selector):
     id: str
     spec = 1, 0, 0
-    __call__ = lambda self, elem: elem.attrs.get("id") == self.id
+
+    def __call__(self, elem):
+        return elem.id == self.id
+
     __str__ = lambda self: "#" + self.id  # type: ignore[attr-defined]
 
 
 @dataclass(frozen=True, slots=True)
-class ClassSelector:
+class ClassSelector(Selector):
     cls: str
     spec = 0, 1, 0
-    __call__ = lambda self, elem: elem.attrs.get("class") == self.cls
-    __str__ = lambda self: "." + self.cls  # type: ignore[attr-defined]
+
+    def __call__(self, elem):
+        return self.cls in elem.class_list
+
+    def __str__(self):
+        return "." + self.cls
 
 
 @dataclass(frozen=True, slots=True)

@@ -32,6 +32,7 @@ class _Event:
     timestamp: float
     type: str
     target: Element.Element
+    current_target: Element.Element
     cancelled: bool = False
     propagation: bool = True
     immediate_propagation: bool = True
@@ -64,6 +65,11 @@ class _Event:
         self.type = type_
         self.target = target
         self.__dict__.update(kwargs)
+
+    def __getattr__(self, name: str):
+        if name == "current_target":
+            return self.target
+        return object.__getattribute__(self, name)
 
     def __str__(self) -> str:
         attrs = ", ".join(f"{k} = {v}" for k, v in self.__dict__.items())
@@ -176,12 +182,21 @@ class EventManager:
         This deals with calling all appropriate callbacks
         """
         # First we get the target, which by default is the root element
-        # then we call all callbacks registered on this event_type and target
+        # then we call all callbacks
+        target: Element.Element = target or g["root"]
+        event = _Event(time.monotonic(), type_, target, kwargs)
+        await self.call_callbacks(event)
+        if supported_events.get(type_, {}).get("bubbles"):
+            while event.propagation and (parent := event.current_target.parent):
+                event.current_target = parent
+                await self.call_callbacks(event)
+
+    async def call_callbacks(self, event: _Event):
         # Every callback has a number of times it will be executed.
         # This number is decreased and if it falls to 0, the callback is removed.
-        target: Element.Element = util.make_default(target, g["root"])
-        event = _Event(time.monotonic(), type_, target, kwargs)
-        old_callbacks: list[CallbackItem] = self.callbacks[type_].get(target, [])
+        old_callbacks: list[CallbackItem] = self.callbacks[event.type].get(
+            event.current_target, []
+        )
         new_callbacks: list[CallbackItem] = []
         for callback, repeat in util.consume_list(old_callbacks):
             try:
@@ -193,18 +208,14 @@ class EventManager:
             # MDN: "If stopImmediatePropagation is invoked during one such call[back], no remaining listeners will be called."
             if not event.immediate_propagation:
                 break
-        self.callbacks[type_][target] = new_callbacks + old_callbacks
+        self.callbacks[event.type][event.current_target] = new_callbacks + old_callbacks
+        # the default action if defined
         if (
             not event.cancelled
-            and (callback := getattr(target, f"on_{type_}", None)) is not None
+            and (callback := getattr(event.current_target, f"on_{event.type}", None))
+            is not None
         ):
             await util.call(callback, event)
-        if (
-            event.propagation
-            and supported_events.get(type_, {}).get("bubbles")
-            and target.parent is not None
-        ):
-            await self.release_event(type_, target=target.parent, **kwargs)
 
     async def handle_events(self, events: list[pg.event.Event]):
         # online, offline
@@ -251,7 +262,8 @@ class EventManager:
                     buttons=self.buttons,
                 )
                 if button == 1:
-                    self.active = hov_elem
+                    if self.change("active", hov_elem):
+                        g["css_dirty"] = True
                     # FIXME: This is ad-hoc focus
                     # https://html.spec.whatwg.org/multipage/interaction.html#focusable-area
                     if self.change("focus", hov_elem):
@@ -298,8 +310,8 @@ class EventManager:
                         )
                         if button == 3:
                             pass  # TODO: contextmenu
-                    else:
-                        self.active = None
+                    self.active = None
+                    g["css_dirty"] = True
                     self.last_click = (time.monotonic(), _pos)
             elif event.type == pg.MOUSEMOTION:
                 self.mouse_pos = _pos
@@ -371,6 +383,7 @@ class EventManager:
             elif event.type == pg.ACTIVEEVENT:
                 # whether the mouse is active on the window
                 pass
+        # TODO: mouseover, -leave, -enter and -exit
 
     def on(
         self,

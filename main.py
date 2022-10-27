@@ -18,7 +18,6 @@ with open(os.devnull, "w") as f, redirect_stdout(f):
 
 import aiohttp
 import jinja2
-import jinja2
 
 import Element
 import Media
@@ -27,10 +26,8 @@ import Style
 import util
 from config import default_style_sheet, default_style_sheet, g, set_mode
 from EventManager import EventManager
-from EventManager import EventManager
 from J import J, SingleJ  # for console
-from own_types import LOADPAGE, FrozenDCache, Event
-from parse_html import parse_dom
+from own_types import LOADPAGE, BugError, FrozenDCache, Event
 
 # setup
 pg.init()
@@ -48,11 +45,9 @@ def _reset_config():
     # TODO: split cstyles into two styles. inherited and not inherited
     # # css_sheets = Cache[Style.SourceSheet]()
     css_sheets = WeakSet[Style.SourceSheet]()
-    css_sheets = WeakSet[Style.SourceSheet]()
     css_sheets.add(default_sheet)
     g.update(
         {
-            "target": None,  # the target of the url fragment
             "target": None,  # the target of the url fragment
             "icon_srcs": [],  # list[str] specified icon srcs
             # css
@@ -105,7 +100,12 @@ async def main(route: str):
             event = load_events[-1]
             _reset_config()
             try:
-                await util.call(event.callback, **event.kwargs)
+                if hasattr(event, "callback"):
+                    await util.call(event.callback, **event.kwargs)
+                elif hasattr(event, "path"):
+                    load_dom(event.path, **event.kwargs)
+                else:
+                    raise BugError(f"Invalid LOADPAGE event: {event}")
             except Exception as e:
                 util.log_error(f"Error in event route ({event.url!r})", e)
                 event = None
@@ -117,13 +117,7 @@ async def main(route: str):
                 with suppress(Selector.InvalidSelector):
                     g["target"] = SingleJ("#" + event.target)._elem
             logging.info(f"Going To: {event.url!r}")
-            # get the title
-            title: str | None = None
-            for head_child in SingleJ("head")._elem.children:
-                if head_child.tag == "title":
-                    title = head_child.text
-            if title is not None:
-                pg.display.set_caption(title)
+            Element.set_title()
             # get the icon
             if _icon_srcs := g["icon_srcs"]:
                 _icon: Media.Image = Media.Image(_icon_srcs)
@@ -196,10 +190,10 @@ goto = util.goto
 reload = util.reload
 
 
-def load_dom(file: str):
+def load_dom(file: str, *args, **kwargs):
     env: jinja2.Environment = g["jinja_env"]
-    html = env.from_string(util.File(file).read()).render()
-    g["root"] = parse_dom(html)
+    html = env.from_string(util.File(file).read()).render(*args, **kwargs)
+    g["root"] = Element.HTMLElement.from_string(html)
     manager: EventManager = g["event_manager"]
     manager.on("file-modified", reload, path=file)
 
@@ -207,7 +201,7 @@ def load_dom(file: str):
 async def aload_dom(url: str):
     env: jinja2.Environment = g["jinja_env"]
     html = await env.from_string(await util.fetch_txt(url)).render_async()
-    g["root"] = parse_dom(html)
+    g["root"] = Element.HTMLElement.from_string(html)
 
 
 ##### User code ########
@@ -215,14 +209,13 @@ async def aload_dom(url: str):
 def startpage():
     load_dom("example.html")
 
-    colors = ["red", "green", "lightblue", "yellow"]
+    colors = ["red", "green", "yellow", "royalblue"]
 
-    def button_callback(event):
+    @J("button").on("click")
+    def _(event):
         color = colors.pop(0)
         colors.append(color)
         event.target.set_style("background-color", color)
-
-    J("button").on("click", button_callback)
 
 
 @add_route("/secondpage")

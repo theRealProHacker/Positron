@@ -58,4 +58,7 @@ These specify the attributes with their types and constraints. Every computed ty
 - word-spacing: 
     - From: `length-percentage`, `normal`
     - To: `Length` or `Percentage` or `Auto` or `BinOp`
-- cursor: a pygame.cursors.Cursor
+- cursor: 
+    - From: a keyword
+    - To: a pygame.cursors.Cursor
+    - TODO: allow comma seperated list of urls where the last element is a keyword. 

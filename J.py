@@ -2,6 +2,7 @@ from config import g
 from Element import Element
 from Selector import Selector, parse_selector
 from Style import CompValue, parse_important, process_input
+from util import set_context
 
 
 def find_in(elem: Element, selector: Selector) -> Element | None:
@@ -38,8 +39,8 @@ class SingleJ:
             if event is None:
                 return callback()
             else:
-                event.target = self
-                return callback(event)
+                with set_context(event, "target", self):
+                    callback(event)
 
         g["event_manager"].on(event_type, inner_callback, repeat, target=self._elem)
 
@@ -80,10 +81,24 @@ class J:
     def __getitem__(self, index):
         return self._singles[index]
 
-    def on(self, event_type: str, callback, repeat: int = -1):
+    def on(self, event_type: str, callback=None, repeat: int = -1):
+        if callback is None:
+
+            def inner(callback):
+                self.on(event_type, callback, repeat)
+
+            return inner
         for single in self._singles:
             single.on(event_type, callback, repeat)
+        return callback
 
-    def once(self, event_type: str, callback):
+    def once(self, event_type: str, callback=None):
+        if callback is None:
+
+            def inner(callback):
+                self.once(event_type, callback)
+
+            return inner
         for single in self._singles:
             single.on(event_type, callback, 1)
+        return callback
