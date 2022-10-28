@@ -35,7 +35,7 @@ from Style import (FullyComputedStyle, SourceSheet, bs_getter, bw_keys,
                    calculator, has_prio, inset_getter, is_custom,
                    pack_longhands, parse_file, parse_sheet)
 from util import (GeneralParser, draw_text, get_tag, goto, group_by_bool, log_error,
-                  make_default, text_surf)
+                  make_default, text_surf, whitespace_re)
 
 # fmt: on
 parser = html5.HTMLParser()
@@ -150,7 +150,6 @@ class NotEditable(ValueError):
     pass
 
 
-whitespace_re = re.compile(r"\s+")
 word_re = re.compile(r"[^\s]+")
 ########################## Element ########################################
 # common operations on Elements. TODO

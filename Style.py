@@ -7,7 +7,7 @@ from collections import defaultdict, deque
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from functools import cache, partial
-from itertools import chain, islice, repeat
+from itertools import chain, islice
 from operator import add, itemgetter, mul, sub, truediv
 from typing import (Any, Callable, Generic, Iterable, Literal, Mapping,
                     Protocol, TypeVar, Union, cast, overload)
@@ -28,7 +28,7 @@ from own_types import (CO_T, V_T, Angle, Auto, AutoLP, AutoType, BugError,
 from util import (GeneralParser, consume_list, fetch_txt, find_index,
                   get_groups, group_by_bool, hsl2rgb, hwb2rgb, in_bounds,
                   log_error, make_default, noop, print_once,
-                  re_join, tup_replace)
+                  re_join, tup_replace, whitespace_re)
 
 # fmt: on
 
@@ -452,19 +452,25 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
                 elif self.consume(")"):
                     stack.append(")")
                     continue
-                elif dimension := self.consume(dim_pattern):
-                    if (result := acc(dimension)) is not None:
-                        stack.append(result)
-                    else:
-                        return None
-                # operator has priority over dimension if the last value was a dimension
-                if operator := self.consume(op_re):
+                # operator has priority over values if the last token was a real value
+                elif (
+                    stack
+                    and not isinstance(stack[-1], str)
+                    and (operator := self.consume(op_re))
+                ):
                     stack.append(operator)
+                elif dimension := self.consume(dim_pattern):
+                    if (result := acc(dimension)) is None:
+                        return None
+                    else:
+                        stack.append(result)
                 elif literal := self.consume(literal_re):
                     stack.append(literal_map[literal])
                 elif number := self.consume(number_pattern):
                     stack.append(float(number))
-                elif self.consume(re.compile(r"\s+")):
+                elif operator := self.consume(op_re):
+                    stack.append(operator)
+                elif self.consume(whitespace_re):
                     pass
                 elif start_x == self.x:
                     return None  # found no valid character

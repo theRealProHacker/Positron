@@ -135,7 +135,7 @@ def test_style_computing():
     assert Style.length("calc(3*5)") is None
     assert Style.length("calc(3px*calc(5+3))") == Length(24)
     assert Style.length("calc(pi*(1+e)*1px)") == Length(math.pi + math.e * math.pi)
-    assert Style.length_percentage("calc(100%-30px)") == Style.AddOp(
+    assert Style.length_percentage("calc(100% -30px)") == Style.AddOp(
         Percentage(100), sub, Length(30)
     )
     with raises(KeyError):

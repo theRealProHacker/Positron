@@ -64,12 +64,8 @@ class _Event:
         self.timestamp = timestamp
         self.type = type_
         self.target = target
+        self.current_target = target
         self.__dict__.update(kwargs)
-
-    def __getattr__(self, name: str):
-        if name == "current_target":
-            return self.target
-        return object.__getattribute__(self, name)
 
     def __str__(self) -> str:
         attrs = ", ".join(f"{k} = {v}" for k, v in self.__dict__.items())

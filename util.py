@@ -585,6 +585,9 @@ class FileWatcher(FileSystemEventHandler):
 ####################################################################
 
 ######################### Regexes ##################################
+whitespace_re = re.compile(r"\s+")
+
+
 def get_groups(s: str, p: re.Pattern) -> list[str] | None:
     """
     Get the matched groups of a match
