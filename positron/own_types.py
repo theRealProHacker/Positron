@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum as _Enum
+
 # fmt: off
 from typing import (Generator, Generic, Hashable, Iterable, Literal, Protocol,
                     Sequence, TypeVar, Union)

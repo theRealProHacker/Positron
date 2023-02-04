@@ -11,7 +11,9 @@ jobs:
         with:
           python-version: '3.10.6' # https://github.com/python/mypy/issues/13627#issuecomment-1245613842
           cache: pip
-      - run: pip install -r requirements.txt
-      - run: python3 -m black . --check
-      - run: python3 -m mypy .
-      - run: python3 -m pytest
+      - run: |
+          pip install -r requirements.txt
+          cd positron
+          python3 -m black . --check
+          python3 -m mypy main.py
+          python3 -m pytest
