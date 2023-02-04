@@ -7,9 +7,10 @@ from typing import Any, Callable, Iterable, Mapping
 import own_types as _o  # Just for dotted access to Auto in match
 from own_types import (Auto, AutoLP, Coordinate, Float4Tuple, Index, Number,
                        Rect, Vector2)
-from Style import (Calculator, FullyComputedStyle, bw_getter, directions, mrg_getter,
-                   pad_getter)
-from util import ensure_suffix, noop, not_neg, mutate_tuple
+from Style import (Calculator, FullyComputedStyle, bw_getter, directions,
+                   mrg_getter, pad_getter)
+from util import ensure_suffix, mutate_tuple, noop, not_neg
+
 # fmt: on
 
 between_types = [("border", "padding"), ("margin",)]

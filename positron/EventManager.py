@@ -1,19 +1,28 @@
 """
 An EventManager takes pygame events and handles them correctly. 
+
+The EventManager is responsible for handling the following:
+- event handling, propagation and callback calling
+- mouse, keyboard and other input sources
+- hover, focus and other element states
+- modals
 """
 import re
 import time
 from collections import defaultdict
 from enum import IntEnum
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 from weakref import WeakKeyDictionary
 
 import pygame as pg
 
-import Element
-from own_types import Cursor
+import config
 import util
 from config import g, set_mode
+from Element import Element, HTMLElement, whitespace_re
+from modals import *
+from own_types import Cursor, Rect, Surface
+from utils.regex import GeneralParser
 
 
 class KeyboardLocation(IntEnum):
@@ -24,6 +33,9 @@ class KeyboardLocation(IntEnum):
     NUMPAD = 4
 
 
+UIElem = Element | Modal
+
+
 class _Event:
     """
     An internal Event that gets passed to callbacks
@@ -31,8 +43,8 @@ class _Event:
 
     timestamp: float
     type: str
-    target: Element.Element
-    current_target: Element.Element
+    target: UIElem
+    current_target: Element
     cancelled: bool = False
     propagation: bool = True
     immediate_propagation: bool = True
@@ -45,7 +57,7 @@ class _Event:
     detail: int = 0
     delta: tuple[int, int] = (0, 0)
     # for mouseevents relative to events like mouseout
-    related_target: Element.Element | None = None
+    related_target: UIElem | None = None
     # keyboard events
     key: str = ""
     code: str = ""
@@ -58,13 +70,13 @@ class _Event:
         self,
         timestamp: float,
         type_: str,
-        target: Element.Element,
+        target: UIElem,
         kwargs: dict[str, Any],
     ):
         self.timestamp = timestamp
         self.type = type_
         self.target = target
-        self.current_target = target
+        self.current_target = target  # type: ignore
         self.__dict__.update(kwargs)
 
     def __str__(self) -> str:
@@ -75,7 +87,7 @@ class _Event:
 # Events to implement
 # https://w3c.github.io/uievents/
 # File dropping can be done by looking for the DROPBEGIN Event.
-# Then we can track the mouse position to tell elements, we are currently dragging something.
+# Then we can track the mouse position to tell elements, we are currently dragging something over.
 # Drag links:
 #   https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
 #   https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#specifying_drop_targets
@@ -87,8 +99,12 @@ class _Event:
 Callback = Callable
 CallbackItem = tuple[Callback, int]
 
-# bubbles: bool = False
-# attrs: tuple = ()
+
+class EventData(TypedDict):
+    bubbles: bool  # = False
+    attrs: tuple  # = ()
+
+
 supported_events: dict[str, dict[str, Any]] = {
     **dict.fromkeys(
         ("click", "auxclick"),
@@ -119,42 +135,46 @@ supported_events: dict[str, dict[str, Any]] = {
     "resize": {"attrs": ("size",)},
     # window events
     **{k.lower(): {} for k in dir(pg) if k.startswith("WINDOW")},
+    "windowmoved": {"attrs": ("x", "y")},
+    "windowsizechanged": {"attrs": ("x", "y")},
 }
-for x in ("windowmoved", "windowsizechanged"):
-    supported_events[x]["attrs"] = ("x", "y")
+# for x in ("windowmoved", "windowsizechanged"):
+#     supported_events[x]["attrs"] = ("x", "y")
 
 _ctrl_ident_re = re.compile(r"[\w_]+|.")
 
 
 def ctrl_del(v: str):
-    parser = util.GeneralParser(v)
-    if not parser.consume(Element.whitespace_re):
+    parser = GeneralParser(v)
+    if not parser.consume(whitespace_re):
         parser.consume(_ctrl_ident_re)
     return parser.x
 
 
 def ctrl_backspace(v: str):
-    parser = util.GeneralParser(v[::-1])
-    parser.consume(Element.whitespace_re)
+    parser = GeneralParser(v[::-1])
+    parser.consume(whitespace_re)
     parser.consume(_ctrl_ident_re)
     return parser.x[::-1]
 
 
 class EventManager:
-    callbacks: defaultdict[str, WeakKeyDictionary[Element.Element, list[CallbackItem]]]
+    callbacks: defaultdict[str, WeakKeyDictionary[UIElem, list[CallbackItem]]]
+    modals: list[Modal]
+    # Event handling
     last_click: tuple[float, tuple[int, int]] = (0, (-1, -1))
     click_count: int = 0
     mouse_pos = pg.mouse.get_pos()
     mods: int = pg.key.get_mods()
-    online = util.is_online()
     keys_down: set[int] = set()
     buttons_down: set[int] = set()
     cursor: Any = Cursor()
+    online = util.is_online()
 
-    drag: Element.Element | None = None
-    focus: Element.Element | None = None
-    active: Element.Element | None = None
-    hover: Element.Element | None = None
+    drag: UIElem | None = None
+    focus: UIElem | None = None
+    active: UIElem | None = None
+    hover: UIElem | None = None
 
     @property
     def buttons(self):
@@ -162,6 +182,7 @@ class EventManager:
 
     def __init__(self):
         self.callbacks = defaultdict(WeakKeyDictionary)
+        self.modals = []
 
     def change(self, name: str, value: Any) -> bool:
         if getattr(self, name) == value:
@@ -170,17 +191,23 @@ class EventManager:
             setattr(self, name, value)
             return True
 
-    async def release_event(
-        self, type_: str, target: Element.Element | None = None, **kwargs
-    ):
+    async def release_event(self, type_: str, target: UIElem | None = None, **kwargs):
         """
         Release an event with the type_ and the keyword arguments.
         This deals with calling all appropriate callbacks
         """
         # First we get the target, which by default is the root element
         # then we call all callbacks
-        target: Element.Element = target or g["root"]
+        target = target or g["root"]
         event = _Event(time.monotonic(), type_, target, kwargs)
+        # Modal
+        if not isinstance(target, Element):
+            if (
+                callback := getattr(event.current_target, f"on_{event.type}", None)
+            ) is not None:
+                await util.call(callback, event)
+            return
+        # Elements
         await self.call_callbacks(event)
         if supported_events.get(type_, {}).get("bubbles"):
             while event.propagation and (parent := event.current_target.parent):
@@ -219,7 +246,8 @@ class EventManager:
         if self.change("online", online):
             await self.release_event("online" if online else "offline")
         # event handling
-        root: Element.Element
+        root: HTMLElement
+        hov_elem: UIElem
         # TODO: What is event.window? Can we just ignore it?
         async def edit(func):
             try:
@@ -238,15 +266,19 @@ class EventManager:
                     button = event.button
                 root = g["root"]
                 _pos = getattr(event, "pos", self.mouse_pos)
-                hov_elem = root.collide(_pos) or root
-                # assert hov_elem is not None TODO: why does this fail sometimes if `or root` is removed above
+                for modal in self.modals:
+                    if modal.rect.collidepoint(_pos):
+                        hov_elem = modal
+                        break
+                else:
+                    hov_elem = root.collide(_pos) or root
+                    cursor = hov_elem.cursor
+                    if self.change("cursor", cursor):
+                        pg.mouse.set_cursor(cursor)
                 if self.change("hover", hov_elem):
                     # TODO: mouseenter, mouseleave
                     # TODO: mouseover, mouseout
                     g["css_dirty"] = True  # :hover
-                cursor = hov_elem.cursor
-                if self.change("cursor", cursor):
-                    pg.mouse.set_cursor(cursor)
             if event.type == pg.MOUSEBUTTONDOWN:
                 self.buttons_down.add(button)
                 await self.release_event(
@@ -295,17 +327,38 @@ class EventManager:
                         self.click_count = 0
                     self.click_count += 1
                     if hov_elem is self.active or button != 1:
+                        mouse_pos: tuple[int, int] = event.pos
                         await self.release_event(
                             "click" if button == 1 else "auxclick",
                             target=hov_elem,
-                            pos=event.pos,
+                            pos=mouse_pos,
                             mods=self.mods,
                             button=button,
                             buttons=self.buttons,
                             detail=self.click_count,
                         )
+                        # remove modals that are escapable and don't overlap with the mouse position
+                        self.modals = [
+                            modal
+                            for modal in self.modals
+                            if not modal.can_escape
+                            or modal.rect.collidepoint(mouse_pos)
+                        ]
                         if button == 3:
-                            pass  # TODO: contextmenu
+                            # TODO: make this dependant on the hit UIElem
+                            # The UIElem could have a property contextmenu: ContextMenu|None
+                            # that indicates which Menu should be displayed
+                            self.modals.insert(
+                                0,
+                                ContextMenu(
+                                    (
+                                        BackButton(),
+                                        ForwardButton(),
+                                        Divider(),
+                                        ReloadButton(),
+                                    )
+                                ).fit_into_rect(Rect(0, 0, g["W"], g["H"]), mouse_pos),
+                            )
                     self.active = None
                     g["css_dirty"] = True
                     self.last_click = (time.monotonic(), _pos)
@@ -333,7 +386,7 @@ class EventManager:
                 # TODO: emit the scroll event on the first scrollable element
             ########################## Keyboard Events ############################################
             # For KeyEvents https://w3c.github.io/uievents/#idl-keyboardevent
-            # key: Which key was pressed (str). default "" # just like pg.Event.unicode or "Shift" or "Dead" for example when pressing `
+            # key: Which key was pressed (str). default "" # just like pg.Event.unicode or "Shift" or "Dead" for example when pressing "`"
             # code: which code the pressed key corresponds to (str). default "" just like pg.event.key
             # location: the physical location of the key pressed (KeyboardLocation). default INVALID
             # mods: ctrl, shiftkey, altkey, metakey (only MacOS). see pygame documentation
@@ -379,23 +432,19 @@ class EventManager:
             elif event.type == pg.ACTIVEEVENT:
                 # whether the mouse is active on the window
                 pass
-        # TODO: mouseover, -leave, -enter and -exit
 
     def on(
         self,
         __type: str,
         __callback: Callback,
         __repeat: int = -1,
-        target: None | Element.Element = None,
-        path: None | str = None,
+        target: None | UIElem = None,
     ):
         """
         Register a callback to be called when the events of type __type occur.
         It will be called __repeat many times or infinite times if < 0.
         Also you can give a target to attach to the event.
         The callback will only be called when the target matches the specified
-        if you want to hook into a file-modified event set path to the path that
-        should be observed.
         """
         __type = __type.lower()
         _target = target if target is not None else g["root"]
@@ -404,9 +453,7 @@ class EventManager:
                 *self.callbacks[__type].get(_target, []),
                 (__callback, __repeat),
             ]
-        if __type == "file-modified":
-            if path is None:
-                raise ValueError(
-                    "You must set path when hooking into a file-modified event"
-                )
-            g["file_watcher"].add_file(path)
+
+    def draw(self, surf: Surface):
+        for modal in reversed(self.modals):
+            modal.draw(surf)

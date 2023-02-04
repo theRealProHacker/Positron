@@ -1,11 +1,14 @@
 """ Any global variables are stored here"""
+import asyncio
 import math
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import aiohttp
+import jinja2
 import pygame as pg
 
-from own_types import Color, Length, Cursor
+from own_types import Color, Cursor, Length, Surface
 
 # fmt: off
 g: dict[str, Any] = {
@@ -20,22 +23,29 @@ g: dict[str, Any] = {
     "default_font_size": 16,        # float
     "key_delay": 500,               # int in ms
     "key_repeat": 30,               # int in ms
-    # "zoom": 1,                      # float
     "FPS": 60,                      # float
-    "jinja_env": None,              # The global jinja Environment
+    # "zoom": 1,                      # float
     # reserved
     "root": None,                   # the root HTMLElement
-    "route": "",                    # the current route
-    "file_watcher": None,           # util.FileWatcher
-    "event_manager": None,          # Eventmanager
-    "aiosession": None,             # aiohttp.ClientSession
-    "jinja_env": None,              # The global jinja Environment
-    "event_loop": None,             # asyncio.BaseEventLoop
-    "screen": None,                 # pg.Surface
-    "default_task": None,           # util.Task
-    "tasks": [],                    # list of tasks that are started in synchronous functions
-    "visited_links": {}             # dict[str, Literal["browser", "internal", "invalid"]]
 }
+
+DEBUG = True
+
+# We avoid circular references by using if TYPE_CHECKING
+if TYPE_CHECKING:
+    import EventManager
+    import util
+    from utils.FileWatcher import FileWatcher
+    event_manager: EventManager.EventManager
+    file_watcher: FileWatcher
+    default_task: util.Task
+    tasks: list[util.Task]
+tasks = []
+jinja_env: jinja2.Environment           # The global jinja Environment used for all html loading
+aiosession: aiohttp.ClientSession       # The global aiohttp session used for http requests
+event_loop: asyncio.AbstractEventLoop   # The global asyncio event loop
+screen: Surface
+
 # fmt: on
 
 
@@ -51,13 +61,14 @@ async def set_mode():
     """
     Call this after setting g manually. This will probably change to an API function
     """
+    global screen
     # icon
     if _icon := g["icon"]:
         if await _icon.loading_task is not None:
             pg.display.set_icon(_icon.surf)
     # Display Mode
     flags = pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
-    g["screen"] = pg.display.set_mode((g["W"], g["H"]), flags)
+    screen = pg.display.set_mode((g["W"], g["H"]), flags)
     # Screen Saver
     pg.display.set_allow_screensaver(g["allow_screen_saver"])
     # key repeat

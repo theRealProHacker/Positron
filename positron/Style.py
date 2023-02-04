@@ -1,14 +1,15 @@
+from __future__ import annotations
+
 # fmt: off
 import asyncio
 import math
 import re
-from abc import ABC
 from collections import defaultdict, deque
-from contextlib import contextmanager, suppress
+from contextlib import suppress
 from dataclasses import dataclass
 from functools import cache, partial
 from itertools import chain, islice
-from operator import add, itemgetter, mul, sub, truediv
+from operator import add, mul, sub, truediv
 from typing import (Any, Callable, Generic, Iterable, Literal, Mapping,
                     Protocol, TypeVar, Union, cast, overload)
 
@@ -19,16 +20,21 @@ import Media
 import Selector
 from config import (abs_angle_units, abs_border_width, abs_font_size,
                     abs_font_weight, abs_length_units, abs_resolution_units,
-                    abs_time_units, g, rel_font_size, rel_length_units, cursors)
-from own_types import (CO_T, V_T, Angle, Auto, AutoLP, AutoType, BugError,
-                       Color, CompStr, CSSDimension, Drawable,
-                       Float4Tuple, FontStyle, Length, LengthPerc, Number,
-                       Percentage, Resolution, Sentinel, Str4Tuple, StrSent,
-                       Time, frozendict)
-from util import (GeneralParser, consume_list, fetch_txt, find_index,
-                  get_groups, group_by_bool, hsl2rgb, hwb2rgb, in_bounds,
-                  log_error, make_default, noop, print_once,
-                  re_join, tup_replace, whitespace_re)
+                    abs_time_units, cursors, g, rel_font_size,
+                    rel_length_units)
+from own_types import (V_T, Angle, Auto, AutoType, BugError, Color, CompStr,
+                       CSSDimension, Drawable, Float4Tuple, FontStyle, Length,
+                       LengthPerc, Number, Percentage, Resolution, Sentinel,
+                       Str4Tuple, StrSent, Time, frozendict)
+from style.itemgetters import *
+from style.MediaQuery import *
+from style.Parser import Parser, parse_important, set_curr_file
+from util import (consume_list, fetch_txt, find_index, group_by_bool,
+                  in_bounds, log_error, make_default, noop, print_once,
+                  tup_replace)
+from utils.colors import hsl2rgb, hwb2rgb
+from utils.regex import (GeneralParser, get_groups, match_bracket, re_join,
+                         split_value, whitespace_re)
 
 # fmt: on
 
@@ -48,9 +54,7 @@ ResolvedStyle = dict[str, str | CompValue]
 Style = dict[str, Value]
 FullyComputedStyle = Mapping[str, CompValue]
 StyleRule = tuple[Selector.Selector, Style]
-
-MediaValue = tuple[int, int]  # just the window size right now
-Rule = Union["AtRule", "StyleRule"]
+Rule = Union[AtRule, StyleRule]
 
 CalcTypes = float, CSSDimension
 CalcType = Union[type[float], type[CSSDimension]]
@@ -70,48 +74,6 @@ def is_real_str(x):
 
 def ensure_comp(x: CompValue_T | str) -> CompValue_T | CompStr:
     return CompStr(x) if isinstance(x, str) else x
-
-
-def match_bracket(s: Iterable):
-    """
-    Searchs for a matching bracket
-    If not found then returns None else it returns the index of the matching bracket
-    """
-    brackets = 0
-    for i, c in enumerate(s):
-        if c == ")":  # closing bracket
-            if not brackets:
-                return i
-            else:
-                brackets -= 1
-        elif c == "(":  # opening bracket
-            brackets += 1
-
-
-def split_value(s: str) -> list[str]:
-    rec = True
-    result = []
-    curr_string = ""
-    brackets = 0
-    for c in s:
-        is_w = re.match(r"\s", c)
-        if rec and not brackets and is_w:
-            rec = False
-            result.append(curr_string)
-            curr_string = ""
-        if not is_w:
-            rec = True
-            curr_string += c
-        elif brackets:
-            curr_string += c
-        if c == "(":
-            brackets += 1
-        elif c == ")":
-            assert brackets
-            brackets -= 1
-    if rec:
-        result.append(curr_string)
-    return result
 
 
 # css func should be used if there is a single css function expected
@@ -201,47 +163,6 @@ literal_map = {
 literal_re = re.compile(re_join(*literal_map))
 no_intrinsic_type = frozenset({Percentage, float})
 
-
-#################### Itemgetters/setters ###########################
-
-# https://stackoverflow.com/questions/54785148/destructuring-dicts-and-objects-in-python
-class T4Getter(Protocol[CO_T]):
-    def __call__(self, input: FullyComputedStyle) -> tuple[CO_T, CO_T, CO_T, CO_T]:
-        ...
-
-
-class itemsetter(Generic[V_T]):
-    def __init__(self, keys: tuple[str, ...]):
-        self.keys = keys
-
-    def __call__(self, map: dict, values: tuple[V_T, ...]) -> None:
-        for key, value in zip(self.keys, values):
-            map[key] = value
-
-
-directions = ("top", "right", "bottom", "left")
-corners = ("top-left", "top-right", "bottom-right", "bottom-left")
-
-# fmt: off
-inset_keys = directions
-marg_keys: Str4Tuple = tuple(f"margin-{k}" for k in directions)     # type: ignore[assignment]
-pad_keys: Str4Tuple = tuple(f"padding-{k}" for k in directions)     # type: ignore[assignment]
-bs_keys: Str4Tuple = tuple(f"border-{k}-style" for k in directions) # type: ignore[assignment]
-bw_keys: Str4Tuple = tuple(f"border-{k}-width" for k in directions) # type: ignore[assignment]
-bc_keys: Str4Tuple = tuple(f"border-{k}-color" for k in directions) # type: ignore[assignment]
-br_keys: Str4Tuple = tuple(f"border-{k}-radius" for k in corners)   # type: ignore[assignment]
-
-ALPGetter = T4Getter[AutoLP]
-inset_getter: ALPGetter = itemgetter(*inset_keys)   # type: ignore[assignment]
-mrg_getter: ALPGetter = itemgetter(*marg_keys)      # type: ignore[assignment]
-pad_getter: ALPGetter = itemgetter(*pad_keys)       # type: ignore[assignment]
-
-bw_getter: ALPGetter = itemgetter(*bw_keys)         # type: ignore[assignment]
-bc_getter: T4Getter[Color] = itemgetter(*bc_keys)   # type: ignore[assignment]
-bs_getter: T4Getter[str] = itemgetter(*bs_keys)     # type: ignore[assignment]
-br_getter: T4Getter[tuple[LengthPerc, LengthPerc]] = itemgetter(*br_keys)  # type: ignore[assignment]
-# fmt: on
-####################################################################
 
 ######################### Calculation ##############################
 @dataclass
@@ -337,14 +258,14 @@ class BinOp:
     op: Operator
     right: CalcValue
 
-    def resolve(self) -> "ParseResult":
+    def resolve(self) -> ParseResult:
         try:
             return self.op(self.left, self.right)
         except ValueError:
             return self
 
     def get_type(self) -> CalcType:
-        pass
+        ...
 
     def __repr__(self):
         return f"{self.left}{_reversed_op_map[self.op]}{self.right}"
@@ -389,7 +310,6 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
     default_type: CalcType
 
     def __init__(self, *types):
-        assert types, BugError("Empty Calc")
         self._accepts = frozenset(types)
         intrinsic_type = self._accepts.difference(no_intrinsic_type)
         if (len_ := len(intrinsic_type)) > 1:
@@ -844,60 +764,7 @@ abs_default_style: dict[str, str] = {
 }
 """ The default style for a value (just like "unset") """
 
-###########################  CSS-Parsing ############################
-class CustomCSSParser(tinycss.CSS21Parser):
-    def parse_declaration(self, tokens: list[tinycss.token_data.Token]):
-        first_token, second_token, *rest = tokens
-        if first_token.value == "-" and second_token.type == "IDENT":
-            value = first_token.value + second_token.value
-            tokens = [
-                tinycss.token_data.Token(
-                    "IDENT", value, value, None, first_token.line, first_token.column
-                ),
-                *rest,
-            ]
-        return super().parse_declaration(tokens)
-
-
-Parser = CustomCSSParser()
-
-
-current_file: str = ""
-
-
-@contextmanager
-def set_curr_file(file: str):
-    global current_file
-    current_file = file
-    try:
-        yield
-    finally:
-        current_file = ""
-
-
-############################# Types #######################################
-class AtRule(ABC):
-    pass
-
-
-class ImportRule(tinycss.css21.ImportRule, AtRule):
-    pass
-
-
-class MediaRule(AtRule):
-    def __init__(self, media: list[str], rules: "SourceSheet"):
-        self.media = media
-        self.rules = rules
-
-    def matches(self, media: "MediaValue"):
-        """Whether a MediaRule matches a Media"""
-        return True  # TODO
-
-
-class PageRule(tinycss.css21.PageRule, AtRule):
-    pass
-
-
+# Helpers
 def join_styles(style1: Style, style2: Style) -> Style:
     """
     Join two styles. Prefers the first
@@ -936,10 +803,6 @@ def add_important(style: ResolvedStyle, imp: bool) -> Style:
     return {k: (v, imp) for k, v in style.items()}
 
 
-def get_media() -> MediaValue:
-    return g["W"], g["H"]
-
-
 class SourceSheet(list[Rule]):
     """
     A list of AtRules or StyleRules.
@@ -958,7 +821,7 @@ class SourceSheet(list[Rule]):
         rv: list[StyleRule] = []
         for rule in self:
             if isinstance(rule, MediaRule) and rule.matches(current_media):
-                rv.extend(rule.rules.all_rules)
+                rv.extend(rule.content.all_rules)
             elif isinstance(rule, tuple):  # Just a regular StyleRule
                 rv.append(rule)
         self._last_media_rules = (current_media, rv)
@@ -971,7 +834,7 @@ class SourceSheet(list[Rule]):
         return hash(tuple(self))
 
     @classmethod
-    def join(cls, sheets: Iterable["SourceSheet"]):
+    def join(cls, sheets: Iterable[SourceSheet]):
         return cls(chain.from_iterable(sheets))
 
     def append(self, __object) -> None:
@@ -988,13 +851,6 @@ class SourceSheet(list[Rule]):
 
 
 ############################### Parsing functions #######################################
-IMPORTANT = " !important"
-
-
-def parse_important(s: str) -> InputValue:
-    return (s[: -len(IMPORTANT)], True) if s.endswith(IMPORTANT) else (s, False)
-
-
 def parse_inline_style(s: str):
     """
     Parse a style string. For example an inline style.
@@ -1069,7 +925,6 @@ def handle_rule(
             log_error("Invalid Selector:", rule.selector.as_css())
             return None
     elif isinstance(rule, tinycss.css21.MediaRule):
-        assert rule.at_keyword == "@media"
         return MediaRule(rule.media, handle_rules(rule.rules))
     else:
         raise NotImplementedError("Not implemented AtRule: " + type(rule).__name__)

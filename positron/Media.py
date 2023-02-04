@@ -8,10 +8,9 @@ from weakref import WeakValueDictionary
 
 import pygame as pg
 
+import config
 import util
 from own_types import Coordinate, Surface
-from config import g
-
 
 surf_cache = WeakValueDictionary[str, Surface]()
 
@@ -74,7 +73,9 @@ class Image:
     @property
     def loading_task(self) -> util.Task:
         return (
-            self._loading_task if self._loading_task is not None else g["default_task"]
+            self._loading_task
+            if self._loading_task is not None
+            else config.default_task
         )
 
     @loading_task.setter

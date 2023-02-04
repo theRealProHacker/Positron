@@ -202,3 +202,16 @@ class InputValueAttribute(Attribute[str | float]):
         elem.attrs[self.attr] = (
             util.nice_number(value) if isinstance(value, own_types.Number) else value
         )
+
+
+__all__ = [
+    "BooleanAttribute",
+    "ClassListAttribute",
+    "DataAttribute",
+    "GeneralAttribute",
+    "InputValueAttribute",
+    "NumberAttribute",
+    "Opposite",
+    "RangeAttribute",
+    "SameAs",
+]

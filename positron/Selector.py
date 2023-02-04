@@ -4,14 +4,16 @@ Includes parsing (text->Selector) and matching
 """
 
 from __future__ import annotations
+
+import re
 from dataclasses import dataclass
 from functools import cache, cached_property, partial, reduce
-import re
 from typing import Callable, Iterable, Protocol
+
 import Style
 from own_types import BugError, Element_P
-from util import find_index, get_groups
-
+from util import find_index
+from utils.regex import get_groups
 
 ########################## Specificity and Rules #############################
 Spec = tuple[int, int, int]
