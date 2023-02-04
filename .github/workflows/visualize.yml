@@ -1,10 +1,7 @@
 name: Visualize the codebase
 # run on pull request or push to main
 on:
-  pull_request:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   visualize:

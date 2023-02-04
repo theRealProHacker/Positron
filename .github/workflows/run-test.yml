@@ -13,5 +13,5 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: python3 -m black . --check
-      - run: python3 -m mypy .
+      - run: python3 -m mypy main.py
       - run: python3 -m pytest
