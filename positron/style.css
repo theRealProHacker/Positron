@@ -1,0 +1,49 @@
+
+body {
+    width: 70%;
+    margin: auto;
+    font-family: TimesNewRoman;
+}
+p {
+    padding: 10px;
+}
+.red {
+    color: red;
+}
+a {
+    font-weight:bolder;
+}
+a:target {
+    color: rgb(102, 255, 0);
+}
+a:hover { 
+    color: green;
+    font-size: large; 
+}
+button {
+    display: block;
+    width: calc(200px -10%);
+    height: 100px;
+    margin: auto;
+    background-color: royalblue;
+}
+.cursor {
+    cursor: none;
+}
+input:changed:active{
+    border-color: rgb(76, 193, 26);
+}
+input:changed:invalid{
+    border-color: rgb(122, 44, 2);
+}
+* {
+    outline: solid grey thin;
+}
+*:active{
+    outline-width: thick;
+}
+@media (min-width: 800px) {
+    a:hover { 
+        color: red;
+    }
+}

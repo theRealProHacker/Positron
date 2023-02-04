@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import config
 from config import g
 from Element import Element
 from Selector import Selector, parse_selector
@@ -42,7 +45,7 @@ class SingleJ:
                 with set_context(event, "target", self):
                     callback(event)
 
-        g["event_manager"].on(event_type, inner_callback, repeat, target=self._elem)
+        config.event_manager.on(event_type, inner_callback, repeat, target=self._elem)
 
     def once(self, event_type: str, callback):
         return self.on(event_type, callback, 1)
@@ -57,31 +60,49 @@ class SingleJ:
     def __eq__(self, other):
         return self.elem is other.elem
 
-    def data(self):
+    def data(self, ):
+        """
+        
+        """
         return {k[5:]: v for k, v in self._elem.attrs if k.startswith("data-")}
 
-
+# IDEA: inherit from UserList?
+# IDEA: toggle for all kinds of stuff (classes, attributes, event handlers and so on)
 class J:
     """
     The classic JQuery object that includes all elements that match the query.
 
-    Examples:
-    J("a").on("click", print)
-    J("input").on("keydown", lambda event: print(event.key))
     """
 
     _singles: list[SingleJ]
 
-    def __init__(self, query: str):
+    def __init__(self, query: str | list[SingleJ]):
         # Make a list of matching Elements
-        selector = parse_selector(query)
-        root: Element = g["root"]
-        self._singles = [SingleJ(elem) for elem in root.iter_desc() if selector(elem)]
+        if isinstance(query, str):
+            selector = parse_selector(query)
+            root: Element = g["root"]
+            self._singles = [SingleJ(elem) for elem in root.iter_desc() if selector(elem)]
+        else:
+            self._singles = query
 
     def __getitem__(self, index):
         return self._singles[index]
 
-    def on(self, event_type: str, callback=None, repeat: int = -1):
+    def on(self, event_type: str, callback=None, *, repeat: int = -1):
+        """
+        Attach an event handler with events of type `event_type`.
+        The handler will be called every time the event is emitted but only `repeat` many times
+
+        Examples:
+
+        ```py
+        J("a").on("click", print)
+
+        J("input").on("keydown", repeat = 2)
+        def _(event):
+            print(event.key)
+        ```
+        """
         if callback is None:
 
             def inner(callback):
@@ -93,6 +114,9 @@ class J:
         return callback
 
     def once(self, event_type: str, callback=None):
+        """
+        Attach an event handler to events of type `event_type` to be called only once
+        """
         if callback is None:
 
             def inner(callback):
@@ -102,3 +126,18 @@ class J:
         for single in self._singles:
             single.on(event_type, callback, 1)
         return callback
+
+    def __and__(self, other: J):
+        """
+        J("div") & J(".red") gives you all .red divs. Equivalent to J("div.red")
+        """
+        return J(list(set(self._singles) & set(other._singles)))
+
+    def __or__(self, other: J):
+        """
+        J("p") | J("div") gives you all ps and all divs. Equivalent to J("p, div")
+        """
+        return J(list(set(self._singles) | set(other._singles)))
+
+    def __index__(self, index):
+        raise NotImplementedError()

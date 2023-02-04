@@ -1,22 +1,22 @@
 """
-A single source of thruth for types that are used in the other modules.
+A single source of thruth for types that are used in other modules.
 Instead of importing Rects or Vectors from pygame, import them from here. 
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum as _Enum
-
 # fmt: off
-from typing import (Any, Generator, Generic, Hashable, Iterable, Literal,
-                    Protocol, Sequence, TypeVar, Union)
+from typing import (Generator, Generic, Hashable, Iterable, Literal, Protocol,
+                    Sequence, TypeVar, Union)
 # fmt: on
 from weakref import WeakValueDictionary
 
 import pygame as pg
 from frozendict import FrozenOrderedDict as _frozendict
+from pygame.cursors import Cursor
 from pygame.event import Event
 from pygame.font import Font
-from pygame.cursors import Cursor
 from pygame.math import Vector2 as _Vector2
 from pygame.rect import Rect as _Rect
 from pygame.surface import Surface
@@ -49,12 +49,6 @@ Radii = tuple[
 K_T = TypeVar("K_T", bound=Hashable)
 V_T = TypeVar("V_T")
 CO_T = TypeVar("CO_T", covariant=True)
-
-LOADPAGE = pg.event.custom_type()
-
-
-def loadpage_event(**kwargs):
-    return Event(LOADPAGE, **kwargs)
 
 
 ############################ Some Classes ##############################
@@ -153,7 +147,9 @@ class Rect(_Rect):
         return rect
 
 
-CSSDimension_T = TypeVar("CSSDimension_T", bound="CSSDimension")
+CSSDimension_T = TypeVar(
+    "CSSDimension_T", bound="CSSDimension"
+)  # could be Self -> definitely a reason to switch to 3.11
 
 
 @dataclass(frozen=True)

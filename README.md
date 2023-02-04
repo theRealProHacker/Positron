@@ -4,7 +4,9 @@
 
 # Positron
 
-**E**lectron uses **E**CMAScript and **P**ositron uses **P**ython 
+**E**lectron uses **E**CMAScript and **P**ositron uses **P**ython
+
+> I initially thought the name was really brilliant and original until I randomly searched for Positron and found like 5 other projects with the same name. One of them an Electron clone by Mozilla 😂.
 
 # Motivation
 
@@ -23,7 +25,7 @@ Apart from this little thing, Electron is really great, if you know how to use i
 
 ## How can Positron be fast with Python?
 
-1. Most of the work is done in C: IO, graphics, numpy and other calculations
+1. Most of the work is done in C: IO, graphics, and calculations
 2. Asynchronous programming
 
 Thats really it.
@@ -90,11 +92,16 @@ python3 -m venv venv
 venv\Scripts\activate   &:: on Windows
 venv/bin/activate       # on Unix 
 pip install -r requirements.txt
+cd positron
 ```
-Now you can create an HTML-file `example.html` and then you just do  
+Now you can create an HTML-file `example.html` in `positron` and then you just do  
 ```shell
 python3 main.py
 ```
+
+# Visualization of the codebase
+Uses [repo-visualization](https://githubnext.com/projects/repo-visualization/) by [Amelia Wattenberger](https://wattenberger.com/)
+![Visualization of the codebase](./diagram.svg)
 
 # Sources 
 ## MVPs
@@ -147,8 +154,8 @@ For exampe you could use a `GeneralParser`, which is an easy way to tokenize a s
     - target: The Element clicked (bubbles)
     - pos: the mouse position on the screen
     - mods: An int mask, which mods are pressed
-    - button: invalid: 0, left: 1, middle: 2, right: 3, 4 and 5 are special buttons
-    - buttons: An int mask which mouse buttons are down
+    - button: invalid: 0, left: 1, middle: 2, right: 3; 4 and 5 are special buttons
+    - buttons: A bit mask of which mouse buttons are down
     - detail: Which click this is. The 1st, 2nd, 3rd, ... 
 - `mousedown`:
     - target: The Element the mouse was pressed in
@@ -192,13 +199,13 @@ The arguments of the event are copied from pygame, so look into the [documentati
 ### CSS
 1. Numbers in CSS can be written with a trailing `.`  
 Example: `line-height: 1.`
-2. In CSS `-10` is parsed as the minus sign and a number token. However, I consider this a bug and it causes so many problems all over the place (`calc(12px+-10px)` is invalid and not parsed as (`12px`)`+`(`-10px`) which totally goes against the rule of maximal valid output from minimal valid input). Instead, parsing should be dependant on the context. 
+2. In CSS `-10` is parsed as the minus sign and a number token. However, I consider this a bug and it causes so many problems all over the place (`calc(12px+-10px)` is invalid and not parsed as (`12px`)`+`(`-10px`) which totally goes against the rule of maximally valid output from minimally valid input). Instead, parsing should be dependant on the context. 
 3. `margin: 0 0 inherit inherit` is also valid and maps to 
 ```css
-margin-top: 0;
-margin-left:0;
-margin-bottom: inherit;
-margin-right: inherit;
+margin-top:     0;
+margin-left:    0;
+margin-bottom:  inherit;
+margin-right:   inherit;
 ```
 4. Also if any of the four values in `margin` were invalid, the rest would still be accepted.
 5. URLs can generally also be absolute or relative paths. `file`-URLs are not accepted
@@ -219,6 +226,9 @@ From https://stackoverflow.com/a/2346626/15046005
 
 From https://www.youtube.com/watch?v=G9QTBS2x8U4
 > JavaScript Was So Bad They Had To Add A Second Mode To Fix It
+
+From https://www.youtube.com/watch?v=aXOChLn5ZdQ&lc=UgzA0qq1X45-ZU337eR4AaABAg
+> When you code in JS, you always want to shout "F%ck this", but you can't be sure what "this" means in your local environment...
 
 ## Why the CSS-Specifications are pretty bad
 1. Many Inconsistencies. Very similar concepts have totally different syntaxes. 
@@ -259,7 +269,7 @@ window.onload = ()=>{
 }
 ```
 This is not possible in Python, which makes me at least jealous.
-However, there is a pretty valid workaround for this using python decorators. 
+However, there is a pretty solid workaround for this using python decorators. 
 ```python	
 @window.onload
 def _():

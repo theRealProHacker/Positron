@@ -1,5 +1,7 @@
 """
 Utilities for all kinds of needs (funcs, regex, etc...) 
+
+This module should slowly be dissolved into utils sub modules
 """
 
 import asyncio
@@ -12,30 +14,25 @@ import os
 import re
 import socket
 import sys
-import time
 import uuid
 from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
 from functools import cache
-from types import FunctionType
-from typing import Any, Awaitable, Callable, Iterable, Literal, Sequence, TypeVar
-from urllib.parse import parse_qsl, unquote_plus, urlparse
-import webbrowser
+from typing import Awaitable, Callable, Iterable, Literal, Sequence, TypeVar
+from urllib.parse import unquote_plus, urlparse
 
 import aiofiles
 import aiofiles.os
 import aiofiles.ospath as aospath
-import aiohttp
 import numpy as np
 import pygame as pg
-from watchdog.events import FileSystemEvent, FileSystemEventHandler
-from watchdog.observers import Observer
 
 # fmt: off
-from config import g
-from own_types import (CO_T, K_T, V_T, BugError, Color, Coordinate,
-                       Font, Index, OpenMode, OpenModeReading, OpenModeWriting,
-                       Rect, Surface, Vector2, loadpage_event)
+import config
+from own_types import (CO_T, K_T, V_T, Color, Coordinate, Font, Index,
+                       OpenMode, OpenModeReading, OpenModeWriting, Rect,
+                       Surface, Vector2)
+from utils.regex import GeneralParser, rev_sub
 
 # fmt: on
 
@@ -263,8 +260,7 @@ class Task(asyncio.Task):
         callback: Callable[[asyncio.Future], None] | None = None,
         **kwargs,
     ):
-        loop: asyncio.BaseEventLoop = g["event_loop"]
-        task = cls(sync, coro, loop=loop, **kwargs)
+        task = cls(sync, coro, loop=config.event_loop, **kwargs)
         if callback is not None:
             task.add_done_callback(callback)
         return task
@@ -280,7 +276,7 @@ def create_task(
     This creates a task and adds it to the global task queue
     """
     task = Task.create(coro, sync, callback, **kwargs)
-    g["tasks"].append(task)
+    config.tasks.append(task)
     return task
 
 
@@ -330,7 +326,7 @@ def is_online() -> bool:
 created_files: set[str] = set()
 
 
-def _make_new_name(name):
+def _make_new_filename(name):
     def lamda(groups: list[str]):
         return f"({int(groups[0]) + 1})"
 
@@ -353,7 +349,7 @@ def create_file(file_name: str) -> str:
             created_files.add(file_name)
             return file_name
     except FileExistsError:
-        return create_file(_make_new_name(file_name))
+        return create_file(_make_new_filename(file_name))
 
 
 async def delete_created_files():
@@ -443,8 +439,7 @@ async def fetch(url: str, raw: bool = False) -> Response:
     Also it might raise an aiohttp error
     """
     if url.startswith("http"):
-        session: aiohttp.ClientSession = g["aiosession"]
-        async with session.get(url) as response:
+        async with config.aiosession.get(url) as response:
             content_type = response.headers.get("content-type", "")
             mime_type, charset = parse_media_type(content_type)
             return Response(
@@ -462,8 +457,8 @@ async def fetch(url: str, raw: bool = False) -> Response:
         data       := *urlchar
         parameter  := attribute "=" value
         """
-        url = re.sub(r"\s*", "", url)  # remove all whitespace
         url = url[5:]
+        url = re.sub(r"\s*", "", url)  # remove all whitespace
         parser = GeneralParser(url)
         media_type = parser.consume(media_type_pattern)
         mime_type, charset = parse_media_type(media_type, "text/plain", "US-ASCII")
@@ -502,8 +497,7 @@ async def download(url: str) -> str:
     Instead of fetching the url into memory, the data is downloaded to a file
     """
     if url.startswith("http"):
-        session: aiohttp.ClientSession = g["aiosession"]
-        async with session.get(url) as resp:
+        async with config.aiosession.get(url) as resp:
             new_file = create_file(os.path.basename(urlparse(url).path))
             async with aiofiles.open(new_file, "wb") as f:
                 async for chunk in resp.content.iter_any():
@@ -547,235 +541,6 @@ log_error = clog_error()(print)
 print_once = cache(print)
 log_error_once = cache(log_error)
 
-
-########################## FileWatcher #############################
-class FileWatcher(FileSystemEventHandler):
-    """
-    A FileWatcher is really just a watchdog Eventhandler that holds a set of files to be watched.
-    If any file changes, the app is asked to restart by setting the `g["reload"]` flag and sending a
-    Quit Event to the Event Queue
-    """
-
-    def __init__(self):
-        self.last_hit = time.monotonic()  # this doesn't need to be extremely accurate
-        self.files = set[str]()
-        self.dirs = set[str]()
-
-    def add_file(self, file: str):
-        file = os.path.abspath(file)
-        self.files.add(file)
-        new_dir = os.path.dirname(file)
-        if not new_dir in self.dirs:
-            self.dirs.add(new_dir)
-            ob = Observer()
-            ob.schedule(self, new_dir)
-            ob.start()
-        return file
-
-    def on_modified(self, event: FileSystemEvent):
-        logging.debug(f"File modified: {event.src_path}")
-        if event.src_path in self.files and (t := time.monotonic()) - self.last_hit > 1:
-            create_task(
-                g["event_manager"].release_event("file-modified", path=event.src_path),
-                sync=True,
-            )
-            self.last_hit = t
-
-
-####################################################################
-
-######################### Regexes ##################################
-whitespace_re = re.compile(r"\s+")
-
-
-def get_groups(s: str, p: re.Pattern) -> list[str] | None:
-    """
-    Get the matched groups of a match
-    """
-    if match := p.search(s):
-        if groups := [g for g in match.groups() if g]:
-            return groups
-        else:
-            return [match.group()]
-    return None
-
-
-def re_join(*args: str) -> str:
-    """
-    Example:
-    x in ("px","%","em") <-> re.match(re_join("px","%","em"), x)
-    """
-    return "|".join(re.escape(x) for x in args)
-
-
-# Reverse regex
-r"""
-Search or replace in the regex from the end of the string.
-The given regex will not be reversed TODO: implement this
-To reverse a regex we need to understand which tokens belong together
-Examples:
-\d -> \d
-\d*->\d*
-or
-(?:\d+) -> (?:\d+)
-...
-"""
-
-
-def rev_groups(pattern: re.Pattern | str, s: str):
-    _pattern = re.compile(pattern)
-    groups = get_groups(s[::-1], _pattern)
-    return None if groups is None else [group[::-1] for group in groups]
-
-
-def rev_sub(
-    pattern: re.Pattern | str,
-    s: str,
-    repl: str | Callable[[list[str]], str],
-    count: int = -1,
-):
-    """
-    Subs a regex in reversed mode
-    """
-    if isinstance(repl, str):
-        _repl = repl[::-1]
-    elif isinstance(repl, FunctionType):
-
-        def _repl(match: re.Match):
-            return repl([group[::-1] for group in match.groups()])[::-1]
-
-    else:
-        raise TypeError
-
-    return re.sub(pattern, _repl, s[::-1], count)[::-1]
-
-
-class GeneralParser:
-    """
-    Really this is a lexer.
-    It consumes parts of its x and can then convert these into tokens
-    """
-
-    x: str
-
-    def __init__(self, x: str):
-        self.x = x
-
-    def consume(self, s: str | re.Pattern[str]) -> str:
-        assert s, BugError("Parser with empty consume")
-        if isinstance(s, str) and self.x.startswith(s):
-            self.x = self.x[len(s) :]
-            return s
-        elif isinstance(s, re.Pattern):
-            if match := s.match(self.x):
-                slice_ = match.span()[1]
-                result, self.x = self.x[:slice_], self.x[slice_:]
-                return result
-        return ""
-
-
-##########################################################################
-
-
-############################# Colors #####################################
-def hsl2rgb(hue: float, sat: float, light: float):
-    """
-    hue in [0,360]
-    sat,light in [0,1]
-    """
-    hue %= 360
-    sat = in_bounds(sat, 0, 1)
-    light = in_bounds(light, 0, 1)
-    # algorithm from https://www.w3.org/TR/css-color-3/#hsl-color
-    def hue2rgb(n):
-        k = (n + hue / 30) % 12
-        a = sat * min(light, 1 - light)
-        return light - a * max(-1, min(k - 3, 9 - k, 1))
-
-    return Color(*(int(x * 255) for x in (hue2rgb(0), hue2rgb(8), hue2rgb(4))))
-
-
-def hwb2rgb(h: float, w: float, b: float):
-    """
-    h in [0,360]
-    w,b in [0,1]
-    """
-    h %= 360
-    if (sum_ := (w + b)) > 1:
-        w /= sum_
-        b /= sum_
-
-    rgb = hsl2rgb(h, 1, 0.5)
-
-    return Color(*(round(x * (1 - w - b) + 255 * w) for x in rgb))
-
-
-# TODO: lab, lch, oklab, oklch, etc. to rgb
-
-
-##########################################################################
-
-############################# Site navigation ############################
-
-routes: dict[str, Callable] = {}
-
-
-def add_route(route: str):
-    if not isinstance(route, str):
-        raise ValueError("route must be a String")
-
-    def inner(route_func: Callable):
-        routes[route] = route_func
-        return route_func
-
-    return inner
-
-
-def goto(url: str, **kwargs: str):
-    """
-    Make the browser display a different page if it is a registered route or open the page
-    Raises a KeyError if the route is invalid.
-    """
-    visited: dict[str, Literal["browser", "internal", "invalid"]] = g["visited_links"]
-    status = visited.get(url, "internal")
-    if status == "invalid":
-        return  # we already reported that the url is invalid
-    elif status == "internal":
-        parsed_result = urlparse(url)
-        route = parsed_result.path
-        try:
-            pg.event.post(
-                loadpage_event(
-                    url=url,
-                    callback=routes[route],
-                    kwargs=dict(parse_qsl(parsed_result.query)) | kwargs,
-                    target=parsed_result.fragment,
-                )
-            )
-        except KeyError:  # no registered route
-            if os.path.isfile(path := os.path.abspath(route)):
-                pg.event.post(
-                    loadpage_event(
-                        url=url,
-                        path=path,
-                        kwargs=dict(parse_qsl(parsed_result.query)) | kwargs,
-                        target=parsed_result.fragment,
-                    )
-                )
-            else:
-                status = "browser"
-    if status == "browser":
-        if not webbrowser.open_new_tab(url):
-            status = "invalid"
-            log_error(f"Invalid route: {url!r}")
-    visited[url] = status
-
-
-def reload():
-    goto(g["route"])
-
-
-##########################################################################
 
 ############################# Pygame related #############################
 

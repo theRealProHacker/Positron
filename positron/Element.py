@@ -16,29 +16,29 @@ from itertools import chain
 from typing import Callable, Iterable, Protocol
 
 import pygame as pg
-import lxml.html.html5parser as html5
 
 import Box
+import config
 import Media
-import rounded_box
 import Style
 import util
+import utils.Navigator
+import utils.rounded as rounded_box
 from config import add_sheet, cursors, g, input_type_check_res
-from ElementAttribute import (BooleanAttribute, ClassListAttribute,
-                              DataAttribute, GeneralAttribute, InputValueAttribute,
-                              NumberAttribute, Opposite, RangeAttribute, SameAs)
-from own_types import (V_T, Auto, AutoLP4Tuple, AutoType, BugError, Color,
+from element.ElementAttribute import *
+from own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color,
                        Coordinate, Cursor, DisplayType, Element_P, Float4Tuple,
                        Font, FontStyle, Leaf_P, Length, Number, Percentage,
                        Rect, Surface, Vector2)
 from Style import (FullyComputedStyle, SourceSheet, bs_getter, bw_keys,
                    calculator, has_prio, inset_getter, is_custom,
                    pack_longhands, parse_file, parse_sheet)
-from util import (GeneralParser, draw_text, get_tag, goto, group_by_bool, log_error,
-                  make_default, text_surf, whitespace_re)
+from util import (draw_text, get_tag, group_by_bool, log_error, make_default,
+                  text_surf)
+from utils.Navigator import goto, push, visited_links
+from utils.regex import GeneralParser, whitespace_re
 
 # fmt: on
-parser = html5.HTMLParser()
 
 ################################# Globals ###################################
 class InlineItem(Protocol):
@@ -182,19 +182,20 @@ class Element(Element_P):
     position: str
     cursor: Cursor
     # Not always present
-    inline_items: list[InlineItem]  # only if layout_type is "inline"
+    inline_items: list[InlineItem]  # only use if layout_type is "inline"
+
     # Dynamic states https://html.spec.whatwg.org/multipage/semantics-other.html#pseudo-classes
     @property
     def active(self) -> bool:
-        return self is g["event_manager"].active
+        return self is config.event_manager.active
 
     @property
     def focus(self) -> bool:
-        return self is g["event_manager"].focus
+        return self is config.event_manager.focus
 
     @property
     def hover(self) -> bool:
-        return self is g["event_manager"].hover
+        return self is config.event_manager.hover
 
     @property
     def target(self) -> bool:
@@ -681,8 +682,9 @@ class HTMLElement(Element):
 
     @classmethod
     def from_string(cls, html: str):
-        _root = html5.document_fromstring(html, parser=parser)
-        print(type(_root))
+        import lxml.html.html5parser as html5
+
+        _root = html5.document_fromstring(html, parser=html5.HTMLParser())
         return cls.from_lxml(_root)
 
     def get_height(self) -> float:
@@ -708,11 +710,11 @@ class AnchorElement(Element):
 
     @property
     def link(self):
-        return (href := self.attrs.get("href")) and href not in g["visited_links"]
+        return (href := self.attrs.get("href")) and href not in visited_links
 
     @property
     def visited(self):
-        return (href := self.attrs.get("href")) and href in g["visited_links"]
+        return (href := self.attrs.get("href")) and href in visited_links
 
     @property
     def all_link(self):
@@ -720,14 +722,14 @@ class AnchorElement(Element):
 
     def on_click(self):
         if href := self.attrs.get("href"):
-            goto(href)
+            utils.Navigator.push(href)
         else:
             log_error("Anchor without href clicked")
 
     def on_auxclick(self):
         # Always new tab?
         if href := self.attrs.get("href"):
-            goto(href)
+            utils.Navigator.push(href)
         else:
             log_error("Anchor without href alt-clicked")
 
@@ -753,6 +755,7 @@ class MetaElement(Element):
 
 class StyleElement(MetaElement):
     tag = "style"
+    src: str
     inline_sheet: SourceSheet | None = None
     src_sheet: SourceSheet | None = None
 
@@ -761,8 +764,9 @@ class StyleElement(MetaElement):
     ):
         super().__init__(tag, attrs, children)
         if (src := attrs.get("src")) is not None:
+            self.src = src
             if os.path.isfile(src):
-                g["event_manager"].on("file-modified", self.reload_src, path=src)
+                config.file_watcher.add_file(src, self.reload_src)
             util.create_task(parse_file(src), True, self.parse_callback)
         if self.text:
             self.inline_sheet = parse_sheet(self.text)
@@ -773,9 +777,9 @@ class StyleElement(MetaElement):
             self.src_sheet = future.result()
             add_sheet(self.src_sheet)
 
-    def reload_src(self, event):
+    def reload_src(self):
         g["css_sheets"].remove(self.src_sheet)
-        util.create_task(parse_file(event.path), True, self.parse_callback)
+        util.create_task(parse_file(self.src), True, self.parse_callback)
 
 
 class CommentElement(MetaElement):
@@ -800,25 +804,27 @@ class LinkElement(MetaElement):
         # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link
         # TODO:
         # media -> depends on media query support
-        rel = attrs.get("rel")
-        src = attrs.get("href")
-        if rel == "stylesheet" and src:
+        self.rel = attrs.get("rel")
+        self.src = attrs.get("href")
+        if self.rel == "stylesheet" and self.src:
             # TODO: disabled ?
             # TODO: title ?
-            g["event_manager"].on("file-modified", self.on_change, path=src)
-            util.create_task(parse_file(src), True, self.parse_callback)
-        elif rel == "icon" and src:
+            config.file_watcher.add_file(self.src, self.on_change)
+            util.create_task(parse_file(self.src), True, self.parse_callback)
+        elif self.rel == "icon" and self.src:
             # TODO: sizes ?
-            g["icon_srcs"].append(src)
+            g["icon_srcs"].append(self.src)
 
     def parse_callback(self, future: asyncio.Future):
-        with suppress(Exception):
+        try:
             self.src_sheet = future.result()
             add_sheet(self.src_sheet)
+        except Exception as e:
+            log_error(e)
 
-    def on_change(self, event):
+    def on_change(self):
         g["css_sheets"].remove(self.src_sheet)
-        util.create_task(parse_file(event.path), True, self.parse_callback)
+        util.create_task(parse_file(self.src), True, self.parse_callback)
 
 
 class ReplacedElement(Element):

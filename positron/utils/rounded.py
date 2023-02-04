@@ -281,6 +281,7 @@ def radii_frm_(border_rect: Rect, style: Style.FullyComputedStyle):
     )
 
 
+# TODO: make these functions independant from Box
 def draw_bg_and_border(surf: Surface, box: Box.Box, style: Style.FullyComputedStyle):
     border_rect = box.border_box
     radii = radii_frm_(border_rect, style)

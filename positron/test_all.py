@@ -9,13 +9,16 @@ from pytest import raises
 
 import Box
 import J
-import rounded_box
 import Style
 import util
-from Selector import (AndSelector, ClassSelector, DirectChildSelector,
-                     HasAttrSelector, IdSelector, TagSelector, matches, parse_selector,
-                     rel_p, sngl_p)
+import utils.colors
+import utils.Navigator
+import utils.regex
 from own_types import Auto, Color, FrozenDCache, Length, Percentage, Rect
+from Selector import (AndSelector, ClassSelector, DirectChildSelector,
+                      HasAttrSelector, IdSelector, TagSelector, matches,
+                      parse_selector, rel_p, sngl_p)
+
 # fmt: on
 
 # https://stackoverflow.com/a/70016047/15046005
@@ -63,6 +66,22 @@ def test_joint():
 def test_own_types():
     # clock-wise rotation
     assert Rect(0, 0, 400, 400).corners == ((0, 0), (400, 0), (400, 400), (0, 400))
+
+
+def test_history():
+    history = utils.Navigator.history
+    history.add_entry("Some url")
+    history.add_entry("other url")
+    assert history == ["Some url", "other url"]
+    assert not history.can_go_forward()
+    history.back()
+    assert not history.can_go_back()
+    history.back()
+    history.back()
+    assert not history.can_go_back()
+    assert history.current == "Some url"
+    history.forward()
+    assert history.current == "other url"
 
 
 def test_cache():
@@ -259,22 +278,25 @@ def test_util():
     for i, x in enumerate(util.consume_list(l)):
         assert x == i
         assert len(l) == 9 - i
-    assert util._make_new_name("example.exe") == "example (2).exe"
-    assert util._make_new_name("example(1)(2).exe") == "example(1)(3).exe"
+    assert util._make_new_filename("example.exe") == "example (2).exe"
+    assert util._make_new_filename("example(1)(2).exe") == "example(1)(3).exe"
     buffer = io.StringIO()
     util.print_once("hello", file=buffer)
     util.print_once("hello", file=buffer)
     assert buffer.getvalue() == "hello\n"
     # Colors
-    assert util.hsl2rgb(0, 1, 0.5) == Color("red")
-    assert util.hwb2rgb(0, 0, 0) == Color("red")
+    assert utils.colors.hsl2rgb(0, 1, 0.5) == Color("red")
+    assert utils.colors.hwb2rgb(0, 0, 0) == Color("red")
     # Regex
     # finds the period followed by the two spaces and not by the single space.
     # But the regex has to be flipped (First the space, then the period)
-    assert util.rev_groups(r"\s*\.", "I like the rain. But not the sun.  ")[0] == ".  "
+    assert (
+        utils.regex.rev_groups(r"\s*\.", "I like the rain. But not the sun.  ")[0]
+        == ".  "
+    )
     # here the idea is to only replace the last x matches
     assert (
-        util.rev_sub(
+        utils.regex.rev_sub(
             r"(\d+)", "123, 124, 124", lambda groups: str(int(groups[0]) + 1), 1
         )
         == "123, 124, 125"
@@ -288,17 +310,6 @@ def test_util():
         )  # the one with the smallest distance to the pivot wins
 
     closest_to(300, 150, 450) == 450
-
-
-def test_rounded_box():
-    assert rounded_box.side2corners(
-        ["black", "red", "blue", "green"]
-    ) == [  # top, right, bottom, left
-        ("black", "green"),  # topleft
-        ("black", "red"),  # topright
-        ("blue", "red"),  # bottomright
-        ("blue", "green"),  # bottomleft
-    ]
 
 
 async def test_async():

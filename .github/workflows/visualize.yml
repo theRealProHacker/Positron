@@ -1,0 +1,12 @@
+name: Visualize the codebase
+on: 
+  push:
+    branches: 
+      main
+
+jobs:
+  visualize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0.8.2
+      - uses: githubocto/repo-visualizer
