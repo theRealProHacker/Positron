@@ -1,8 +1,10 @@
 name: Visualize the codebase
-on: 
+# run on pull request or push to main
+on:
+  pull_request:
   push:
-    branches: 
-      main
+    branches:
+      - main
 
 jobs:
   visualize:
