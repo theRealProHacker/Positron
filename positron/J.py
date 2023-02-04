@@ -60,11 +60,12 @@ class SingleJ:
     def __eq__(self, other):
         return self.elem is other.elem
 
-    def data(self, ):
-        """
-        
-        """
+    def data(
+        self,
+    ):
+        """ """
         return {k[5:]: v for k, v in self._elem.attrs if k.startswith("data-")}
+
 
 # IDEA: inherit from UserList?
 # IDEA: toggle for all kinds of stuff (classes, attributes, event handlers and so on)
@@ -81,7 +82,9 @@ class J:
         if isinstance(query, str):
             selector = parse_selector(query)
             root: Element = g["root"]
-            self._singles = [SingleJ(elem) for elem in root.iter_desc() if selector(elem)]
+            self._singles = [
+                SingleJ(elem) for elem in root.iter_desc() if selector(elem)
+            ]
         else:
             self._singles = query
 

@@ -26,9 +26,12 @@ from modals.Alert import Alert
 from own_types import Event, FrozenDCache
 from utils.Console import Console
 from utils.FileWatcher import FileWatcher
+
 # a lot for exports
+# fmt: off
 from utils.Navigator import (LOADPAGE, add_route, aload_dom, back, forward,
-                             get_url, goto, load_dom, push, reload)
+                             get_url, load_dom, push, reload)
+# fmt: on
 
 # setup
 pg.init()
