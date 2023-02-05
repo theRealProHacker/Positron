@@ -6,9 +6,8 @@ import logging
 import time
 from weakref import WeakValueDictionary
 
-import pygame as pg
-
 import config
+import pygame as pg
 import util
 from own_types import Coordinate, Surface
 

@@ -1,12 +1,9 @@
 """
 A contextmenu is what pops up, when you right click on something
 """
-# TODO: add new button types
-import logging
 from dataclasses import dataclass
 
 import pygame as pg
-
 import utils.Navigator
 from own_types import Color, Coordinate, Enum, Font, Rect, Surface, Vector2
 from util import draw_text
@@ -131,6 +128,11 @@ class ContextMenu(list[MenuElement]):
             if isinstance(hovered_elem, TextButton):
                 hovered_elem.bgcolor = Color("grey")
             self.hover_elem = hovered_elem
+
+    def on_mouseleave(self):
+        if isinstance(self.hover_elem, TextButton):
+            del self.hover_elem.bgcolor
+        self.hover_elem = None
 
     def fit_into_rect(self, rect: Rect, pos: Coordinate):
         """

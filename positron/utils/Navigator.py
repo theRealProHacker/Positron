@@ -1,19 +1,65 @@
+from __future__ import annotations
+
 import os
 import webbrowser
+from dataclasses import dataclass
 from enum import auto
-from typing import Callable
-from urllib.parse import parse_qsl, urlparse
-
-import pygame as pg
+from typing import Any, Callable
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import config
 import Element
+import pygame as pg
 import util
 from config import g
 from own_types import V_T, Enum, Event
 
 LOADPAGE = pg.event.custom_type()
-URL = str
+
+
+__all__ = ["URL", "history", "back", "forward", "push", "get_url", "reload"]
+
+
+@dataclass(frozen=True)
+class URL:
+    route: str  # aka path
+    kwargs: dict[str, Any]  # aka query
+    target: str  # aka fragment
+    scheme: str = ""
+    netloc: str = ""
+    params: str = ""
+
+    def __str__(self):
+        query = urlencode(self.kwargs)
+        return urlunparse(
+            (self.scheme, self.netloc, self.route, self.params, query, self.target)
+        )
+
+    def __hash__(self) -> int:
+        # we want to hash like our counterpart strings
+        return hash(str(self))
+
+    def __eq__(self, other):
+        if not isinstance(other, (URL, str)):
+            raise NotImplemented
+        return str(self) == str(other)
+
+
+AnyURL = URL | str
+
+
+def make_url(url: AnyURL) -> URL:
+    if isinstance(url, URL):
+        return url
+    parsed = urlparse(url)
+    return URL(
+        parsed.path,
+        dict(parse_qsl(parsed.query)),
+        parsed.fragment,
+        parsed.scheme,
+        parsed.netloc,
+        parsed.params,
+    )
 
 
 ######################### History ##########################################
@@ -64,7 +110,7 @@ class History(list[V_T]):
 
 routes: dict[str, Callable] = {}
 history = History[URL]()
-visited_links: dict[URL, UrlLookupResult] = {}
+visited_links: dict[AnyURL, UrlLookupResult] = {}
 
 
 def add_route(route: str):
@@ -78,65 +124,74 @@ def add_route(route: str):
     return inner
 
 
-def goto(url: URL, **kwargs: str) -> UrlLookupResult:
+def goto(url: AnyURL) -> UrlLookupResult:
     """
-    Make the browser display a different page if it is a registered route or open the page
-    Raises a KeyError if the route is invalid.
+    Make the browser display a different page if it is a registered route
+    or try to open the page in the default webbrowser.
+
+    Example:
+
+    goto("google.com") -> UrlLookupResult.Browser
+    will open the users browser with the given URL
+
+    goto("/") -> UrlLookupResult.Internal
+    will navigate to the route "/" if possible but without pushing it onto the history
+
+    goto("index.html") -> UrlLookupResult.Internal
+    will open the file index.html in the cwd if possible
     """
     status = visited_links.get(url, UrlLookupResult.Internal)
     if status == UrlLookupResult.Invalid:
         return status  # we already reported that the url is invalid
     elif status == UrlLookupResult.Internal:
-        parsed_result = urlparse(url)
-        route = parsed_result.path
-        try:
-            callback = routes[route]
-        except KeyError:  # no registered route
-            if os.path.isfile(path := os.path.abspath(route)):
+        _url = make_url(url)
+        callback = routes.get(_url.route)
+        if callback is None and os.path.isfile(path := os.path.abspath(_url.route)):
 
-                def callback(**kwargs):
-                    load_dom(path, **kwargs)
+            def callback(**kwargs):
+                load_dom(path, **kwargs)
 
-            else:
-                status = UrlLookupResult.Browser
+        elif callback is None:
+            status = UrlLookupResult.Browser
+        # only post if still Internal
         if status == UrlLookupResult.Internal:
-            pg.event.post(
-                Event(
-                    LOADPAGE,
-                    url=url,
-                    callback=callback,
-                    kwargs=dict(parse_qsl(parsed_result.query)) | kwargs,
-                    target=parsed_result.fragment,
-                )
-            )
-            visited_links[url] = status
-            return status
-    if not webbrowser.open_new_tab(url):
-        status = UrlLookupResult.Invalid
-        util.log_error(f"Invalid route: {url!r}")
+            pg.event.post(Event(LOADPAGE, url=_url, callback=callback))
+    if status == UrlLookupResult.Browser:
+        if not webbrowser.open_new_tab(str(url)):
+            status = UrlLookupResult.Invalid
+            util.log_error(f"Invalid route: {url!r}")
     visited_links[url] = status
     return status
 
 
 def back():
+    """
+    Navigates back if possible
+    """
     history.back()
     goto(history.current)
 
 
 def forward():
+    """
+    Navigates forward if possible
+    """
     history.forward()
     goto(history.current)
 
 
-def push(url: URL):
+def push(url: str | URL):
     """
-    Opens the url and pushes it onto the history if it is navigated on.
+    Opens the url and pushes it onto the history if it is actually navigated to.
     """
     if goto(url) == UrlLookupResult.Internal:
-        history.add_entry(url)
+        history.add_entry(make_url(url))
 
 
 def get_url() -> URL:
+    """
+    Get the current URL
+    """
     return history.current
 
 

@@ -7,14 +7,13 @@ import math
 from functools import cache
 from typing import Sequence
 
+import Box
 import numpy as np
 import pygame as pg
-from pygame import gfxdraw
-
-import Box
 import Style
 from own_types import (V_T, BugError, Color, Coordinate, Drawable, Float4Tuple,
                        Radii, Rect, Surface, Vector2)
+from pygame import gfxdraw
 from util import all_equal
 
 # fmt: on

@@ -14,9 +14,8 @@ from enum import IntEnum
 from typing import Any, Callable, TypedDict
 from weakref import WeakKeyDictionary
 
-import pygame as pg
-
 import config
+import pygame as pg
 import util
 from config import g, set_mode
 from Element import Element, HTMLElement, whitespace_re

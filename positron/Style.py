@@ -13,11 +13,10 @@ from operator import add, mul, sub, truediv
 from typing import (Any, Callable, Generic, Iterable, Literal, Mapping,
                     Protocol, TypeVar, Union, cast, overload)
 
-import tinycss
-import tinycss.token_data
-
 import Media
 import Selector
+import tinycss
+import tinycss.token_data
 from config import (abs_angle_units, abs_border_width, abs_font_size,
                     abs_font_weight, abs_length_units, abs_resolution_units,
                     abs_time_units, cursors, g, rel_font_size,

@@ -3,10 +3,9 @@ import os
 import time
 from typing import Callable
 
+from util import call, create_task
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
-
-from util import call, create_task
 
 
 ########################## FileWatcher #############################

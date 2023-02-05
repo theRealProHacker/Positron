@@ -11,36 +11,58 @@ with open(os.devnull, "w") as f, redirect_stdout(f):
     import pygame as pg
 
 import aiohttp
-import jinja2
-
 import config
 import Element
+import jinja2
 import Media
 import Selector
 import Style
 import util
+
+# a lot for exports
+# fmt: off
+import utils.Navigator as Navigator
 from config import default_style_sheet, g, set_mode
 from EventManager import EventManager
 from J import J, SingleJ
 from modals.Alert import Alert
-from own_types import Event, FrozenDCache
+from own_types import FrozenDCache
 from utils.Console import Console
 from utils.FileWatcher import FileWatcher
+from utils.Navigator import LOADPAGE, URL, add_route, aload_dom, load_dom, push
 
-# a lot for exports
-# fmt: off
-from utils.Navigator import (LOADPAGE, add_route, aload_dom, back, forward,
-                             get_url, load_dom, push, reload)
 # fmt: on
+
+route = add_route
+set_title = pg.display.set_caption
+__all__ = [
+    # for routes
+    "route",
+    "load_dom",
+    "aload_dom",
+    # J
+    "J",
+    "SingleJ",
+    # browser interaction
+    "alert",
+    "set_title",
+    "URL",
+    # run
+    "run",
+    # navigation
+    "Navigator",
+]
 
 # setup
 pg.init()
 logging.basicConfig(level=logging.INFO)
 
 CLOCK = pg.time.Clock()
+""" The global pygame clock """
 
 # TODO: find a better way for applying style to elements depending on their state
 default_sheet = Style.parse_sheet(default_style_sheet)
+""" The default ua-sheet """
 
 
 def _reset_config():
@@ -63,6 +85,14 @@ def _reset_config():
     )
 
 
+def _set_title():
+    head = g["root"].children[0]
+    assert isinstance(head, Element.MetaElement)
+    titles = [title.text for title in head.children if title.tag == "title"]
+    if titles:
+        pg.display.set_caption(titles[-1])
+
+
 async def main(route: str):
     """The main function that includes the main event-loop"""
     push(route)
@@ -72,23 +102,21 @@ async def main(route: str):
     while True:
         if pg.event.peek(pg.QUIT):
             return
-        event: Event | None = None
-        while load_events := pg.event.get(LOADPAGE):
+        if load_events := pg.event.get(LOADPAGE):
             event = load_events[-1]  # XXX: We only need to consider the last load event
+            url: URL = event.url
             _reset_config()
             try:
-                await util.call(event.callback, **event.kwargs)
+                await util.call(event.callback, **url.kwargs)
             except Exception as e:
-                util.log_error(f"Error in event route ({event.url!r})", e)
-                event = None
-                # goto(f"404.html?failed_url={event.url}")
+                util.log_error(f"Error in event route ({url})", e)
+                # put (f"404.html?failed_url={event.url}") into a simulated event
                 raise
-        if event is not None:
-            if event.target:
-                with suppress(Selector.InvalidSelector):
-                    g["target"] = SingleJ("#" + event.target)._elem
-            logging.info(f"Going To: {event.url!r}")
-            Element.set_title()
+            if url.target:
+                with suppress(Selector.InvalidSelector, RuntimeError):
+                    g["target"] = SingleJ("#" + url.target)._elem
+            logging.info(f"Going To: {url}")
+            _set_title()
             # get the icon
             if _icon_srcs := g["icon_srcs"]:
                 _icon: Media.Image = Media.Image(_icon_srcs)
@@ -159,23 +187,6 @@ def alert(title: str, msg: str, can_escape: bool = False):
     config.event_manager.modals.append(Alert(title, msg, can_escape))
 
 
-route = add_route
-__all__ = [
-    "route",
-    "load_dom",
-    "aload_dom",
-    "J",
-    "SingleJ",
-    "alert",
-    "run",
-    "reload",
-    "push",
-    "back",
-    "forward",
-    "get_url",
-]
-
-
 ##### User code (only using exports) ########
 @route("/")  # the index route
 def startpage():
@@ -188,11 +199,6 @@ def startpage():
         color = colors.pop(0)
         colors.append(color)
         event.target.set_style("background-color", color)
-
-
-@route("/secondpage")
-def nextpage():
-    load_dom("example.jinja")
 
 
 if __name__ == "__main__":
