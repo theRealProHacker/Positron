@@ -24,11 +24,11 @@ from urllib.parse import unquote_plus, urlparse
 import aiofiles
 import aiofiles.os
 import aiofiles.ospath as aospath
-import numpy as np
-import pygame as pg
 
 # fmt: off
 import config
+import numpy as np
+import pygame as pg
 from own_types import (CO_T, K_T, V_T, Color, Coordinate, Font, Index,
                        OpenMode, OpenModeReading, OpenModeWriting, Rect,
                        Surface, Vector2)

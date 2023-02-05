@@ -10,12 +10,11 @@ from enum import Enum
 from operator import eq, ge, le
 from typing import Any, Callable
 
+from config import g
 from tinycss.css21 import ImportRule as TinyImportRule
 from tinycss.css21 import PageRule as TinyPageRule
 from tinycss.css21 import ParseError
 from tinycss.token_data import ContainerToken, Token, TokenList
-
-from config import g
 from util import find_index
 
 MediaValue = tuple[int, int]  # just the window size right now

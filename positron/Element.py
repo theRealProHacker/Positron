@@ -15,11 +15,10 @@ from functools import cache, partial
 from itertools import chain
 from typing import Callable, Iterable, Protocol
 
-import pygame as pg
-
 import Box
 import config
 import Media
+import pygame as pg
 import Style
 import util
 import utils.Navigator
@@ -137,13 +136,6 @@ def calc_inset(inset: AutoLP4Tuple, width: float, height: float) -> Float4Tuple:
     return calculator.multi2((top, bottom), 0, height) + calculator.multi2(
         (right, left), 0, width
     )
-
-
-def set_title():
-    head = g["root"].children[0]
-    titles = [title.text for title in head.children if title.tag == "title"]
-    if titles:
-        pg.display.set_caption(titles[-1])
 
 
 class NotEditable(ValueError):

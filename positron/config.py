@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 import aiohttp
 import jinja2
 import pygame as pg
-
 from own_types import Color, Cursor, Length, Surface
 
 # fmt: off

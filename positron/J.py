@@ -58,13 +58,16 @@ class SingleJ:
         g["recompute"] = True
 
     def __eq__(self, other):
-        return self.elem is other.elem
+        return self._elem is other._elem
 
-    def data(
-        self,
-    ):
-        """ """
-        return {k[5:]: v for k, v in self._elem.attrs if k.startswith("data-")}
+    def data(self, key: str, value: str | None = None) -> str:
+        """
+        Set or get the data corresponding to the key
+        """
+        attr = f"data-{key}"
+        if value is not None:
+            self._elem.attrs[attr] = value
+        return self._elem.attrs[attr]
 
 
 # IDEA: inherit from UserList?
@@ -91,7 +94,7 @@ class J:
     def __getitem__(self, index):
         return self._singles[index]
 
-    def on(self, event_type: str, callback=None, *, repeat: int = -1):
+    def on(self, event_type: str, callback=None, repeat: int = -1):
         """
         Attach an event handler with events of type `event_type`.
         The handler will be called every time the event is emitted but only `repeat` many times
@@ -141,6 +144,3 @@ class J:
         J("p") | J("div") gives you all ps and all divs. Equivalent to J("p, div")
         """
         return J(list(set(self._singles) | set(other._singles)))
-
-    def __index__(self, index):
-        raise NotImplementedError()

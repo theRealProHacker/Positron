@@ -3,18 +3,17 @@ import io
 import math
 from operator import sub
 
-import pygame as pg
-import pytest
-from pytest import raises
-
 import Box
 import J
+import pygame as pg
+import pytest
 import Style
 import util
 import utils.colors
 import utils.Navigator
 import utils.regex
 from own_types import Auto, Color, FrozenDCache, Length, Percentage, Rect
+from pytest import raises
 from Selector import (AndSelector, ClassSelector, DirectChildSelector,
                       HasAttrSelector, IdSelector, TagSelector, matches,
                       parse_selector, rel_p, sngl_p)
@@ -68,7 +67,7 @@ def test_own_types():
     assert Rect(0, 0, 400, 400).corners == ((0, 0), (400, 0), (400, 400), (0, 400))
 
 
-def test_history():
+def test_navigator():
     history = utils.Navigator.history
     history.add_entry("Some url")
     history.add_entry("other url")
@@ -82,6 +81,15 @@ def test_history():
     assert history.current == "Some url"
     history.forward()
     assert history.current == "other url"
+
+    for url in [
+        "https://docs.python.org/3/library/urllib.parse.html#module-urllib.parse",
+        "www.google.com/search?query=Python",
+    ]:
+        assert str(utils.Navigator.make_url(url)) == url
+    # XXX: the above does not hold true for any URL. For example:
+    url = "/path?"
+    assert str(utils.Navigator.make_url(url)) == "/path"
 
 
 def test_cache():
