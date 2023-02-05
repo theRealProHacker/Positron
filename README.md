@@ -89,10 +89,9 @@ You need Python 3.10 and Git installed
 git clone https://github.com/theRealProHacker/Positron.git
 cd Positron
 python3 -m venv venv
-venv\Scripts\activate   &:: on Windows
-venv/bin/activate       # on Unix 
+venv\Scripts\activate   # on Windows
+venv/bin/activate       # on Linux/Mac 
 pip install -r requirements.txt
-cd positron
 ```
 Now you can create an HTML-file `example.html` in `positron` and then you just do  
 ```shell
@@ -101,6 +100,8 @@ python3 main.py
 
 # Visualization of the codebase
 Uses [repo-visualization](https://githubnext.com/projects/repo-visualization/) by [Amelia Wattenberger](https://wattenberger.com/)
+
+Check out the [live version](https://mango-dune-07a8b7110.1.azurestaticapps.net/?repo=theRealProHacker%2FPositron)
 ![Visualization of the codebase](./diagram.svg)
 
 # Sources 
@@ -217,7 +218,7 @@ margin-right:   inherit;
 - `html` has its size set to the screens size (`body{height:100%}` works)
 - any `aria` attributes are ignored right now. 
 - To link CSS you can just use style tags. `<style src="style.css"></style>`
-    - [Why]https://youtu.be/zyNhxN6sToM?t=415
+    - [Why?](https://youtu.be/zyNhxN6sToM?t=415)
 
 # Rants
 ## Why Python is definitely better then JS
@@ -242,43 +243,47 @@ For example there are a million ways to say the same thing in CSS (colors, tranp
 # But actually
 
 ## ES6 is a pretty well rounded language with at least two features that Python developers are probably jealous of
-1. object unpacking
-```js
-my_object = {
-    "a": 1,
-    "b": 2,
-}
-{a,b} = my_object
-```
-2. anonomous functions that are actual functions
-```js
-inc = x => x+1
-```
-Python only has ugly lambdas
-```python
-inc = lambda x: x+1
-```
-This might not seem like that big of a difference, but it is, when callbacks become bigger
-```js
-window.onload = ()=>{
-    console.log("loaded")
-    x = 5
-    console.log(`I can do whatever I want in these anonymous functions $x`)
-    x += 1;
-    console.log("x is now", x)
-}
-```
-This is not possible in Python, which makes me at least jealous.
-However, there is a pretty solid workaround for this using python decorators. 
-```python	
-@window.onload
-def _():
-    print("loaded)
-    x = 5
-    print(f'I can do whatever I want in these anonymous functions {x}')
-    x += 1;
-    print("x is now", x)
-```	
+1. Object unpacking
+    ```js
+    my_object = {
+        "a": 1,
+        "b": 2,
+    }
+    {a,b} = my_object
+    ```
+2. Anonomous functions that are actual functions
+
+    ```js
+    inc = x => x+1
+    ```
+
+    Python only has ugly lambdas
+    ```python
+    inc = lambda x: x+1
+    ```
+
+    This might not seem like that big of a difference, but it is, when callbacks become bigger
+    ```js
+    window.onload = ()=>{
+        console.log("loaded")
+        x = 5
+        console.log(`I can do whatever I want in these anonymous functions $x`)
+        x += 1;
+        console.log("x is now", x)
+    }
+    ```
+
+    This is not possible in Python, which makes me at least jealous.
+    However, there is a pretty solid alternative with Python decorators. 
+    ```python	
+    @window.onload
+    def _():
+        print("loaded)
+        x = 5
+        print(f'I can do whatever I want in these anonymous functions {x}')
+        x += 1;
+        print("x is now", x)
+    ```
 
 ## the web specs are good too
 I like how there is this balance between parties and interests.
@@ -291,4 +296,4 @@ First, you have web developers, second you have the spec authors and then you ha
 > Note: Obviously, a single person can have several roles. So one person could be a web developer and also an implementor.
 
 The similarities might not be obvious but one example is how spec authors ask implementors before they adopt new "laws". However, one big difference is that implementors are independent and do **not** have to follow the "laws". Which is obviously totally different to the real world metaphor, however most laws are abided by. 
-And again, web developers have no real power. They can only put pressure on the other two parties. But apart from their powerlessness, they perfectly fit the role of judge. They judge the other results and give feedback like spec issues, implementation bugs and missing features. 
+Also, web developers have no real power. They can only put pressure on the other two parties. But apart from their powerlessness, they perfectly fit the role of the judge. They judge the other parties' results and give feedback like spec issues, implementation bugs and missing features. 
