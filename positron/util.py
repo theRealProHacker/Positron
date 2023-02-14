@@ -17,6 +17,7 @@ import sys
 import uuid
 from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass
+from enum import auto
 from functools import cache
 from typing import Awaitable, Callable, Iterable, Literal, Sequence, TypeVar
 from urllib.parse import unquote_plus, urlparse
@@ -31,7 +32,7 @@ import numpy as np
 import pygame as pg
 from own_types import (CO_T, K_T, V_T, Color, Coordinate, Font, Index,
                        OpenMode, OpenModeReading, OpenModeWriting, Rect,
-                       Surface, Vector2)
+                       Surface, Vector2, Enum)
 from utils.regex import GeneralParser, rev_sub
 
 # fmt: on
@@ -361,11 +362,16 @@ async def delete_created_files():
 
 save_dir = os.environ.get("TEMP") or "."
 
+class ResponseType(Enum):
+    HTTP = auto()
+    Data = auto()
+    File = auto()
 
 @dataclass
 class Response:
     url: str
     content: str | bytes
+    type: ResponseType
     status: int = 200
     _charset: str = ""  # aka encoding
     _mime_type: str = ""
@@ -409,6 +415,8 @@ class Response:
         return self._ext
 
 
+media_type_pattern = re.compile(rf"[\w\-]+\/[\w\-]+(?:\;\w+\=\w+)*")
+
 def parse_media_type(
     media_type: str, mime_type: str = "", charset: str = ""
 ) -> tuple[str, str]:
@@ -427,9 +435,6 @@ def parse_media_type(
     return _mime_type or mime_type, _charset or charset
 
 
-media_type_pattern = re.compile(rf"[\w\-]+\/[\w\-]+(?:\;\w+\=\w+)*")
-
-
 async def fetch(url: str, raw: bool = False) -> Response:
     """
     Fetch an url (into memory)
@@ -445,6 +450,7 @@ async def fetch(url: str, raw: bool = False) -> Response:
             return Response(
                 url=response.url.human_repr(),
                 content=await response.read(),
+                type = ResponseType.HTTP,
                 status=response.status,
                 _charset=charset or response.charset or "",
                 _mime_type=mime_type,
@@ -472,6 +478,7 @@ async def fetch(url: str, raw: bool = False) -> Response:
         return Response(
             url,
             content,
+            type=ResponseType.Data,
             _charset=charset,
             _mime_type=mime_type,
         )
@@ -489,7 +496,7 @@ async def fetch(url: str, raw: bool = False) -> Response:
                 if e.errno == errno.ENOENT
                 else 400
             )
-            return Response(url, "", code)
+            return Response(url, "", ResponseType.File, code)
 
 
 async def download(url: str) -> str:

@@ -211,15 +211,18 @@ class Audio:
 
     @property
     def is_loading(self):
-        """Whether the images surf is being loaded currently"""
+        """Whether the audio is being loaded currently"""
         return self.loading_task is not None and not self.loading_task.done()
 
     @property
     def is_loaded(self):
-        """Whether the images surf is loaded and ready to draw"""
+        """Whether the audio is fully loaded"""
         return self.sound is not None
 
     @property
     def is_unloaded(self):
-        """Whether the images surf is unloaded (neither loading nor loaded)"""
+        """Whether the audio is unloaded (neither loading nor loaded)"""
         return not (self.is_loaded or self.is_loading)
+
+
+# TODO: Video: This is going to be insanely difficult and it might be that we can never implement this

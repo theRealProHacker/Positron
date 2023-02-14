@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+from functools import wraps
+from inspect import isfunction
+from typing import Any, Callable
+
 import config
 from config import g
 from Element import Element
 from Selector import Selector, parse_selector
 from Style import CompValue, parse_important, process_input
 from util import set_context
+from EventManager import supported_events
 
 
 def find_in(elem: Element, selector: Selector) -> Element | None:
@@ -122,16 +128,51 @@ class J:
     def once(self, event_type: str, callback=None):
         """
         Attach an event handler to events of type `event_type` to be called only once
-        """
-        if callback is None:
 
-            def inner(callback):
-                self.once(event_type, callback)
+        Examples:
+
+        ```py
+        J("input").once("keydown", print)
+
+        J("input").once("keydown")
+        def _(event):
+            print(event.key)
+        ```
+        """
+        return self.on(event_type, callback, 1)
+
+    # __getattr__ examples
+    data: Callable[[str, str | None], list[str]]
+
+    def __getattr__(self, __name: str) -> Any:
+        if __name.startswith("__"):
+            raise AttributeError
+        # XXX: for whatever reason getattr(SingleJ, __name) will always raise ???
+        if hasattr(SingleJ, __name) and isfunction(val := getattr(SingleJ, __name)):
+            # redirect to singles
+            @wraps(val)
+            def inner(*args, **kwargs):
+                return [
+                    getattr(single, __name)(*args, **kwargs) for single in self._singles
+                ]
 
             return inner
-        for single in self._singles:
-            single.on(event_type, callback, 1)
-        return callback
+        elif __name in supported_events:
+            # activate event
+            def event_emitter(**kwargs):
+                # TODO: what happens with the kwargs? For example with the mouse position on click
+                    # Possibly we have to implement all these methods individually or at least more specific than this
+                    # Or at least document this
+                return asyncio.wait([
+                    config.event_manager.release_event(__name, single._elem, **kwargs)
+                    for single in self._singles
+                ])
+                    
+                    
+
+            event_emitter.__name__ = __name
+            return event_emitter
+        raise AttributeError
 
     def __and__(self, other: J):
         """

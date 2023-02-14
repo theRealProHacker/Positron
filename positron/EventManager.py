@@ -10,15 +10,15 @@ The EventManager is responsible for handling the following:
 import re
 import time
 from collections import defaultdict
+from dataclasses import dataclass
 from enum import IntEnum
-from typing import Any, Callable, TypedDict
+from typing import Any, Callable
 from weakref import WeakKeyDictionary
 
-import config
 import pygame as pg
 import util
 from config import g, set_mode
-from Element import Element, HTMLElement, whitespace_re
+from Element import Element, HTMLElement, NotEditable, whitespace_re
 from modals import *
 from own_types import Cursor, Rect, Surface
 from utils.regex import GeneralParser
@@ -99,9 +99,10 @@ Callback = Callable
 CallbackItem = tuple[Callback, int]
 
 
-class EventData(TypedDict):
-    bubbles: bool  # = False
-    attrs: tuple  # = ()
+@dataclass
+class EventData:
+    bubbles: bool = False
+    attrs: tuple = ()
 
 
 supported_events: dict[str, dict[str, Any]] = {
@@ -231,7 +232,7 @@ class EventManager:
             if not event.immediate_propagation:
                 break
         self.callbacks[event.type][event.current_target] = new_callbacks + old_callbacks
-        # the default action if defined
+        # if the event was not cancelled the default action is called if defined
         if (
             not event.cancelled
             and (callback := getattr(event.current_target, f"on_{event.type}", None))
@@ -250,10 +251,10 @@ class EventManager:
         # TODO: What is event.window? Can we just ignore it?
         async def edit(func):
             try:
-                if self.focus:
+                if self.focus and isinstance(self.focus, Element):
                     self.focus.editcontent(func)
                     await self.release_event("input", self.focus)  # TODO: kwargs
-            except Element.NotEditable:
+            except NotEditable:
                 pass
 
         for event in events:
@@ -386,7 +387,7 @@ class EventManager:
             ########################## Keyboard Events ############################################
             # For KeyEvents https://w3c.github.io/uievents/#idl-keyboardevent
             # key: Which key was pressed (str). default "" # just like pg.Event.unicode or "Shift" or "Dead" for example when pressing "`"
-            # code: which code the pressed key corresponds to (str). default "" just like pg.event.key
+            # code: which code the pressed key corresponds to (str). default ""
             # location: the physical location of the key pressed (KeyboardLocation). default INVALID
             # mods: ctrl, shiftkey, altkey, metakey (only MacOS). see pygame documentation
             # repeat: Whether the key was pressed continuously (and not the first time) (bool). default False
@@ -394,10 +395,10 @@ class EventManager:
             elif event.type == pg.KEYDOWN:
                 await self.release_event(
                     "keydown",
-                    target=self.focus,
+                    target=self.focus or g["root"],
                     key=event.unicode,
                     code=pg.key.name(event.key),
-                    pgcode=event.key,  # inofficial
+                    pgcode=event.key,  # inofficial api
                     # TODO: location
                     mods=event.mod,
                     # TODO: repeat = event.key in self.pressed_keys

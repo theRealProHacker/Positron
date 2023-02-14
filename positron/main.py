@@ -23,23 +23,27 @@ import util
 # fmt: off
 import utils.Navigator as Navigator
 from config import default_style_sheet, g, set_mode
-from EventManager import EventManager
+from EventManager import EventManager, _Event as Event
 from J import J, SingleJ
 from modals.Alert import Alert
 from own_types import FrozenDCache
 from utils.Console import Console
 from utils.FileWatcher import FileWatcher
-from utils.Navigator import LOADPAGE, URL, add_route, aload_dom, load_dom, push
+from utils.Navigator import LOADPAGE, URL, add_route, aload_dom, load_dom, push, aload_dom_frm_str, load_dom_frm_str
 
 # fmt: on
 
 route = add_route
 set_title = pg.display.set_caption
+quit = pg.quit
+event_manager: EventManager
 __all__ = [
     # for routes
     "route",
     "load_dom",
     "aload_dom",
+    "aload_dom_frm_str",
+    "load_dom_frm_str",
     # J
     "J",
     "SingleJ",
@@ -47,8 +51,11 @@ __all__ = [
     "alert",
     "set_title",
     "URL",
+    "Event",
+    "event_manager",
     # run
     "run",
+    "runSync",
     # navigation
     "Navigator",
 ]
@@ -64,6 +71,9 @@ CLOCK = pg.time.Clock()
 default_sheet = Style.parse_sheet(default_style_sheet)
 """ The default ua-sheet """
 
+config.jinja_env = jinja2.Environment(loader=jinja2.loaders.FileSystemLoader("."))
+config.file_watcher = FileWatcher()
+config.event_manager = event_manager = EventManager()
 
 def _reset_config():
     # all of this is route specific
@@ -83,6 +93,9 @@ def _reset_config():
             "css_sheet_len": 1,  # int
         }
     )
+    event_manager.modals.clear()
+    event_manager.focus = None # TODO: get the auto focus
+    event_manager.hover = None
 
 
 def _set_title():
@@ -124,7 +137,6 @@ async def main(route: str):
                 if _icon.is_loaded:
                     pg.display.set_icon(_icon.surf)
                     _icon.unload()
-            config.event_manager.modals.clear()
 
         root = g["root"]
         await util.gather_tasks(config.tasks)
@@ -157,14 +169,13 @@ async def run(route: str = "/"):
     """
     Runs the application
     """
+    global event_manager
     logging.info("Starting")
-    config.aiosession = aiohttp.ClientSession()
-    config.jinja_env = jinja2.Environment(loader=jinja2.loaders.FileSystemLoader("."))
+    # XXX: these need to be here because they require a running event loop
     config.event_loop = asyncio.get_running_loop()
-    config.file_watcher = FileWatcher()
-    config.event_manager = EventManager()
     config.default_task = util.create_task(asyncio.sleep(0), True)
-    config.tasks.append(Console())
+    config.tasks.append(Console(globals()))
+    config.aiosession = aiohttp.ClientSession()
     try:
         await main(route)
     except asyncio.exceptions.CancelledError:
@@ -179,6 +190,13 @@ async def run(route: str = "/"):
         await asyncio.sleep(1)
 
 
+def runSync(route: str = "/"):
+    """
+    Runs the application asynchronously
+    """
+    asyncio.run(run(route))
+
+
 def alert(title: str, msg: str, can_escape: bool = False):
     """
     Adds an alert to the screen displaying the text.
@@ -186,20 +204,26 @@ def alert(title: str, msg: str, can_escape: bool = False):
     """
     config.event_manager.modals.append(Alert(title, msg, can_escape))
 
+def _run_examples():
+    # here we load the example from examples
+    import sys
+    from importlib import import_module
+    example = sys.argv[1] if len(sys.argv) >= 2 else None
+    if example:
+        try:
+            module = import_module(f"examples.{example}")
+        except ImportError:
+            example = None
+    while not example:
+        example = input("Example: ")
+        try:
+            module = import_module(f"examples.{example}")
+        except ImportError as e:
+            print(e)
+            example = None
+    module.main() # all examples have a main method
 
-##### User code (only using exports) ########
-@route("/")  # the index route
-def startpage():
-    load_dom("example.html")
-
-    colors = ["red", "green", "yellow", "royalblue"]
-
-    @J("button").on("click")
-    def _(event):
-        color = colors.pop(0)
-        colors.append(color)
-        event.target.set_style("background-color", color)
 
 
 if __name__ == "__main__":
-    asyncio.run(run("/#link"))
+    _run_examples()

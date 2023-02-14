@@ -196,18 +196,45 @@ def get_url() -> URL:
 
 
 def reload():
+    """
+    Reloads the current dom
+    """
     # TODO: API for full reload
     goto(history.current)
 
 
+def load_dom_frm_str(html: str, *args, **kwargs):
+    """
+    Loads the dom from the given html or jinja markup
+    """
+    html = config.jinja_env.from_string(html).render(*args, **kwargs)
+    g["root"] = Element.HTMLElement.from_string(html)
+
+
+async def aload_dom_frm_str(html: str, *args, **kwargs):
+    """
+    Loads the dom from the given html or jinja markup asynchronously
+    """
+    html = config.jinja_env.from_string(html).render(*args, **kwargs)
+    g["root"] = Element.HTMLElement.from_string(html)
+
+
 def load_dom(file: str, *args, **kwargs):
+    """
+    Loads the dom from a file
+    """
     html = config.jinja_env.from_string(util.File(file).read()).render(*args, **kwargs)
     g["root"] = Element.HTMLElement.from_string(html)
     config.file_watcher.add_file(file, reload)
 
 
-async def aload_dom(url: str):
-    html = await config.jinja_env.from_string(await util.fetch_txt(url)).render_async()
+async def aload_dom(url: AnyURL):
+    """
+    Loads the dom from any url asynchronously
+    """
+    response = await util.fetch(str(url))
+    kwargs = make_url(url).kwargs if response.type == util.ResponseType.File else {}
+    html = await config.jinja_env.from_string(response.text).render_async(**kwargs)
     g["root"] = Element.HTMLElement.from_string(html)
 
 

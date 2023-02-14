@@ -8,10 +8,11 @@ However, the console will only work if DEBUG mode is turned on and the dependenc
 If not `Console()` will just return a `sleep(0)` task.
 """
 import asyncio
+from collections import ChainMap
+from J import SingleJ
 
 import config
 import util
-from J import J, SingleJ  # XXX: for use in console statements
 
 uses_aioconsole = config.DEBUG
 if uses_aioconsole:
@@ -28,30 +29,31 @@ def e(q: str):
     return SingleJ(q)._elem
 
 
-async def _Console():
+async def _Console(context):
     """
     The Console takes input asynchronously and executes it. For debugging purposes only
     """
     while True:
         try:
             __x_______ = await aioconsole.ainput(">>> ")
+            args = [__x_______, globals(), context]
             try:
-                r = eval(__x_______)
+                r = eval(*args)
                 if r is not None:
                     print(r)
             except SyntaxError:
-                exec(__x_______)
+                exec(*args)
         except asyncio.exceptions.CancelledError:
             break
         except Exception as e:
             print("Console error:", e)
 
 
-def Console():
+def Console(context):
     """
     This gives an actual Console in DEBUG mode else it gives a fake console task
     """
-    return util.create_task(_Console() if uses_aioconsole else asyncio.sleep(0))
+    return util.create_task(_Console(context) if uses_aioconsole else asyncio.sleep(0))
 
 
 __all__ = ["Console"]
