@@ -23,7 +23,7 @@ import util
 # fmt: off
 import utils.Navigator as Navigator
 from config import default_style_sheet, g, set_mode
-from EventManager import EventManager, _Event as Event
+from EventManager import EventManager, KeyboardLocation
 from J import J, SingleJ
 from modals.Alert import Alert
 from own_types import FrozenDCache
@@ -75,6 +75,7 @@ config.jinja_env = jinja2.Environment(loader=jinja2.loaders.FileSystemLoader("."
 config.file_watcher = FileWatcher()
 config.event_manager = event_manager = EventManager()
 
+
 def _reset_config():
     # all of this is route specific
     # TODO: split cstyles into two styles. inherited and not inherited
@@ -93,9 +94,6 @@ def _reset_config():
             "css_sheet_len": 1,  # int
         }
     )
-    event_manager.modals.clear()
-    event_manager.focus = None # TODO: get the auto focus
-    event_manager.hover = None
 
 
 def _set_title():
@@ -119,11 +117,12 @@ async def main(route: str):
             event = load_events[-1]  # XXX: We only need to consider the last load event
             url: URL = event.url
             _reset_config()
+            event_manager.reset()
             try:
                 await util.call(event.callback, **url.kwargs)
             except Exception as e:
                 util.log_error(f"Error in event route ({url})", e)
-                # put (f"404.html?failed_url={event.url}") into a simulated event
+                # put (f"404.html?failed_url={url}") into a simulated event
                 raise
             if url.target:
                 with suppress(Selector.InvalidSelector, RuntimeError):
@@ -168,6 +167,10 @@ async def main(route: str):
 async def run(route: str = "/"):
     """
     Runs the application
+
+    ```py
+    await run("/")
+    ```
     """
     global event_manager
     logging.info("Starting")
@@ -193,8 +196,12 @@ async def run(route: str = "/"):
 def runSync(route: str = "/"):
     """
     Runs the application asynchronously
+
+    ```py
+    runSync("/")
+    ```
     """
-    asyncio.run(run(route))
+    asyncio.run(run(route), debug=config.DEBUG)
 
 
 def alert(title: str, msg: str, can_escape: bool = False):
@@ -204,15 +211,17 @@ def alert(title: str, msg: str, can_escape: bool = False):
     """
     config.event_manager.modals.append(Alert(title, msg, can_escape))
 
+
 def _run_examples():
-    # here we load the example from examples
     import sys
     from importlib import import_module
+
     example = sys.argv[1] if len(sys.argv) >= 2 else None
     if example:
         try:
             module = import_module(f"examples.{example}")
         except ImportError:
+            print(e)
             example = None
     while not example:
         example = input("Example: ")
@@ -221,8 +230,37 @@ def _run_examples():
         except ImportError as e:
             print(e)
             example = None
-    module.main() # all examples have a main method
+    os.chdir(os.path.dirname(module.__file__))
+    module.main()  # all examples have a main method
 
+
+class Event:
+    # this is the only difference to EventManager._Event
+    target: SingleJ
+    # related_target is not in here atm
+
+    # the rest is copied
+    timestamp: float
+    type: str
+    current_target: Element.Element
+    cancelled: bool = False
+    propagation: bool = True
+    immediate_propagation: bool = True
+
+    # mouse events
+    pos: tuple[int, int] = (0, 0)
+    mods: int = 0
+    button: int = 0
+    buttons: int = 0
+    detail: int = 0
+    delta: tuple[int, int] = (0, 0)
+    # keyboard events
+    key: str = ""
+    code: str = ""
+    location: KeyboardLocation = KeyboardLocation.INVALID
+    # other
+    x: int = 0
+    y: int = 0
 
 
 if __name__ == "__main__":

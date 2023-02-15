@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from functools import wraps
+from functools import partial, wraps
 from inspect import isfunction
 from typing import Any, Callable
 
 import config
+import util
 from config import g
 from Element import Element
 from Selector import Selector, parse_selector
@@ -43,17 +44,17 @@ class SingleJ:
         else:
             raise TypeError("query must either be an Element or a selector")
 
-    def on(self, event_type: str, callback, repeat: int = -1):
-        def inner_callback(event=None):
-            if event is None:
-                return callback()
-            else:
-                with set_context(event, "target", self):
-                    callback(event)
+    def on(self, event_type: str, callback = None, repeat: int = -1):
+        if callback is None:
+            return partial(self.on, event_type, repeat=repeat)
+
+        async def inner_callback(event):
+            with set_context(event, "target", self):
+                await util.call(callback, event)
 
         config.event_manager.on(event_type, inner_callback, repeat, target=self._elem)
 
-    def once(self, event_type: str, callback):
+    def once(self, event_type: str, callback = None):
         return self.on(event_type, callback, 1)
 
     def set_style(self, attr: str, value: str | CompValue):
@@ -116,11 +117,7 @@ class J:
         ```
         """
         if callback is None:
-
-            def inner(callback):
-                self.on(event_type, callback, repeat)
-
-            return inner
+            return partial(self.on, event_type, repeat = repeat)
         for single in self._singles:
             single.on(event_type, callback, repeat)
         return callback
@@ -161,14 +158,16 @@ class J:
             # activate event
             def event_emitter(**kwargs):
                 # TODO: what happens with the kwargs? For example with the mouse position on click
-                    # Possibly we have to implement all these methods individually or at least more specific than this
-                    # Or at least document this
-                return asyncio.wait([
-                    config.event_manager.release_event(__name, single._elem, **kwargs)
-                    for single in self._singles
-                ])
-                    
-                    
+                # Possibly we have to implement all these methods individually or at least more specific than this
+                # Or at least document this
+                return asyncio.wait(
+                    [
+                        config.event_manager.release_event(
+                            __name, single._elem, **kwargs
+                        )
+                        for single in self._singles
+                    ]
+                )
 
             event_emitter.__name__ = __name
             return event_emitter

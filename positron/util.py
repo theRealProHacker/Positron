@@ -362,10 +362,12 @@ async def delete_created_files():
 
 save_dir = os.environ.get("TEMP") or "."
 
+
 class ResponseType(Enum):
     HTTP = auto()
     Data = auto()
     File = auto()
+
 
 @dataclass
 class Response:
@@ -417,6 +419,7 @@ class Response:
 
 media_type_pattern = re.compile(rf"[\w\-]+\/[\w\-]+(?:\;\w+\=\w+)*")
 
+
 def parse_media_type(
     media_type: str, mime_type: str = "", charset: str = ""
 ) -> tuple[str, str]:
@@ -450,7 +453,7 @@ async def fetch(url: str, raw: bool = False) -> Response:
             return Response(
                 url=response.url.human_repr(),
                 content=await response.read(),
-                type = ResponseType.HTTP,
+                type=ResponseType.HTTP,
                 status=response.status,
                 _charset=charset or response.charset or "",
                 _mime_type=mime_type,
@@ -487,7 +490,7 @@ async def fetch(url: str, raw: bool = False) -> Response:
             mode: Literal["rb", "r"] = "rb" if raw else "r"
             async with aiofiles.open(url, mode) as f:
                 content = await f.read()
-            return Response(url, content)
+            return Response(url, content, ResponseType.File)
         except IOError as e:
             code: int = (
                 403

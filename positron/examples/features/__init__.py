@@ -1,5 +1,6 @@
 from main import *
 
+
 @route("/")  # the index route
 def startpage():
     load_dom("example.html")
@@ -12,4 +13,6 @@ def startpage():
         colors.append(color)
         event.target.set_style("background-color", color)
 
-runSync("/#link")
+
+def main():
+    runSync("/#link")

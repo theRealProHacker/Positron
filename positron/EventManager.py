@@ -105,41 +105,29 @@ class EventData:
     attrs: tuple = ()
 
 
-supported_events: dict[str, dict[str, Any]] = {
+supported_events: dict[str, EventData] = {
     **dict.fromkeys(
         ("click", "auxclick"),
-        {
-            "bubbles": True,
-            "attrs": ("pos", "mods", "button", "buttons", "detail"),
-        },
+        EventData(bubbles=True, attrs=("pos", "mods", "button", "buttons", "detail")),
     ),
-    "mousedown": {
-        "bubbles": True,
-        "attrs": ("pos", "mods", "buttons"),
-    },
-    "mouseup": {
-        "bubbles": True,
-        "attrs": ("pos", "mods", "buttons"),
-    },
-    "mousemove": {
-        "bubbles": True,
-        "attrs": ("pos", "mods", "buttons"),
-    },
-    "wheel": {"bubbles": True, "attrs": ("pos", "mods", "buttons", "delta")},
-    "keydown": {
-        "bubbles": True,
-        "attrs": ("key", "code", "pgcode", "location", "mods", "repeat"),
-    },
-    "online": {},
-    "offline": {},
-    "resize": {"attrs": ("size",)},
+    **dict.fromkeys(
+        ("mousedown", "mouseup", "mousemove"),
+        EventData(bubbles=True, attrs=("pos", "mods", "buttons")),
+    ),
+    "wheel": EventData(bubbles=True, attrs=("pos", "mods", "buttons", "delta")),
+    "keydown": EventData(
+        bubbles=True, attrs=("key", "code", "pgcode", "location", "mods", "repeat")
+    ),
+    "online": EventData(),
+    "offline": EventData(),
+    "resize": EventData(attrs=("size",)),
     # window events
-    **{k.lower(): {} for k in dir(pg) if k.startswith("WINDOW")},
-    "windowmoved": {"attrs": ("x", "y")},
-    "windowsizechanged": {"attrs": ("x", "y")},
+    **dict.fromkeys(
+        (k.lower() for k in dir(pg) if k.startswith("WINDOW")), EventData()
+    ),
+    "windowmoved": EventData(attrs=("x", "y")),
+    "windowsizechanged": EventData(attrs=("x", "y")),
 }
-# for x in ("windowmoved", "windowsizechanged"):
-#     supported_events[x]["attrs"] = ("x", "y")
 
 _ctrl_ident_re = re.compile(r"[\w_]+|.")
 
@@ -164,12 +152,12 @@ class EventManager:
     # Event handling
     last_click: tuple[float, tuple[int, int]] = (0, (-1, -1))
     click_count: int = 0
-    mouse_pos = pg.mouse.get_pos()
-    mods: int = pg.key.get_mods()
-    keys_down: set[int] = set()
-    buttons_down: set[int] = set()
+    mouse_pos: tuple[int, int]
+    mods: int
+    keys_down: set[int]
+    buttons_down: set[int]
     cursor: Any = Cursor()
-    online = util.is_online()
+    online: bool
 
     drag: UIElem | None = None
     focus: UIElem | None = None
@@ -183,6 +171,24 @@ class EventManager:
     def __init__(self):
         self.callbacks = defaultdict(WeakKeyDictionary)
         self.modals = []
+        self.mouse_pos = pg.mouse.get_pos()
+        self.mods = pg.key.get_mods()
+        # TODO: get the actual buttons down right now
+        self.keys_down = set()
+        self.buttons_down = set()
+        self.online = util.is_online()
+
+    def reset(self):
+        # XXX: we don't update some things like mouse_pos because they are route unspecific
+        self.callbacks = defaultdict(WeakKeyDictionary)
+        self.modals.clear()
+        self.last_click = (0, (-1,-1))
+        self.click_count = 0
+        self.cursor = Cursor()
+        self.drag = None
+        self.focus = None
+        self.active = None
+        self.hover = None
 
     def change(self, name: str, value: Any) -> bool:
         if getattr(self, name) == value:
@@ -209,8 +215,8 @@ class EventManager:
             return
         # Elements
         await self.call_callbacks(event)
-        if supported_events.get(type_, {}).get("bubbles"):
-            while event.propagation and (parent := event.current_target.parent):
+        if supported_events.get(type_, EventData()).bubbles:
+            while event.immediate_propagation and event.propagation and (parent := event.current_target.parent):
                 event.current_target = parent
                 await self.call_callbacks(event)
 
@@ -441,8 +447,8 @@ class EventManager:
         target: None | UIElem = None,
     ):
         """
-        Register a callback to be called when the events of type __type occur.
-        It will be called __repeat many times or infinite times if < 0.
+        Register a callback to be called when the events of the given type occur.
+        It will be called repeat many times or infinite times if < 0.
         Also you can give a target to attach to the event.
         The callback will only be called when the target matches the specified
         """

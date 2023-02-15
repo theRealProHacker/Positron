@@ -1181,6 +1181,9 @@ element_styles: dict[str, dict[str, str]] = defaultdict(
                 "font-size": "1.5em",
                 "margin": ".1em 0",
             },
+            "div": {
+                "display": "block",
+            },
             "p": {
                 "display": "block",
                 "margin": "1em 0",

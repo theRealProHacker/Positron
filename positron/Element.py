@@ -34,7 +34,6 @@ from Style import (FullyComputedStyle, SourceSheet, bs_getter, bw_keys,
                    pack_longhands, parse_file, parse_sheet)
 from util import (draw_text, get_tag, group_by_bool, log_error, make_default,
                   text_surf)
-from utils.Navigator import goto, push, visited_links
 from utils.regex import GeneralParser, whitespace_re
 
 # fmt: on
@@ -609,8 +608,7 @@ class Element(Element_P):
                 for k, _in in self.input_style.items()
             }
         )
-        for k, v in out_style.items():
-            print(f"{k}: {v}")
+        return ",\n".join(f"{k}: {v}" for k, v in out_style.items())
 
     ############################## Helpers #####################################
     def iter_anc(self) -> Iterable[Element]:
@@ -702,11 +700,15 @@ class AnchorElement(Element):
 
     @property
     def link(self):
-        return (href := self.attrs.get("href")) and href not in visited_links
+        return (
+            href := self.attrs.get("href")
+        ) and href not in utils.Navigator.visited_links
 
     @property
     def visited(self):
-        return (href := self.attrs.get("href")) and href in visited_links
+        return (
+            href := self.attrs.get("href")
+        ) and href in utils.Navigator.visited_links
 
     @property
     def all_link(self):
@@ -822,6 +824,10 @@ class LinkElement(MetaElement):
 class ReplacedElement(Element):
     def iter_inline(self) -> Iterable[Element | TextElement]:
         yield self
+
+
+class ButtonElement(ReplacedElement):
+    pass
 
 
 class ImageElement(ReplacedElement):
@@ -1166,4 +1172,5 @@ elem_type_map: dict[str, type[Element]] = {
     "comment": CommentElement,
     "a": AnchorElement,
     "input": InputElement,
+    # "button": ButtonElement,
 }
