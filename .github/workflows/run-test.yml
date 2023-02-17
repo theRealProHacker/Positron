@@ -11,8 +11,9 @@ jobs:
         with:
           python-version: '3.10.6' # https://github.com/python/mypy/issues/13627#issuecomment-1245613842
           cache: pip
-      - run: |
-        pip install mypy black pytest
-        python3 -m black . --check
-        python3 -m mypy src/positron/__init__.py
-        python3 -m pytest
+      - name: Test
+        run: |
+          python3 -m pip install mypy black pytest
+          python3 -m black . --check
+          python3 -m mypy src/positron/__init__.py
+          python3 -m pytest
