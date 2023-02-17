@@ -12,7 +12,7 @@ from functools import cache, cached_property, partial, reduce
 from typing import Callable, Iterable, Protocol
 
 import positron.Style as Style
-from .own_types import BugError, Element_P
+from .types import BugError, Element_P
 from .util import find_index
 from .utils.regex import get_groups
 

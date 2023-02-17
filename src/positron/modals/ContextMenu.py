@@ -6,8 +6,7 @@ from dataclasses import dataclass
 import pygame as pg
 
 import positron.utils.Navigator as Navigator
-from positron.own_types import (Color, Coordinate, Enum, Font, Rect, Surface,
-                                Vector2)
+from positron.types import Color, Coordinate, Enum, Font, Rect, Surface, Vector2
 from positron.util import draw_text
 
 

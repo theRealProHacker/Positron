@@ -11,7 +11,7 @@ import pygame as pg
 import positron.config as config
 import positron.util as util
 
-from .own_types import Coordinate, Surface
+from .types import Coordinate, Surface
 
 surf_cache = WeakValueDictionary[str, Surface]()
 

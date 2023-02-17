@@ -9,6 +9,7 @@ from weakref import WeakSet
 
 import aiohttp
 import jinja2
+
 with open(os.devnull, "w") as f, redirect_stdout(f):
     import pygame as pg
 
@@ -24,18 +25,12 @@ from .config import default_style_sheet, g, set_mode
 from .EventManager import EventManager, KeyboardLocation
 from .J import SingleJ
 from .modals.Alert import Alert
-from .own_types import FrozenDCache
+from .types import FrozenDCache
 from .utils.Console import Console
 from .utils.FileWatcher import FileWatcher
-from .utils.Navigator import LOADPAGE, URL, add_route, push
+from .utils.Navigator import LOADPAGE, URL, push
 
 # fmt: on
-
-route = add_route
-set_title = pg.display.set_caption
-quit = pg.quit
-event_manager: EventManager
-
 
 # setup
 pg.init()
@@ -84,9 +79,9 @@ def _set_title():
 async def _load_page(event):
     url: URL = event.url
     _reset_config()
-    event_manager.reset()
+    config.event_manager.reset()
     try:
-        await util.call(event.callback, **url.kwargs)
+        await util.acall(event.callback, **url.kwargs)
     except Exception as e:
         util.log_error(f"Error in event route ({url})", e)
         # put (f"404.html?failed_url={url}") into a simulated event
@@ -161,8 +156,9 @@ async def run(route: str = "/"):
     config.tasks.append(Console(globals()))
     config.aiosession = aiohttp.ClientSession()
     try:
-        if config.DEBUG:
-            await set_mode()  # TODO: put the window to the right side of the screen
+        if config.DEBUG and not hasattr(config, "screen"):
+            # TODO: put the window to the right side of the screen (opposite of left)
+            await set_mode()
         await main(route)
     except asyncio.exceptions.CancelledError:
         pass
@@ -184,7 +180,7 @@ def runSync(route: str = "/"):
     runSync("/")
     ```
     """
-    asyncio.run(run(route), debug=config.DEBUG)
+    asyncio.run(run(route))
 
 
 def alert(title: str, msg: str, can_escape: bool = False):
@@ -193,6 +189,7 @@ def alert(title: str, msg: str, can_escape: bool = False):
     The user can only continue when he presses the OK-Button on the Alert
     """
     config.event_manager.modals.append(Alert(title, msg, can_escape))
+
 
 class Event:
     # this is the only difference to EventManager._Event

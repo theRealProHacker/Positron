@@ -22,7 +22,7 @@ from .config import (abs_angle_units, abs_border_width, abs_font_size,
                     abs_font_weight, abs_length_units, abs_resolution_units,
                     abs_time_units, cursors, g, rel_font_size,
                     rel_length_units)
-from .own_types import (V_T, Angle, Auto, AutoType, BugError, Color, CompStr,
+from .types import (V_T, Angle, Auto, AutoType, BugError, Color, CompStr,
                        CSSDimension, Drawable, Float4Tuple, FontStyle, Length,
                        LengthPerc, Number, Percentage, Resolution, Sentinel,
                        Str4Tuple, StrSent, Time, frozendict)
@@ -875,7 +875,7 @@ parse_lock = asyncio.Lock()
 
 async def parse_file(source: str) -> SourceSheet:
     """
-    Parses a file.
+    Parses a file from the given source (any url).
     It sets the current_file globally which is just for debugging purposes.
     """
     async with parse_lock:  # with this we ensure that only one css-sheet is ever parsed at the same time
@@ -1065,7 +1065,7 @@ def process_property(key: str, value: str) -> list[tuple[str, str]] | CompValue 
                 if is_valid(k, sub_value) is not None:
                     break
             else:  # no-break
-                raise AssertionError(f"Invalid value found in shorthand 'sub_value'")
+                raise AssertionError(f"Invalid value found in shorthand: {sub_value}")
             _shorthand.remove(k)
             result.append((k, sub_value))
         return result
@@ -1144,20 +1144,19 @@ def compute_style(
 
 def pack_longhands(d: ResolvedStyle | FullyComputedStyle) -> ResolvedStyle:
     """Pack longhands back into their shorthands for readability"""
-    d: dict[str, str] = {k: str(v).removesuffix(".0") for k, v in d.items()}
     for shorthand, keys in dir_shorthands.items():
         if any(f not in d for f in keys):
             continue
-        longhands = [d.pop(f) for f in keys]
+        longhands = [str(d.pop(f)) for f in keys]
         match longhands:
             case [w, x, y, z] if w == x == y == z:  # 0
                 d[shorthand] = w
             case [w1, x1, w2, x2] if w1 == w2 and x1 == x2:  # 0 1
                 d[shorthand] = f"{w1} {x1}"
             case [w, x1, y, x2] if x1 == x2:  # 0 1 2
-                d["shorthand"] = f"{w} {x1} {y}"
+                d[shorthand] = f"{w} {x1} {y}"
             case _:
-                d["shorthand"] = " ".join(longhands)
+                d[shorthand] = " ".join(longhands)
     return d
 
 

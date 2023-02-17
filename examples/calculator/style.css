@@ -1,12 +1,25 @@
-* {
-    outline: 1px black solid;
+html {
+    font-family: 'Times New Roman';
+}
+
+h1 {
+    color: rgb(231, 116, 116);
+    font-weight: bold;
 }
 
 #calculator {
-    width: 80%;
-    margin: 50px auto;
+    width: 100%;
+    outline: solid black 1px;
+    background-color: rgb(212, 178, 178);
 }
 
-#calculator > div > button {
-    width: 25%;
+#calculator input {
+    display: block;
+    margin: 30px auto;
+    width: 80%;
+}
+
+div.container {
+    width: 80%;
+    margin: 50px auto;
 }

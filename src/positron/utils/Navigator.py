@@ -13,7 +13,7 @@ import positron.config as config
 import positron.Element as Element
 import positron.util as util
 from positron.config import g
-from positron.own_types import V_T, Enum, Event
+from positron.types import V_T, Enum, Event
 
 LOADPAGE = pg.event.custom_type()
 

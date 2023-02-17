@@ -10,6 +10,7 @@ If not `Console()` will just return a `sleep(0)` task.
 import asyncio
 
 import positron.config as config
+
 uses_aioconsole = config.DEBUG
 if uses_aioconsole:
     try:
@@ -17,7 +18,7 @@ if uses_aioconsole:
     except ImportError:
         uses_aioconsole = False
 
-from positron.J import SingleJ
+from positron.J import SingleJ, J
 import positron.util as util
 
 

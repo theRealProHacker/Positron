@@ -4,8 +4,8 @@ from itertools import chain
 from typing import Any, Callable, Iterable, Mapping
 
 # fmt: off
-import positron.own_types as _o  # Just for dotted access to Auto in match
-from .own_types import (Auto, AutoLP, Coordinate, Float4Tuple, Index, Number,
+import positron.types as _o  # Just for dotted access to Auto in match
+from .types import (Auto, AutoLP, Coordinate, Float4Tuple, Index, Number,
                        Rect, Vector2)
 from .Style import (Calculator, FullyComputedStyle, bw_getter, directions,
                    mrg_getter, pad_getter)

@@ -1,4 +1,4 @@
-from positron.own_types import Color
+from positron.types import Color
 from positron.util import in_bounds
 
 

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 import aiohttp
 import jinja2
 import pygame as pg
-from .own_types import Color, Cursor, Length, Surface
+from .types import Color, Cursor, Length, Surface
 
 # fmt: off
 g: dict[str, Any] = {
@@ -19,11 +19,11 @@ g: dict[str, Any] = {
     "frameless": False,             # bool
     "allow_screen_saver": True,     # bool
     "icon": None,                   # None or Image
+    "default_title": "Positron",
     "default_font_size": 16,        # float
     "key_delay": 500,               # int in ms
     "key_repeat": 30,               # int in ms
     "FPS": 60,                      # float
-    "default_title": "Positron",
     # "zoom": 1,                      # float
     # reserved
     "root": None,                   # the root HTMLElement
@@ -33,13 +33,13 @@ DEBUG = True
 
 # We avoid circular references by using if TYPE_CHECKING
 if TYPE_CHECKING:
-    import EventManager
-    import util
-    from utils.FileWatcher import FileWatcher
-    event_manager: EventManager.EventManager
+    from positron.EventManager import EventManager
+    from positron.util import Task
+    from positron.utils.FileWatcher import FileWatcher
+    event_manager: EventManager
     file_watcher: FileWatcher
-    default_task: util.Task
-    tasks: list[util.Task]
+    default_task: Task
+    tasks: list[Task]
 tasks = []
 jinja_env: jinja2.Environment           # The global jinja Environment used for all html loading
 aiosession: aiohttp.ClientSession       # The global aiohttp session used for http requests

@@ -11,7 +11,7 @@ There are three types of alerts:
 
 from positron.config import g
 from positron.modals.Modal import Modal
-from positron.own_types import Rect, Surface
+from positron.types import Rect, Surface
 
 
 class Alert(Modal):

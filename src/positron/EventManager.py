@@ -20,7 +20,7 @@ import positron.util as util
 from .config import g, set_mode
 from .Element import Element, HTMLElement, NotEditable, whitespace_re
 from .modals import *
-from .own_types import Cursor, Rect, Surface
+from .types import Cursor, Rect, Surface
 from .utils.regex import GeneralParser
 
 
@@ -199,7 +199,7 @@ class EventManager:
 
     async def release_event(self, type_: str, target: UIElem | None = None, **kwargs):
         """
-        Release an event with the type_ and the keyword arguments.
+        Release an event with the type_ and the given kwargs.
         This deals with calling all appropriate callbacks
         """
         # First we get the target, which by default is the root element
@@ -211,7 +211,7 @@ class EventManager:
             if (
                 callback := getattr(event.current_target, f"on_{event.type}", None)
             ) is not None:
-                await util.call(callback, event)
+                await util.acall(callback, event)
             return
         # Elements
         await self.call_callbacks(event)
@@ -233,7 +233,7 @@ class EventManager:
         new_callbacks: list[CallbackItem] = []
         for callback, repeat in util.consume_list(old_callbacks):
             try:
-                await util.call(callback, event)
+                await util.acall(callback, event)
             except Exception as e:
                 util.log_error(f"Exception in callback: {e}")
             if repeat != 1:
@@ -248,7 +248,7 @@ class EventManager:
             and (callback := getattr(event.current_target, f"on_{event.type}", None))
             is not None
         ):
-            await util.call(callback, event)
+            await util.acall(callback, event)
 
     async def handle_events(self, events: list[pg.event.Event]):
         # online, offline

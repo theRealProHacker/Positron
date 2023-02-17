@@ -1,7 +1,7 @@
 from operator import itemgetter
 from typing import Any, Generic, Mapping, Protocol
 
-from positron.own_types import CO_T, V_T, AutoLP, Color, LengthPerc, Str4Tuple
+from positron.types import CO_T, V_T, AutoLP, Color, LengthPerc, Str4Tuple
 
 #################### Itemgetters/setters ###########################
 

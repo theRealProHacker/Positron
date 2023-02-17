@@ -31,7 +31,7 @@ import pygame as pg
 import positron.config as config
 
 # fmt: off
-from .own_types import (CO_T, K_T, V_T, Color, Coordinate, Enum, Font, Index,
+from .types import (CO_T, K_T, V_T, Color, Coordinate, Enum, Font, Index,
                         OpenMode, OpenModeReading, OpenModeWriting, Rect,
                         Surface, Vector2)
 from .utils.regex import GeneralParser, rev_sub
@@ -91,7 +91,7 @@ def get_tag(elem) -> str:
     return (
         elem.tag.removeprefix("{http://www.w3.org/1999/xhtml}").lower()
         if isinstance(elem.tag, str)
-        else "comment"
+        else "!comment"
     )
 
 
@@ -198,7 +198,7 @@ def tup_replace(
     return
 
 
-async def call(callback, *args, **kwargs):
+async def acall(callback, *args, **kwargs):
     """
     Intelligently calls the callback with the given arguments, matching the most args
     """
@@ -215,10 +215,11 @@ async def call(callback, *args, **kwargs):
             len(args),
         )
     ]
-    rv = callback(*_args, **kwargs)
-    if isinstance(rv, Awaitable):
-        rv = await rv
-    return rv
+    return await (
+        callback(*_args, **kwargs)
+        if inspect.iscoroutinefunction(callback)
+        else asyncio.to_thread(callback, *_args, **kwargs)
+    )
 
 
 def nice_number(num: complex) -> str:
@@ -362,7 +363,7 @@ async def delete_created_files():
     global created_files
     if created_files:
         logging.info(f"Deleting: {created_files}")
-        await asyncio.gather(*(aiofiles.os.remove(file) for file in created_files))
+        await asyncio.gather(*(aiofiles.os.remove(file) for file in created_files), return_exceptions=True)
 
 
 save_dir = os.environ.get("TEMP") or "."

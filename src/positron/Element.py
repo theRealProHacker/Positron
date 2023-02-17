@@ -26,7 +26,7 @@ import positron.utils.Navigator as Navigator
 import positron.utils.rounded as rounded_box
 from .config import add_sheet, cursors, g, input_type_check_res
 from .element.ElementAttribute import *
-from .own_types import (Auto, AutoLP4Tuple, AutoType, BugError, Color,
+from .types import (Auto, AutoLP4Tuple, AutoType, BugError, Color,
                        Coordinate, Cursor, DisplayType, Element_P, Float4Tuple,
                        Font, FontStyle, Leaf_P, Length, Number, Percentage,
                        Rect, Surface, Vector2)
@@ -247,6 +247,9 @@ class Element(Element_P):
 
     @classmethod
     def from_lxml(cls, lxml) -> Element:
+        """
+        Creates an Element from the given lxml
+        """
         tag = get_tag(lxml)
         type_: type[Element] = elem_type_map.get(tag, Element)
         text = lxml.text or ""
@@ -275,20 +278,9 @@ class Element(Element_P):
         return Style.remove_importantd(Style.join_styles(self.istyle, self.estyle))
 
     def apply_style(self, sheet: SourceSheet):
-        # Alternatives:
-        # 1. CSSOM as a tree (this is how most browsers do it and probably the best way)
-        # 2.
-        # elems = [*self.iter_desc()]
-        # def get_elems(selector, elems):
-        #     match selector:
-        #         case Selector.IdSelector(id):
-        #             return g["id_map"][id] | elems
-        #         ...
-        # for selector, style in rules:
-        #     for elem in get_elems(selector, elems):
-        #         elem.estyle = Style.join_styles(elem.estyle, style)
-        # 3. (current)
-        # sort all rules by the selectors specificities
+        """
+        Applies the given style sheet to the element
+        """
         rules = sorted(
             sheet.all_rules,
             key=lambda rule: rule[0].spec,
@@ -509,6 +501,9 @@ class Element(Element_P):
                 )
 
     def rel_pos(self, pos: Coordinate):
+        """
+        Makes the previously relative position to the parent absolute to the screen
+        """
         self.box.pos += pos
         content_pos = self.box.content_box.topleft
         items: list[Element | TextElement] | list[InlineItem] = (
@@ -700,17 +695,15 @@ class AnchorElement(Element):
     <a>
     """
 
+    tag = "a"
+
     @property
     def link(self):
-        return (
-            href := self.attrs.get("href")
-        ) and href not in Navigator.visited_links
+        return (href := self.attrs.get("href")) and href not in Navigator.visited_links
 
     @property
     def visited(self):
-        return (
-            href := self.attrs.get("href")
-        ) and href in Navigator.visited_links
+        return (href := self.attrs.get("href")) and href in Navigator.visited_links
 
     @property
     def all_link(self):
@@ -740,7 +733,7 @@ class MetaElement(Element):
     It has no style, the display is "none"
 
     Examples for MetaElements are:
-    `title`, `link`, `style` and also `meta` or `script` (not implemented)
+    `title`, `link`, `style`
     """
 
     display: DisplayType = "none"
@@ -750,6 +743,17 @@ class MetaElement(Element):
 
 
 class StyleElement(MetaElement):
+    """
+    The <style> Element
+
+    It can be used in two seperate ways:
+
+    By specifiying the src attribute a style sheet can be linked.
+    When the linked stylesheet is changed, the style sheet will hot reload using the new content.
+
+    Additionally, css can be inserted directly into the style element.
+    """
+
     tag = "style"
     src: str
     inline_sheet: SourceSheet | None = None
@@ -764,7 +768,7 @@ class StyleElement(MetaElement):
             if os.path.isfile(src):
                 config.file_watcher.add_file(src, self.reload_src)
             util.create_task(parse_file(src), True, self.parse_callback)
-        if self.text:
+        if self.text.strip():
             self.inline_sheet = parse_sheet(self.text)
             add_sheet(self.inline_sheet)
 
@@ -789,7 +793,40 @@ class CommentElement(MetaElement):
 
 
 class LinkElement(MetaElement):
-    # attrs: rel, href, (media, disabled, sizes, title)
+    """
+    The <link> element (https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link)
+
+    It is mainly used for style sheets. However, Positron developers should use the <style> element.
+    The second use case are linked icons. In the real world, many different devices and screen sizes require different
+    icon sizes.
+
+    With Positron, this is not needed as pygame icons should always be as close to 32x32, but will likely be scaled
+    automatically. Also, most apps will have a single global icons and don't need to set their icon in html.
+
+    Attributes
+
+    Implemented:
+        - rel:
+            The relationship between this document and the linked document.
+            Can be either stylesheet or icon as mentioned above.
+            The behaviour of the LinkElement is mainly defined by this attribute.
+            This means, adding more values increases the complexity the most.
+        - href: The hyper reference to the linked document.
+    Might implement:
+        - `rel = preload` with `as = the content type` (on request):
+            The linked document should be preloaded so that it is availably asap.
+            This attribute is likely not that useful.
+        - prefetch (experimental): Similar to `rel = preload`
+        - media (on request):
+            This element is only active when the given media query is True.
+            This behavious is probably costly and difficult to implement and doesn't add too much value.
+    Will not implement in the near future:
+        - type & sizes (experimental):
+            The mime-type of the linked document and the size of linked icons. Not useful as mentioned above.
+            The mime-type is guessed from the file-extension anyway.
+        - title: The title of the linked style sheet. Just not useful
+    """
+
     tag = "link"
     src_sheet: SourceSheet | None = None
 
@@ -797,38 +834,57 @@ class LinkElement(MetaElement):
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
     ):
         super().__init__(tag, attrs, children)
-        # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link
-        # TODO:
-        # media -> depends on media query support
         self.rel = attrs.get("rel")
         self.src = attrs.get("href")
-        if self.rel == "stylesheet" and self.src:
-            # TODO: disabled ?
-            # TODO: title ?
-            config.file_watcher.add_file(self.src, self.on_change)
-            util.create_task(parse_file(self.src), True, self.parse_callback)
-        elif self.rel == "icon" and self.src:
-            # TODO: sizes ?
-            g["icon_srcs"].append(self.src)
+        if self.src:
+            match self.rel:
+                case "stylesheet":
+                    # TODO: What is with an actual href
+                    config.file_watcher.add_file(self.src, self.hot_reload)
+                    util.create_task(parse_file(self.src), True, self.parse_callback)
+                case "icon":
+                    g["icon_srcs"].append(self.src)
 
     def parse_callback(self, future: asyncio.Future):
+        """
+        The callback for when a stylesheet is finished parsing.
+
+        If we already had a stylesheet, we update it directly,
+        else we create a new one and add it to the global sheet set
+        """
         try:
-            self.src_sheet = future.result()
-            add_sheet(self.src_sheet)
+            if not hasattr(self, "src_sheet"):
+                self.src_sheet = future.result()
+                add_sheet(self.src_sheet)
+            else:
+                self.src_sheet[:] = future.result()
         except Exception as e:
             log_error(e)
 
-    def on_change(self):
-        g["css_sheets"].remove(self.src_sheet)
+    def hot_reload(self):
+        """
+        Handles the hot reload by updating the style sheet
+        """
         util.create_task(parse_file(self.src), True, self.parse_callback)
 
 
 class ReplacedElement(Element):
+    """
+    A ReplacedElement is basically just an Element that is self responsible for its layout and drawing.
+
+    ReplacedElements are mostly highly dynamic elements like:
+    <audio>, <video>, <img>, <button>, <input>, <progress>, <meter>, and so on
+    """
+
+    def rel_pos(self, pos: Coordinate):
+        self.box.pos += pos
+
     def iter_inline(self) -> Iterable[Element | TextElement]:
         yield self
 
 
 class ButtonElement(ReplacedElement):
+    tag = "button"
     pass
 
 
@@ -905,6 +961,7 @@ class ImageElement(ReplacedElement):
 
 
 class AudioElement(ReplacedElement):
+    tag = "audio"
     # attrs: src, preload, loop, (autoplay, controls, muted, preload)
     def __init__(
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
@@ -937,6 +994,7 @@ class InputElement(ReplacedElement):
         max, min, step
     """
 
+    tag = "input"
     # fmt: off
     type = RangeAttribute("type", range = {
         "text", "tel", "password", "number", "email", "url", "search",
@@ -1076,6 +1134,8 @@ class BrElement(ReplacedElement):
     <br>: a line break
     """
 
+    tag = "br"
+
     def layout(self, given_width):
         self.box = Box.Box("content-box", width=given_width, height=self.line_height)
         self.inline_items = [TextDrawItem("", self)]
@@ -1171,7 +1231,7 @@ elem_type_map: dict[str, type[Element]] = {
     "br": BrElement,
     "link": LinkElement,
     "style": StyleElement,
-    "comment": CommentElement,
+    "!comment": CommentElement,
     "a": AnchorElement,
     "input": InputElement,
     # "button": ButtonElement,

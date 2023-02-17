@@ -4,7 +4,7 @@ import re
 from types import FunctionType
 from typing import Any, Callable, Iterable
 
-from positron.own_types import BugError
+from positron.types import BugError
 
 whitespace_re = re.compile(r"\s+")
 

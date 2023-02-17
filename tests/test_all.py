@@ -3,21 +3,22 @@ import io
 import math
 from operator import sub
 
-import positron.Box as Box
-import J
 import pygame as pg
 import pytest
+from pytest import raises
+
+import positron.Box as Box
+import positron.J as J
 import positron.Style as Style
 import positron.util as util
-import utils.colors
-import utils.Navigator
-import utils.regex
-from .own_types import Auto, Color, FrozenDCache, Length, Percentage, Rect
-from pytest import raises
-from Selector import (AndSelector, ClassSelector, DirectChildSelector,
+import positron.utils.colors as color_utils
+import positron.utils.Navigator as Navigator
+import positron.utils.regex as regex_utils
+from positron.types import Auto, Color, FrozenDCache, Length, Percentage, Rect
+from positron.Selector import (AndSelector, ClassSelector, DirectChildSelector,
                       HasAttrSelector, IdSelector, TagSelector, matches,
                       parse_selector, rel_p, sngl_p)
-from Style import parse_sheet
+from positron.Style import parse_sheet
 
 # fmt: on
 
@@ -69,7 +70,7 @@ def test_own_types():
 
 
 def test_navigator():
-    history = utils.Navigator.history
+    history = Navigator.history
     history.add_entry("Some url")
     history.add_entry("other url")
     assert history == ["Some url", "other url"]
@@ -87,10 +88,10 @@ def test_navigator():
         "https://docs.python.org/3/library/urllib.parse.html#module-urllib.parse",
         "www.google.com/search?query=Python",
     ]:
-        assert str(utils.Navigator.make_url(url)) == url
+        assert str(Navigator.make_url(url)) == url
     # XXX: the above does not hold true for any URL. For example:
     url = "/path?"
-    assert str(utils.Navigator.make_url(url)) == "/path"
+    assert str(Navigator.make_url(url)) == "/path"
 
 
 def test_cache():
@@ -294,18 +295,18 @@ def test_util():
     util.print_once("hello", file=buffer)
     assert buffer.getvalue() == "hello\n"
     # Colors
-    assert utils.colors.hsl2rgb(0, 1, 0.5) == Color("red")
-    assert utils.colors.hwb2rgb(0, 0, 0) == Color("red")
+    assert color_utils.hsl2rgb(0, 1, 0.5) == Color("red")
+    assert color_utils.hwb2rgb(0, 0, 0) == Color("red")
     # Regex
     # finds the period followed by the two spaces and not by the single space.
     # But the regex has to be flipped (First the space, then the period)
     assert (
-        utils.regex.rev_groups(r"\s*\.", "I like the rain. But not the sun.  ")[0]
+        regex_utils.rev_groups(r"\s*\.", "I like the rain. But not the sun.  ")[0]
         == ".  "
     )
     # here the idea is to only replace the last x matches
     assert (
-        utils.regex.rev_sub(
+        regex_utils.rev_sub(
             r"(\d+)", "123, 124, 124", lambda groups: str(int(groups[0]) + 1), 1
         )
         == "123, 124, 125"
@@ -346,10 +347,10 @@ async def test_async():
     def kwargsfunc(a, b, d="123", **kwargs):
         return a, b, d, kwargs
 
-    assert await util.call(func, 1, 2) == 1
-    assert await util.call(afunc, 1, 2) == 1
-    assert await util.call(kwfunc, 1, d=3) == (1, 2, 3)
-    assert await util.call(kwargsfunc, 1, 2, d=3, e=4) == (1, 2, 3, {"e": 4})
+    assert await util.acall(func, 1, 2) == 1
+    assert await util.acall(afunc, 1, 2) == 1
+    assert await util.acall(kwfunc, 1, d=3) == (1, 2, 3)
+    assert await util.acall(kwargsfunc, 1, 2, d=3, e=4) == (1, 2, 3, {"e": 4})
 
 
 def test_media_queries():

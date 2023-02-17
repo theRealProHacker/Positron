@@ -17,7 +17,7 @@ They all have the following API:
 
 from typing import Protocol
 
-from positron.own_types import Rect, Surface
+from positron.types import Rect, Surface
 
 
 class Modal(Protocol):

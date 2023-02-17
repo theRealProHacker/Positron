@@ -6,7 +6,7 @@ from typing import Callable
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from positron.util import call, create_task
+from positron.util import acall, create_task
 
 ########################## FileWatcher #############################
 class FileWatcher(FileSystemEventHandler):
@@ -38,7 +38,7 @@ class FileWatcher(FileSystemEventHandler):
         logging.debug(f"File modified: {path}")
         if path in self.files and (t := time.monotonic()) - self.last_hit > 1:
             create_task(
-                call(self.callbacks[path]),
+                acall(self.callbacks[path]),
                 sync=True,
             )
             self.last_hit = t

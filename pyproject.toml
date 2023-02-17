@@ -37,6 +37,21 @@ console = ["aioconsole  == 0.5.0"]
 
 examples = ["math_evaluator == 0.0.2"]
 
+dev = [
+    "pytest         == 7.2.1", 
+    "pytest-asyncio == 0.20.3",
+]
+
+all = [
+    "aioconsole  == 0.5.0",
+    "math_evaluator == 0.0.2",
+    "pytest         == 7.2.1", 
+    "pytest-asyncio == 0.20.3",
+]
+
 [project.urls]
 "Homepage" = "https://github.com/theRealProHacker/Positron"
 "Bug Tracker" = "https://github.com/theRealProHacker/Positron/issues"
+
+[tool.isort]
+profile = "black"

@@ -209,10 +209,16 @@ class Percentage(CSSDimension):
             raise ValueError
         return self.value * num * 0.01
 
+    def __str__(self):
+        return f"{self.value}%"
+
 
 @dataclass(frozen=True, repr=False)
 class Length(CSSDimension):
     value: float
+
+    def __str__(self):
+        return f"{self.value}px"
 
 
 @dataclass(frozen=True, repr=False)

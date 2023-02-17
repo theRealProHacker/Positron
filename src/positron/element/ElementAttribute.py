@@ -9,7 +9,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Protocol
 
-import positron.own_types as own_types
+import positron.types as types
 import positron.util as util
 from positron.config import input_type_check_res
 
@@ -35,7 +35,7 @@ class SameAs:
         return getattr(obj, self.attr)
 
 
-class Attribute(Protocol[own_types.V_T]):
+class Attribute(Protocol[types.V_T]):
     """
     The base class for all attributes.
     Automatically returns the default if it cannot be found
@@ -43,23 +43,23 @@ class Attribute(Protocol[own_types.V_T]):
     """
 
     attr: str
-    default: own_types.V_T
+    default: types.V_T
 
     def get_default(self, elem):
         return self.default
 
-    def _get(self, elem: own_types.Element_P) -> own_types.V_T:
+    def _get(self, elem: types.Element_P) -> types.V_T:
         ...
 
-    def __get__(self, elem: own_types.Element_P, type=None) -> own_types.V_T:
+    def __get__(self, elem: types.Element_P, type=None) -> types.V_T:
         if self.attr not in elem.attrs:
             return self.get_default(elem)
         return self._get(elem)
 
-    def __set__(self, elem: own_types.Element_P, value: own_types.V_T):
+    def __set__(self, elem: types.Element_P, value: types.V_T):
         ...
 
-    def __delete__(self, elem: own_types.Element_P):
+    def __delete__(self, elem: types.Element_P):
         del elem.attrs[self.attr]
 
 
@@ -107,12 +107,12 @@ class NumberAttribute(Attribute[float]):
     attr: str
     default: float = 0
 
-    def _get(self, elem: own_types.Element_P):
+    def _get(self, elem: types.Element_P):
         with suppress(ValueError):
             return float(elem.attrs[self.attr])
         return self.default
 
-    def __set__(self, elem: own_types.Element_P, value: float):
+    def __set__(self, elem: types.Element_P, value: float):
         elem.attrs[self.attr] = util.nice_number(value)
 
 
@@ -200,7 +200,7 @@ class InputValueAttribute(Attribute[str | float]):
 
     def __set__(self, elem, value: str | float):
         elem.attrs[self.attr] = (
-            util.nice_number(value) if isinstance(value, own_types.Number) else value
+            util.nice_number(value) if isinstance(value, types.Number) else value
         )
 
 

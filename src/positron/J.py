@@ -50,7 +50,7 @@ class SingleJ:
 
         async def inner_callback(event):
             with set_context(event, "target", self):
-                await util.call(callback, event)
+                await util.acall(callback, event)
 
         config.event_manager.on(event_type, inner_callback, repeat, target=self._elem)
 
