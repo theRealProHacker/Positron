@@ -962,6 +962,7 @@ class ImageElement(ReplacedElement):
 
 class AudioElement(ReplacedElement):
     tag = "audio"
+
     # attrs: src, preload, loop, (autoplay, controls, muted, preload)
     def __init__(
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]

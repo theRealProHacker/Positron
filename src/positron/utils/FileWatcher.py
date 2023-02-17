@@ -8,6 +8,7 @@ from watchdog.observers import Observer
 
 from positron.util import acall, create_task
 
+
 ########################## FileWatcher #############################
 class FileWatcher(FileSystemEventHandler):
     """
