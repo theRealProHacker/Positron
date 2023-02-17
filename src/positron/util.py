@@ -363,7 +363,10 @@ async def delete_created_files():
     global created_files
     if created_files:
         logging.info(f"Deleting: {created_files}")
-        await asyncio.gather(*(aiofiles.os.remove(file) for file in created_files), return_exceptions=True)
+        await asyncio.gather(
+            *(aiofiles.os.remove(file) for file in created_files),
+            return_exceptions=True,
+        )
 
 
 save_dir = os.environ.get("TEMP") or "."
