@@ -1,4 +1,5 @@
-from .main import Event, alert, pg, run, runSync, set_mode  # isort:skip
+from positron.main import Event, alert, pg, run, runSync, set_mode  # isort:skip
+import positron.main as main
 
 import positron.utils.Navigator as Navigator
 
