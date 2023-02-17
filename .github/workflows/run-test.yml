@@ -13,7 +13,7 @@ jobs:
           cache: pip
       - name: Test
         run: |
-          python3 -m pip install mypy black pytest
+          python3 -m pip install -e .[console,examples]
           python3 -m black . --check
           python3 -m mypy src/positron/__init__.py
           python3 -m pytest

@@ -40,6 +40,8 @@ examples = ["math_evaluator == 0.0.2"]
 dev = [
     "pytest         == 7.2.1", 
     "pytest-asyncio == 0.20.3",
+    "black          == 23.1.0",
+    "mypy           == 1.0.1"
 ]
 
 all = [
@@ -47,6 +49,8 @@ all = [
     "math_evaluator == 0.0.2",
     "pytest         == 7.2.1", 
     "pytest-asyncio == 0.20.3",
+    "black          == 23.1.0",
+    "mypy           == 1.0.1"
 ]
 
 [project.urls]
