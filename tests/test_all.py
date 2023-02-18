@@ -27,6 +27,7 @@ pytest_plugins = ("pytest_asyncio",)
 
 pg.init()
 
+
 def test_joint():
     style = Style.remove_importantd(
         Style.parse_inline_style("""margin: calc(100%-30px) auto""")
