@@ -4,6 +4,7 @@ import math
 from operator import sub
 
 import pygame as pg
+pg.init()
 import pytest
 from pytest import raises
 
@@ -18,13 +19,13 @@ from positron.types import Auto, Color, FrozenDCache, Length, Percentage, Rect
 from positron.Selector import (AndSelector, ClassSelector, DirectChildSelector,
                       HasAttrSelector, IdSelector, TagSelector, matches,
                       parse_selector, rel_p, sngl_p)
-from positron.Style import parse_sheet
-
 # fmt: on
 
 # https://stackoverflow.com/a/70016047/15046005
 pytest_plugins = ("pytest_asyncio",)
 
+
+pg.init()
 
 def test_joint():
     style = Style.remove_importantd(
