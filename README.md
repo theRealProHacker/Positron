@@ -10,7 +10,7 @@
 
 # Motivation
 
-When you use Python and you want to visualize something or even wrap it in an app then you have following routes:
+When you use Python and you want to visualize something you have following routes:
 1. `tkinter` or other GUI libraries like `QT`
 2. `matplotlib`
 3. Creating an HTML file and opening it in the default browser. 
@@ -23,23 +23,85 @@ Also, Electron has pretty slow load times. If you start any other regular app (a
 
 Apart from this little thing, Electron is really great, if you know how to use it.
 
+## How can Positron be fast with Python?
+
+1. Most of the work is done in C: IO, graphics, and calculations
+2. Asynchronous programming
+
+Thats really it.
+
+# Screen cast
+
+This code
+#### example.html
+```html
+<title>Document</title>
+<style>
+    body {
+        margin-left: 100px;
+    }
+    a:hover {
+        color: green;
+    }
+    button {
+        display: block;
+    }
+</style>
+
+<p>
+    <a href="/secondpage">
+        Second page
+    </a>
+</p>
+<button>Click Me!</button>
+```
+#### example.jinja
+```html
+<h1>Second Page</h1>
+<a href="/">Back</a>
+```
+#### main.py
+```python	
+@add_route("/")  # the index route
+def startpage():
+    load_dom("example.html")
+
+    colors = ["red", "green", "lightblue", "yellow"]
+
+    def button_callback(event):
+        color = colors.pop(0)
+        colors.append(color)
+        event.target.set_style("background-color", color)
+
+    J("button").on("click", button_callback)
+
+@add_route("/secondpage")
+def nextpage():
+    load_dom("example.jinja")
+```
+creates this result  
+
+[![A Screenshot of the result](https://i.ytimg.com/vi_webp/rDf5UI9oLa8/maxresdefault.webp)](https://www.youtube.com/watch?v=rDf5UI9oLa8)
 
 # How to run this
-You need Python >= 3.10 and Git installed
+You need Python 3.10 and Git installed
 ```shell
-git clone --recursive https://github.com/theRealProHacker/Positron.git
+git clone https://github.com/theRealProHacker/Positron.git
 cd Positron
 python3 -m venv venv
 venv\Scripts\activate   # on Windows
 venv/bin/activate       # on Linux/Mac 
 pip install -r requirements.txt
 ```
+Now you can create an HTML-file `example.html` in `positron` and then you just do  
+```shell
+python3 main.py
+```
 
 # Visualization of the codebase
 Uses [repo-visualization](https://githubnext.com/projects/repo-visualization/) by [Amelia Wattenberger](https://wattenberger.com/)
 
 Check out the [live version](https://mango-dune-07a8b7110.1.azurestaticapps.net/?repo=theRealProHacker%2FPositron)
-
 ![Visualization of the codebase](./diagram.svg)
 
 # Sources 
@@ -57,19 +119,13 @@ Check out the [live version](https://mango-dune-07a8b7110.1.azurestaticapps.net/
 - [Gamma Correction](https://blog.johnnovak.net/2016/09/21/what-every-coder-should-know-about-gamma/)
 
 # Thoughts
-
-## How can Positron be fast with Python?
-
-1. Most of the work is done in C: IO, graphics, and calculations
-2. Asynchronous programming
-
 ## General Style Guide
-1. There is a conflict between confirmacy to the Web Standards and practicality. 
+1. There is an inner conflict between confirmacy to the Web Standards and practicality. 
     1. We try to implement everything as close to the standards as possible, 
     2. But we don't implement deprecated features or features that are not implemented by most mainstream browsers.
     3. If the standards are ridiculous in some aspects, we go our own way, unless someone finds a good reason not to. 
     4. We don't implement JavaScript, and we don't need to feel forced to even follow the standards for JavaScript when implementing Python APIs. However, it might still help to look at the JS standards for inspiration.
-2. In GUI Applications its all about what the user feels. It doesn't matter if your code takes 10 seconds to run, unless the user feels it. If you run that code synchronously and the application freezes for 10 seconds, the user will feel it. If you run it asynchronously, and put in a loading sign the user will still see that it takes some time, but he won't care because he expects that things need time to load. Please use `async`!
+2. In GUI Applications its all about what the user feels. It doesn't matter if your code takes 10 seconds to run, unless the user feels it. If you run that code synchronously and the application freezes for 10 seconds, the user will feel it. If you run it asynchronously, and put in a loading sign the user will still see that it takes some time, but he won't care because he expects that things need time to load. Please just only write asynchronous code!
 
 ## Async
 To achieve asynchronous code you need two methods:
@@ -77,7 +133,7 @@ To achieve asynchronous code you need two methods:
 2. `util.create_task` to "fire and forget" a coroutine. You can make it `sync` which just means that before the page loads the task will definitely have finished. Also you can add an onfinished callback. 
 
 ## Ideas
-- Test on https://acid2.acidtests.org/
+- Test on https://acid2.acidtests.org/  
 - `tinycss` generates tokens like for example `<Token PERCENTAGE at 5:19 70%>`, we could use these. Right now we throw them away by calling `TokenList.as_css()`  
 - Use [aiohttp-client-cache](https://github.com/requests-cache/aiohttp-client-cache)
 - animated GIF support (https://yeahexp.com/how-to-insert-animated-gif-into-pygame/)
@@ -85,13 +141,16 @@ To achieve asynchronous code you need two methods:
 - Profiling: 
     - https://www.youtube.com/watch?v=m_a0fN48Alw
     - https://pythonspot.com/python-profiling/
-- Text Search (Ctrl+F) and other popular and familiar shortcuts Select All/Cut/Copy/Paste(Ctrl+A/X/C/V)
+- Text Search (Ctrl+F)
 - [`alpine.js`](https://alpinejs.dev/) port
 
+## Use less RegEx
+Many consider regular expressions to be the best thing if it comes to text processing. 
+However, it often makes more sense to use other tools.  
+For exampe you could use a `GeneralParser`, which is an easy way to tokenize a string.
+
 # Events
-
 ## Mouse Events
-
 - [`click`](https://w3c.github.io/uievents/#click) and [`auxclick`](https://w3c.github.io/uievents/#auxclick):
     - target: The Element clicked (bubbles)
     - pos: the mouse position on the screen
@@ -99,43 +158,38 @@ To achieve asynchronous code you need two methods:
     - button: invalid: 0, left: 1, middle: 2, right: 3; 4 and 5 are special buttons
     - buttons: A bit mask of which mouse buttons are down
     - detail: Which click this is. The 1st, 2nd, 3rd, ... 
-
 - `mousedown`:
     - target: The Element the mouse was pressed in
     - pos
     - mods
     - buttons
-
 - `mouseup`:
     - target: The Element the mouse was released in
     - pos
     - mods
     - buttons
-
 - `mousemove`:
     - target: The Element the mouse was moved in
     - pos: the new mouse position
     - mods
     - buttons
-
 - `wheel`:
     - target
     - pos
     - mods
     - buttons
     - delta: The x and y delta of the mouse wheel event
-
 - Coming: `mouseleave`/`mouseout` and `mouseenter`/`mouseover`
 
 ## Keyboard Events
 TODO
-- `keydown`:
+- keydown:
     - 
-- `keyup`:
+- keyup:
     - 
 
 ## Window Events and Global Events
-Window Events only fire on the html element/the document. So call them by doing `event_manager.on(event, callback)` or `J(":root").on(event, callback)`.  
+Window Events only fire on the html element/the document. So call them by doing `event_manager.on(event, callback)` or `J("html").on(event, callback)`.  
 - `online` and `offline` with no attributes
 - `resize`: 
     - size = (width,height)

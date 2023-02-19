@@ -5,8 +5,6 @@ concepts
 .mypy_cache
 .vscode
 .dmypy.json
-positron.egg-info
-dist
 
 error.log
 test.*
