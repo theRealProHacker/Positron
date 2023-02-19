@@ -2,21 +2,29 @@ html {
     font-family: 'Times New Roman';
 }
 
+body {
+    height: 100%;
+    background-color:rgb(255, 243, 243);
+}
+
 h1 {
-    color: rgb(231, 116, 116);
+    color: rgb(238, 162, 162);
     font-weight: bold;
 }
 
 #calculator {
-    width: 100%;
     outline: solid black 1px;
-    background-color: rgb(212, 178, 178);
+    background-color: rgb(225, 169, 169);
 }
 
 #calculator input {
     display: block;
     margin: 30px auto;
     width: 80%;
+}
+
+#calculator input:focus {
+    outline-color: rgb(238, 140, 140);
 }
 
 div.container {

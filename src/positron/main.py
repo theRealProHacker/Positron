@@ -158,6 +158,7 @@ async def run(route: str = "/"):
     try:
         if config.DEBUG and not hasattr(config, "screen"):
             # TODO: put the window to the right side of the screen (opposite of left)
+            # https://stackoverflow.com/a/49482308/15046005
             await set_mode()
         await main(route)
     except asyncio.exceptions.CancelledError:
