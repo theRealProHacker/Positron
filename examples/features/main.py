@@ -1,9 +1,9 @@
-from main import *
+from positron import *
 
 
 @route("/")  # the index route
 def startpage():
-    load_dom("example.html")
+    load_dom("first.html")
 
     colors = ["red", "green", "yellow", "royalblue"]
 
@@ -13,6 +13,5 @@ def startpage():
         colors.append(color)
         event.target.set_style("background-color", color)
 
-
-def main():
-    runSync("/#link")
+set_cwd(__file__)
+runSync("/#link")

@@ -9,6 +9,3 @@ positron.egg-info
 dist
 
 error.log
-test.*
-example.*
-playground.py
