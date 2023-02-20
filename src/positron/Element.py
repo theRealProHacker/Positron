@@ -15,6 +15,12 @@ from functools import cache, partial
 from itertools import chain
 from typing import Callable, Iterable, Protocol
 
+uses_markdown = True
+try:
+    import mistune
+except ImportError:
+    uses_markdown = False
+
 import pygame as pg
 
 import positron.Box as Box
@@ -26,6 +32,7 @@ import positron.utils.Navigator as Navigator
 import positron.utils.rounded as rounded_box
 from .config import add_sheet, cursors, g, input_type_check_res
 from .element.ElementAttribute import *
+from .element.Parser import parse as parse_html
 from .types import (Auto, AutoLP4Tuple, AutoType, BugError, Color,
                        Coordinate, Cursor, DisplayType, Element_P, Float4Tuple,
                        Font, FontStyle, Leaf_P, Length, Number, Percentage,
@@ -662,17 +669,14 @@ class Element(Element_P):
 
 class HTMLElement(Element):
     """
-    Represents the exact <html> element
+    Represents the <html> element
     """
 
     tag = "html"
 
     @classmethod
     def from_string(cls, html: str):
-        import lxml.html.html5parser as html5
-
-        _root = html5.document_fromstring(html, parser=html5.HTMLParser())
-        return cls.from_lxml(_root)
+        return cls.from_lxml(parse_html(html))
 
     def get_height(self) -> float:
         return self.box.height
@@ -724,6 +728,28 @@ class AnchorElement(Element):
 
     def on_drag_start(self):
         pass
+
+
+class MarkDownElement(Element):
+    tag = "md"
+
+    def __init__(
+        self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
+    ):
+        new_children = []
+        for c in children:
+            if isinstance(c, TextElement) and c.text.strip():
+                html = mistune.html(c.text)
+                html_element = HTMLElement.from_string(html)
+                # XXX: Take the bodies children and insert them into here
+                new_children.extend(html_element.children[1].children)
+            else:
+                new_children.append(c)
+        super().__init__(tag, attrs, new_children)
+
+    @classmethod
+    def from_lxml(cls, lxml) -> Element:
+        return super().from_lxml(lxml)
 
 
 class MetaElement(Element):
@@ -1235,5 +1261,6 @@ elem_type_map: dict[str, type[Element]] = {
     "!comment": CommentElement,
     "a": AnchorElement,
     "input": InputElement,
+    "md": MarkDownElement
     # "button": ButtonElement,
 }
