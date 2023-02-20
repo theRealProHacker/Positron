@@ -3,7 +3,7 @@ on: [pull_request]
 
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
@@ -13,6 +13,7 @@ jobs:
           cache: pip
       - name: Test
         run: |
+          export SDL_AUDIODRIVER=disk
           python3 -m pip install -e .[all]
           black . --check
           mypy src/positron/__init__.py
