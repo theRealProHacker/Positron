@@ -35,7 +35,7 @@ from .element.ElementAttribute import *
 from .element.Parser import parse as parse_html
 from .types import (Auto, AutoLP4Tuple, AutoType, BugError, Color,
                        Coordinate, Cursor, DisplayType, Element_P, Float4Tuple,
-                       Font, FontStyle, Leaf_P, Length, Number, Percentage,
+                       Font, FontStyle, frozendict, Leaf_P, Length, Number, Percentage,
                        Rect, Surface, Vector2)
 from .Style import (FullyComputedStyle, SourceSheet, bs_getter, bw_keys,
                    calculator, has_prio, inset_getter, is_custom,
@@ -170,8 +170,8 @@ class Element(Element_P):
     class_list = ClassListAttribute()
     data = DataAttribute()
     # Style
-    istyle: Style.Style  # inline style
-    estyle: Style.Style  # external style
+    istyle: Style.Style = frozendict() # inline style
+    estyle: Style.Style = frozendict()  # external style
     cstyle: Style.FullyComputedStyle  # computed_style
     # Layout + Draw
     box: Box.Box
@@ -250,7 +250,13 @@ class Element(Element_P):
         self.istyle = Style.parse_inline_style(attrs.get("style", ""))
 
         for c in children:
-            c.parent = self
+            self.add_child(c)
+
+    def add_child(self, child: Element|TextElement):
+        """
+        What should be done when a child is added
+        """
+        child.parent = self
 
     @classmethod
     def from_lxml(cls, lxml) -> Element:
@@ -730,26 +736,33 @@ class AnchorElement(Element):
         pass
 
 
-class MarkDownElement(Element):
+class MarkdownElement(Element):
     tag = "md"
 
     def __init__(
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
     ):
-        new_children = []
-        for c in children:
-            if isinstance(c, TextElement) and c.text.strip():
-                html = mistune.html(c.text)
-                html_element = HTMLElement.from_string(html)
-                # XXX: Take the bodies children and insert them into here
-                new_children.extend(html_element.children[1].children)
-            else:
-                new_children.append(c)
-        super().__init__(tag, attrs, new_children)
+        super().__init__(tag, attrs, children)
+        if (src := attrs.get("src")) is not None:
+            self.src = src
+            if os.path.isfile(src):
+                config.file_watcher.add_file(src, self.reload_src)
+            util.create_task(util.fetch_txt(src), True, self.parse_callback)
 
-    @classmethod
-    def from_lxml(cls, lxml) -> Element:
-        return super().from_lxml(lxml)
+    def parse_callback(self, future: asyncio.Future[str]):
+        """
+        What should happen when new markdown arrives
+        """
+        with suppress(Exception):
+            markdown = future.result()
+            html = mistune.html(markdown)
+            html_element = HTMLElement.from_string(html)
+            self.children = html_element.children[1].children
+            for c in self.children:
+                self.add_child(c)
+
+    def reload_src(self):
+        util.create_task(util.fetch_txt(self.src), True, self.parse_callback)
 
 
 class MetaElement(Element):
@@ -798,7 +811,7 @@ class StyleElement(MetaElement):
             self.inline_sheet = parse_sheet(self.text)
             add_sheet(self.inline_sheet)
 
-    def parse_callback(self, future: asyncio.Future):
+    def parse_callback(self, future: asyncio.Future[str]):
         with suppress(Exception):
             self.src_sheet = future.result()
             add_sheet(self.src_sheet)
@@ -1261,6 +1274,6 @@ elem_type_map: dict[str, type[Element]] = {
     "!comment": CommentElement,
     "a": AnchorElement,
     "input": InputElement,
-    "md": MarkDownElement
+    "md": MarkdownElement
     # "button": ButtonElement,
 }
