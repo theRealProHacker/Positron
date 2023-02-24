@@ -9,9 +9,8 @@ from weakref import WeakValueDictionary
 import pygame as pg
 
 import positron.config as config
-import positron.util as util
-
-from .types import Coordinate, Surface
+import positron.utils as util
+from positron.types import Coordinate, Surface
 
 surf_cache = WeakValueDictionary[str, Surface]()
 
@@ -112,7 +111,7 @@ class Image:
     def unload(self):
         """
         Unloads the image by destroying
-        the loaded image and the current loading task
+        the loaded surface and the current loading task
         """
         self.surf = _default_surf
         self.loading_task.cancel()
@@ -126,7 +125,10 @@ class Image:
             image.loading_task.add_done_callback(your_callback)
         ```
         """
-        pass
+        if (exception := future.exception()) is not None:
+            util.log_error_once(
+                f"Couldn't load image with urls: {self.urls} and exception {type(exception)}: {exception}"
+            )
 
     def draw(self, surf: Surface, pos: Coordinate):
         """

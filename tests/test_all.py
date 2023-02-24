@@ -11,7 +11,7 @@ from pytest import raises
 import positron.Box as Box
 import positron.J as J
 import positron.Style as Style
-import positron.util as util
+import positron.utils as util
 import positron.utils.colors as color_utils
 import positron.utils.Navigator as Navigator
 import positron.utils.regex as regex_utils
@@ -19,6 +19,7 @@ from positron.types import Auto, Color, FrozenDCache, Length, Percentage, Rect
 from positron.Selector import (AndSelector, ClassSelector, DirectChildSelector,
                       HasAttrSelector, IdSelector, TagSelector, matches,
                       parse_selector, rel_p, sngl_p)
+from positron.utils.aio import _make_new_filename
 # fmt: on
 
 # https://stackoverflow.com/a/70016047/15046005
@@ -290,8 +291,8 @@ def test_util():
     for i, x in enumerate(util.consume_list(l)):
         assert x == i
         assert len(l) == 9 - i
-    assert util._make_new_filename("example.exe") == "example (2).exe"
-    assert util._make_new_filename("example(1)(2).exe") == "example(1)(3).exe"
+    assert _make_new_filename("example.exe") == "example (2).exe"
+    assert _make_new_filename("example(1)(2).exe") == "example(1)(3).exe"
     buffer = io.StringIO()
     util.print_once("hello", file=buffer)
     util.print_once("hello", file=buffer)

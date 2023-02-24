@@ -1,5 +1,5 @@
 from positron.types import Color
-from positron.util import in_bounds
+from positron.utils import in_bounds
 
 
 ############################# Colors #####################################

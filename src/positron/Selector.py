@@ -13,7 +13,7 @@ from typing import Callable, Iterable, Protocol
 
 import positron.Style as Style
 from .types import BugError, Element_P
-from .util import find_index
+from .utils import find_index
 from .utils.regex import get_groups
 
 ########################## Specificity and Rules #############################

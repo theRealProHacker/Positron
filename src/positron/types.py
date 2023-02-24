@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import Enum as _Enum
 
 # fmt: off
-from typing import (Any, Generator, Generic, Hashable, Iterable, Iterator, Literal, Protocol,
+from typing import (Any, Generic, Hashable, Iterable, Iterator, Literal, Protocol,
                     Sequence, TypeVar, Union)
 # fmt: on
 from weakref import WeakValueDictionary
@@ -249,6 +249,12 @@ class FontStyle:
         object.__setattr__(self, "angle", 14 if angle is None else float(angle))
 
 
+# tuples are probably irrelevant because Sequence[int] includes them
+ColorValue = Union[
+    pg.Color, int, str, tuple[int, int, int], tuple[int, int, int, int], Sequence[int]
+]
+
+
 class Color(pg.Color):
     def __hash__(self):
         return hash(int(self))
@@ -259,7 +265,7 @@ class Color(pg.Color):
 
 class CompStr(str):
     def __repr__(self) -> str:
-        return f"CompStr({self})"
+        return f'C"{self}"'
 
 
 ################################################

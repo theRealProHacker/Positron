@@ -16,7 +16,7 @@ from tinycss.css21 import ParseError
 from tinycss.token_data import ContainerToken, Token, TokenList
 
 from positron.config import g
-from positron.util import find_index
+from positron.utils import find_index
 
 MediaValue = tuple[int, int]  # just the window size right now
 

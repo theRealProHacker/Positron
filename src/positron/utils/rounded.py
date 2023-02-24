@@ -15,7 +15,7 @@ import positron.Box as Box
 import positron.Style as Style
 from positron.types import (V_T, BugError, Color, Coordinate, Drawable, Float4Tuple,
                        Radii, Rect, Surface, Vector2)
-from positron.util import all_equal
+from positron.utils.func import all_equal
 
 # fmt: on
 

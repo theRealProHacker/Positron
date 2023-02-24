@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable, Protocol
 
 import positron.types as types
-import positron.util as util
+import positron.utils as util
 from positron.config import input_type_check_res
 
 # def set_attrs(elem: own_types.Element_P, attrs: Iterable[Attribute]):

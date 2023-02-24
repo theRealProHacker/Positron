@@ -19,7 +19,7 @@ if uses_aioconsole:
         uses_aioconsole = False
 
 from positron.J import SingleJ, J
-import positron.util as util
+import positron.utils as util
 
 
 def e(q: str):
@@ -36,6 +36,7 @@ async def _Console(context):
     while True:
         try:
             __x_______ = await aioconsole.ainput(">>> ")
+            print("Thing:", repr(bytes(__x_______, encoding="ascii")))
             args = [__x_______, globals(), context]
             try:
                 r = eval(*args)
@@ -46,7 +47,7 @@ async def _Console(context):
         except asyncio.exceptions.CancelledError:
             break
         except Exception as e:
-            print("Console error:", e)
+            print("Console error:", e, e.args)
 
 
 def Console(context):

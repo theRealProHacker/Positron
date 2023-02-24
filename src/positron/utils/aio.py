@@ -1,7 +1,13 @@
 """
-Utilities for all kinds of needs (funcs, regex, etc...) 
+This module is explicitly for anything related to asyncio and I/O
 
-This module should slowly be dissolved into utils sub modules
+This includes
+
+async management,
+logging,
+downloading files,
+fetching data from the web or the file system,
+
 """
 
 import asyncio
@@ -15,187 +21,25 @@ import re
 import socket
 import sys
 import uuid
-from contextlib import contextmanager, redirect_stdout
+from contextlib import redirect_stdout, contextmanager
 from dataclasses import dataclass
 from enum import auto
 from functools import cache
-from typing import Awaitable, Callable, Iterable, Literal, Sequence, TypeVar
+from typing import Callable, Literal
 from urllib.parse import unquote_plus, urlparse
 
 import aiofiles
 import aiofiles.os
 import aiofiles.ospath as aospath
-import numpy as np
-import pygame as pg
 
 import positron.config as config
-
-# fmt: off
-from .types import (CO_T, K_T, V_T, Color, Coordinate, Enum, Font, Index,
-                        OpenMode, OpenModeReading, OpenModeWriting, Rect,
-                        Surface, Vector2)
-from .utils.regex import GeneralParser, rev_sub
-
-# fmt: on
+from positron.types import Enum, OpenMode, OpenModeReading, OpenModeWriting
+from positron.utils.regex import GeneralParser, rev_sub
+from positron.utils.func import group_by_bool
 
 mimetypes.init()
 
-
-########################## Misc #########################
-def noop(*args, **kws):
-    """A no operation function"""
-    return None
-
-
-def get_dpi():  # TODO
-    return pg.display.get_display_sizes()[0]
-
-
-def make_default(value: V_T | None, default: V_T) -> V_T:
-    """
-    If the `value` is None this returns `default` else it returns `value`
-    """
-    return default if value is None else value
-
-
-def in_bounds(x: float, lower: float, upper: float) -> float:
-    """
-    Make `x` be between lower and upper
-    """
-    x = max(lower, x)
-    x = min(upper, x)
-    return x
-
-
-def not_neg(x: float):
-    """
-    return the maximum of x and 0
-    """
-    return max(0, x)
-
-
-def abs_div(x):
-    """
-    Return the absolute of a fraction.
-    Just like `abs(x*-1)` is `(x*1)`, `abs_div(x**-1)` is `(x**1)`.
-    Or in other words just like abs is the 'distance' to 0 (the neutral element of addition) using addition,
-    abs_div is the distance to 1 (the neutral element of multiplication) using multiplication.
-    """
-    return 1 / x if x < 1 else x
-
-
-def get_tag(elem) -> str:
-    """
-    Get the tag of an _XMLElement or "comment" if the element has no valid tag
-    """
-    return (
-        elem.tag.removeprefix("{http://www.w3.org/1999/xhtml}").lower()
-        if isinstance(elem.tag, str)
-        else "!comment"
-    )
-
-
-def ensure_suffix(s: str, suf: str) -> str:
-    """
-    Ensures that `s` definitely ends with the suffix `suf`
-    """
-    return s if s.endswith(suf) else s + suf
-
-
-def all_equal(l: Sequence):
-    """
-    Return whether all the elements in the list are equal
-    """
-    if len(l) < 2:
-        return True
-    x, *rest = l
-    return all(x == r for r in rest)
-
-
-def group_by_bool(
-    l: Iterable[V_T], key: Callable[[V_T], bool]
-) -> tuple[list[V_T], list[V_T]]:
-    """
-    Group a list into two lists depending on the bool value given by the key
-    """
-    true = []
-    false = []
-    for x in l:
-        if key(x):
-            true.append(x)
-        else:
-            false.append(x)
-    return true, false
-
-
-def find(__iterable: Iterable[V_T], key: Callable[[V_T], bool]):
-    """
-    Find the first element in the iterable that is accepted by the key
-    """
-    for x in __iterable:
-        if key(x):
-            return x
-
-
-def find_index(__iterable: Iterable[V_T], key: Callable[[V_T], bool]):
-    """
-    Find the first elements index in the iterable that is accepted by the key
-    """
-    for i, x in enumerate(__iterable):
-        if key(x):
-            return i
-
-
-def consume_list(l: list[V_T]):
-    """
-    Consume a list by removing all elements
-    """
-    while l:
-        yield l.pop(0)
-
-
-def consume_dict(d: dict[K_T, V_T]):
-    """
-    Consume a dict by removing all items
-    """
-    while d:
-        yield d.popitem()
-
-
-V_T2 = TypeVar("V_T2")
-
-
-def map_dvals(d: dict[K_T, V_T], func: Callable[[V_T], V_T2]) -> dict[K_T, V_T2]:
-    return {k: func(v) for k, v in d.items()}
-
-
-# tuple mutations
-def mutate_tuple(tup: tuple, val, slicing: Index):
-    """
-    Mutate a tuple given the tuple, a slicing and the value to fill into that slicing
-    Example:
-        ```python
-        t = (1,2)
-        mutate_tuple(t, 3, 0) == (3,2)
-        ```
-    """
-    l = list(tup)
-    l[slicing] = val
-    return tuple(l)
-
-
-def tup_replace(
-    t: tuple[CO_T, ...], slice_: int | tuple[int, int], elem
-) -> tuple[CO_T, ...]:
-    """
-    Replace the part of the tuple given by slice with `elem`
-    """
-    if isinstance(slice_, int):
-        return *t[:slice_], elem, *t[slice_:]
-    elif isinstance(slice_, tuple):
-        start, stop = slice_
-        return *t[:start], elem, *t[stop:]
-    return
+### asynchronous stuff
 
 
 async def acall(callback, *args, **kwargs):
@@ -222,33 +66,28 @@ async def acall(callback, *args, **kwargs):
     )
 
 
-def nice_number(num: complex) -> str:
+def call(callback, *args, **kwargs):
     """
-    Try to simplify the number as small as possible
-
-    1.0 -> 1
-
-    1.0+0.0j ->1
+    Synchronous version of acall
     """
-    if isinstance(num, complex) and num.imag == 0:
-        return nice_number(num.real)
-    elif isinstance(num, float) and num.is_integer():
-        return str(int(num))
-    else:
-        return str(num)
-
-
-@contextmanager
-def set_context(obj, name: str, value):
-    old_value = getattr(obj, name)
-    try:
-        setattr(obj, name, value)
-        yield
-    finally:
-        setattr(obj, name, old_value)
-
-
-####################################################################
+    sig = inspect.signature(callback)
+    _args = args[
+        : min(
+            len(
+                [
+                    param
+                    for param in sig.parameters.values()
+                    if not param.kind is inspect.Parameter.KEYWORD_ONLY
+                ]
+            ),
+            len(args),
+        )
+    ]
+    return (
+        create_task(callback(*args, **kwargs))
+        if not inspect.iscoroutinefunction(callback)
+        else callback(*args, **kwargs)
+    )
 
 
 ############################## I/O #################################
@@ -563,77 +402,3 @@ def clog_error():
 log_error = clog_error()(print)
 print_once = cache(print)
 log_error_once = cache(log_error)
-
-
-############################# Pygame related #############################
-
-pg.init()
-
-
-def surf_opaque(surf: Surface):
-    return np.all(pg.surfarray.array_alpha(surf) == 255)
-
-
-def text_surf(text: str, font: Font, color: Color):
-    color = Color(color)
-    text_surf = font.render(text, True, color)
-    if color.a != 255:
-        text_surf.set_alpha(color.a)
-    return text_surf
-
-
-def draw_text(surf: Surface, text: str, font: Font, color, **kwargs):
-    color = Color(color)
-    if color.a:
-        text_surf = font.render(text, True, color)
-        dest = text_surf.get_rect(**kwargs)
-        if color.a != 255:
-            text_surf.set_alpha(color.a)
-        surf.blit(text_surf, dest)
-
-
-class Dotted:
-    def __init__(
-        self,
-        dim,
-        color,
-        dash_size: int = 10,
-        dash_width: int = 2,
-        start_pos: Coordinate = (0, 0),
-    ):
-        self.dim = Vector2(dim)
-        self.color = Color(color)
-        self.dash_size = dash_size
-        self.dash_width = dash_width
-        self.start_pos = Vector2(start_pos)
-
-    @classmethod
-    def from_rect(cls, rect: Rect, **kwargs):
-        return cls(rect.size, **kwargs, start_pos=rect.topleft)
-
-    def draw_at(self, surf: Surface, pos):
-        pos = Vector2(pos)
-        vec = self.dim.normalize() * self.dash_size
-        for i in range(int(self.dim.length() // self.dash_size // 2)):
-            _pos = pos + vec * i * 2
-            pg.draw.line(surf, self.color, _pos, _pos + vec, self.dash_width)
-
-    def draw(self, surf: Surface):
-        return self.draw_at(surf, self.start_pos)
-
-    def draw_rect(self, surf: Surface):
-        rect = Rect(*self.start_pos, *self.dim)
-        for line in rect.sides:
-            pos = Vector2(line[0])
-            dim = line[1] - pos
-            Dotted(dim, self.color, self.dash_size, self.dash_width, pos).draw(surf)
-
-
-def draw_lines(surf: Surface, points, *args, **kwargs):
-    points = [Vector2(point) for point in points]
-    dlines = [
-        Dotted(points[i + 1] - points[i], *args, **kwargs, start_pos=points[i])  # type: ignore
-        for i in range(len(points) - 1)
-    ]
-    for dline in dlines:
-        dline.draw(surf)

@@ -21,7 +21,7 @@ import positron.Box as Box
 import positron.config as config
 import positron.Media as Media
 import positron.Style as Style
-import positron.util as util
+import positron.utils as util
 import positron.utils.Navigator as Navigator
 import positron.utils.rounded as rounded_box
 from .config import add_sheet, cursors, g, input_type_check_res
@@ -33,7 +33,7 @@ from .types import (Auto, AutoLP4Tuple, AutoType, BugError, Color,
 from .Style import (FullyComputedStyle, SourceSheet, bs_getter, bw_keys,
                    calculator, has_prio, inset_getter, is_custom,
                    pack_longhands, parse_file, parse_sheet)
-from .util import (draw_text, get_tag, group_by_bool, log_error, make_default,
+from .utils import (draw_text, get_tag, group_by_bool, log_error, make_default,
                   text_surf)
 from .utils.regex import GeneralParser, whitespace_re
 
@@ -155,7 +155,7 @@ class Element(Element_P):
     """
 
     # General
-    tag: str = ""
+    tag: str
     attrs: dict[str, str]
     children: list[Element | TextElement]
     parent: Element | None
@@ -208,8 +208,14 @@ class Element(Element_P):
     all_link: bool = False  # TODO: do we really need this? Isn't `[href]` sufficient?
     # input elements and their associated form elements
     changed: bool = False  # Not on spec but an extremely cool suggestion
-    enabled: bool = False
-    disabled: bool = False
+
+    enabled: bool = Opposite("disabled")
+
+    @property
+    def disabled(self):
+        return "disabled" in self.attrs
+
+    read_only: bool = False
     checked: bool = False
     blank: bool = False
     placeholder_shown: bool = False
@@ -233,10 +239,7 @@ class Element(Element_P):
     def __init__(
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
     ):
-        if self.tag:
-            assert self.tag == tag
-        else:
-            self.tag = tag
+        self.tag = tag
         self.attrs = attrs
         self.children = children
         self.parent = None
@@ -1023,6 +1026,8 @@ class InputElement(ReplacedElement):
 
     @property
     def valid(self):
+        if self.disabled or self.readonly:
+            return True
         type_ = self.type
         value = self.attrs.get("value", "")
         if (default_pattern := input_type_check_res.get(type_)) is not None:
@@ -1054,6 +1059,10 @@ class InputElement(ReplacedElement):
                         if op(float(value), float(constr)):
                             return False
         return True
+
+    @property
+    def read_only(self):
+        return "readonly" in self.attrs
 
     invalid: bool = Opposite("valid")
     required = BooleanAttribute("required")

@@ -9,7 +9,7 @@ from .types import (Auto, AutoLP, Coordinate, Float4Tuple, Index, Number,
                        Rect, Vector2)
 from .Style import (Calculator, FullyComputedStyle, bw_getter, directions,
                    mrg_getter, pad_getter)
-from .util import ensure_suffix, mutate_tuple, noop, not_neg
+from .utils import ensure_suffix, mutate_tuple, noop, not_neg
 
 # fmt: on
 

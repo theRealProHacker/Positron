@@ -13,5 +13,6 @@ def startpage():
         colors.append(color)
         event.target.set_style("background-color", color)
 
+
 set_cwd(__file__)
 runSync("/#link")

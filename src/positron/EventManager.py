@@ -16,12 +16,13 @@ from typing import Any, Callable
 from weakref import WeakKeyDictionary
 
 import pygame as pg
-import positron.util as util
-from .config import g, set_mode
+from .config import g
 from .Element import Element, HTMLElement, NotEditable, whitespace_re
 from .modals import *
 from .types import Cursor, Rect, Surface
 from .utils.regex import GeneralParser
+import positron.utils.aio as autils
+from .events.InputType import *
 
 
 class KeyboardLocation(IntEnum):
@@ -45,6 +46,7 @@ class _Event:
     target: UIElem
     current_target: Element
     cancelled: bool = False
+    """ A cancelled event is almost like an event that never happened"""
     propagation: bool = True
     immediate_propagation: bool = True
 
@@ -66,14 +68,11 @@ class _Event:
     y: int = 0
 
     def __init__(
-        self,
-        timestamp: float,
-        type_: str,
-        target: UIElem,
-        kwargs: dict[str, Any],
+        self, timestamp: float, type_: str, target: UIElem | None = None, **kwargs: Any
     ):
         self.timestamp = timestamp
         self.type = type_
+        target = target or g["root"]
         self.target = target
         self.current_target = target  # type: ignore
         self.__dict__.update(kwargs)
@@ -118,6 +117,7 @@ supported_events: dict[str, EventData] = {
     "keydown": EventData(
         bubbles=True, attrs=("key", "code", "pgcode", "location", "mods", "repeat")
     ),
+    "input": EventData(),
     "online": EventData(),
     "offline": EventData(),
     "resize": EventData(attrs=("size",)),
@@ -176,7 +176,7 @@ class EventManager:
         # TODO: get the actual buttons down right now
         self.keys_down = set()
         self.buttons_down = set()
-        self.online = util.is_online()
+        self.online = autils.is_online()
 
     def reset(self):
         # XXX: we don't update some things like mouse_pos because they are route unspecific
@@ -191,31 +191,28 @@ class EventManager:
         self.hover = None
 
     def change(self, name: str, value: Any) -> bool:
+        """
+        A very handy method that sets self.{name} to value and returns whether it changed
+        """
         if getattr(self, name) == value:
             return False
         else:
             setattr(self, name, value)
             return True
+        # for fun: use that setattr always returns None:
+        # return False if getattr(self, name) == value else return setattr(self, name, value) or True
 
-    async def release_event(self, type_: str, target: UIElem | None = None, **kwargs):
-        """
-        Release an event with the type_ and the given kwargs.
-        This deals with calling all appropriate callbacks
-        """
-        # First we get the target, which by default is the root element
-        # then we call all callbacks
-        target = target or g["root"]
-        event = _Event(time.monotonic(), type_, target, kwargs)
+    async def release(self, event: _Event):
         # Modal
-        if not isinstance(target, Element):
+        if not isinstance(event.target, Element):
             if (
                 callback := getattr(event.current_target, f"on_{event.type}", None)
             ) is not None:
-                await util.acall(callback, event)
-            return
+                await autils.acall(callback, event)
+                return
         # Elements
         await self.call_callbacks(event)
-        if supported_events.get(type_, EventData()).bubbles:
+        if supported_events.get(event.type, EventData()).bubbles:
             while (
                 event.immediate_propagation
                 and event.propagation
@@ -224,35 +221,47 @@ class EventManager:
                 event.current_target = parent
                 await self.call_callbacks(event)
 
+    async def release_event(self, type_: str, target: str | None = None, **kwargs):
+        """
+        Release an event with the type_ and the given kwargs.
+        This deals with calling all appropriate callbacks
+        """
+        # First we get the target, which by default is the root element
+        # then we call all callbacks
+        event = _Event(time.monotonic(), type_, target, **kwargs)
+        await self.release(event)
+        return event
+
     async def call_callbacks(self, event: _Event):
         # Every callback has a number of times it will be executed.
         # This number is decreased and if it falls to 0, the callback is removed.
-        old_callbacks: list[CallbackItem] = self.callbacks[event.type].get(
-            event.current_target, []
-        )
-        new_callbacks: list[CallbackItem] = []
-        for callback, repeat in util.consume_list(old_callbacks):
+        callbacks = [
+            (callback, repeat - 1)
+            for (callback, repeat) in self.callbacks[event.type].get(
+                event.current_target, []
+            )
+            if repeat != 1
+        ]
+        self.callbacks[event.type][event.current_target] = callbacks
+        for callback, _ in callbacks:
             try:
-                await util.acall(callback, event)
+                await autils.acall(callback, event)
             except Exception as e:
-                util.log_error(f"Exception in callback: {e}")
-            if repeat != 1:
-                new_callbacks.append((callback, repeat - 1))
+                autils.log_error(f"Exception in callback: {e}")
             # MDN: "If stopImmediatePropagation is invoked during one such call[back], no remaining listeners will be called."
             if not event.immediate_propagation:
                 break
-        self.callbacks[event.type][event.current_target] = new_callbacks + old_callbacks
-        # if the event was not cancelled the default action is called if defined
+        # if the event was not cancelled the default action is called if defined on the element
         if (
             not event.cancelled
             and (callback := getattr(event.current_target, f"on_{event.type}", None))
             is not None
         ):
-            await util.acall(callback, event)
+            await autils.acall(callback, event)
 
     async def handle_events(self, events: list[pg.event.Event]):
         # online, offline
-        online = util.is_online()
+        online = autils.is_online()
         if self.change("online", online):
             await self.release_event("online" if online else "offline")
         # event handling
@@ -292,7 +301,8 @@ class EventManager:
                     g["css_dirty"] = True  # :hover
             if event.type == pg.MOUSEBUTTONDOWN:
                 self.buttons_down.add(button)
-                await self.release_event(
+                self.mouse_down = _pos
+                mouse_down_event = await self.release_event(
                     "mousedown",
                     target=hov_elem,
                     pos=_pos,
@@ -300,15 +310,18 @@ class EventManager:
                     button=button,
                     buttons=self.buttons,
                 )
-                if button == 1:
+                if not mouse_down_event.cancelled and button == 1:
                     if self.change("active", hov_elem):
                         g["css_dirty"] = True
                     # FIXME: This is ad-hoc focus
                     # https://html.spec.whatwg.org/multipage/interaction.html#focusable-area
+                    # The specs define focusable areas not as elements but as special object
+                    # A good example are the controls on a <video> element.
+                    # The question is of course how we implement this.
+                    # https://stackoverflow.com/questions/1599660/which-html-elements-can-receive-focus
                     if self.change("focus", hov_elem):
                         g["css_dirty"] = True  # :focus
                         await self.release_event("focus", hov_elem)
-                self.mouse_down = _pos
             elif event.type == pg.MOUSEBUTTONUP:
                 self.buttons_down.remove(button)
                 await self.release_event(
@@ -404,6 +417,7 @@ class EventManager:
             # repeat: Whether the key was pressed continuously (and not the first time) (bool). default False
 
             elif event.type == pg.KEYDOWN:
+                # https://javascript.info/keyboard-events
                 await self.release_event(
                     "keydown",
                     target=self.focus or g["root"],
@@ -414,6 +428,13 @@ class EventManager:
                     mods=event.mod,
                     # TODO: repeat = event.key in self.pressed_keys
                 )
+                # decide what should happen (get the content) -> right now this is the inputs value
+
+                # Emit beforeinput
+                # await self.release_event(
+                #     "beforeinput",
+                #     data = ""
+                # )
                 if event.key == pg.K_BACKSPACE:
                     await edit(
                         ctrl_backspace if event.mod & pg.KMOD_CTRL else lambda v: v[:-1]
@@ -429,13 +450,13 @@ class EventManager:
                 # TODO: composition start
                 pass
             elif event.type == pg.TEXTINPUT:
+                print(event)
                 # TODO: composition end (and start before if not started already)
                 await edit(lambda v: v + event.text)
             ########################## Window Events ##############################################
             elif event.type == pg.WINDOWRESIZED:
                 g["W"] = event.x
                 g["H"] = event.y
-                await set_mode()
                 g["css_dirty"] = True
                 await self.release_event("resize", size=(event.x, event.y))
             elif _type.startswith("window"):
@@ -457,6 +478,8 @@ class EventManager:
         Also you can give a target to attach to the event.
         The callback will only be called when the target matches the specified
         """
+        if __type not in supported_events:
+            raise ValueError(f"Event type {__type!r} is not supported")
         __type = __type.lower()
         _target = target if target is not None else g["root"]
         if __repeat:

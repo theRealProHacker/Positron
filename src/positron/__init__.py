@@ -5,6 +5,7 @@ import positron.utils.Navigator as Navigator
 
 from .EventManager import EventManager
 from .J import J, SingleJ
+from .Media import Image
 from .utils.Navigator import aload_dom, aload_dom_frm_str, load_dom, load_dom_frm_str
 
 route = Navigator.add_route
@@ -41,6 +42,7 @@ __all__ = [
     "URL",
     "Event",
     "event_manager",
+    "Image",
     # run
     "run",
     "runSync",

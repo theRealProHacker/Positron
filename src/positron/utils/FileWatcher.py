@@ -6,7 +6,7 @@ from typing import Callable
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from positron.util import acall, create_task
+from positron.utils.aio import acall, create_task
 
 
 ########################## FileWatcher #############################

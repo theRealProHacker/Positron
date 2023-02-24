@@ -1,5 +1,5 @@
 """
-Parsing that is mostly independent of Style.py
+The parsing that is mostly independent of Style.py
 """
 from contextlib import contextmanager
 

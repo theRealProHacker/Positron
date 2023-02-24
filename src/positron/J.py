@@ -1,17 +1,34 @@
+"""
+jQuery similar idea
+
+Allows for things like
+
+```py
+J('#my-form input[name="email"]').on("input")
+def do_something_awesome():
+    ...
+```
+
+```py
+J("#my-form").submit()
+```
+"""
+
 from __future__ import annotations
 
 import asyncio
 from functools import partial, wraps
 from inspect import isfunction
 from typing import Any, Callable
+from contextlib import nullcontext
 
 import positron.config as config
-import positron.util as util
+import positron.utils as util
 from .config import g
 from positron.Element import Element
 from .Selector import Selector, parse_selector
 from .Style import CompValue, parse_important, process_input
-from .util import set_context
+from .utils.func import set_context
 from .EventManager import supported_events
 
 
@@ -42,14 +59,22 @@ class SingleJ:
         elif isinstance(query, Element):
             self._elem = query
         else:
-            raise TypeError("query must either be an Element or a selector")
+            raise TypeError(
+                f"query must either be an Element or a selector. Is {type(query)}"
+            )
 
     def on(self, event_type: str, callback=None, repeat: int = -1):
         if callback is None:
             return partial(self.on, event_type, repeat=repeat)
 
         async def inner_callback(event):
-            with set_context(event, "target", self):
+            assert event.target is self._elem
+            related_target_cm = (
+                set_context(event, "related_target", SingleJ(event.related_target))
+                if event.related_target is not None
+                else nullcontext()
+            )
+            with set_context(event, "target", self), related_target_cm:
                 await util.acall(callback, event)
 
         config.event_manager.on(event_type, inner_callback, repeat, target=self._elem)
@@ -111,7 +136,7 @@ class J:
         ```py
         J("a").on("click", print)
 
-        J("input").on("keydown", repeat = 2)
+        @J("input").on("keydown", repeat = 2)
         def _(event):
             print(event.key)
         ```
