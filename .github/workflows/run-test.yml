@@ -13,5 +13,5 @@ jobs:
           cache: pip
       - name: Test
         run: |
-          python3 -m pip install pygame
+          python3 -m pip install pygame==2.1.3.dev2
           python3 main.py
