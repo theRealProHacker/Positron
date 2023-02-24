@@ -743,7 +743,7 @@ class MarkdownElement(Element):
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
     ):
         super().__init__(tag, attrs, children)
-        if (src := attrs.get("src")) is not None:
+        if (src := attrs.get("src")) is not None and uses_markdown:
             self.src = src
             if os.path.isfile(src):
                 config.file_watcher.add_file(src, self.reload_src)
