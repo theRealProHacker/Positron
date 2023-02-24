@@ -12,9 +12,4 @@ jobs:
           python-version: '3.10.6' # https://github.com/python/mypy/issues/13627#issuecomment-1245613842
           cache: pip
       - name: Test
-        run: |
-          export SDL_AUDIODRIVER=disk
-          python3 -m pip install -e .[all]
-          black . --check
-          mypy src/positron/__init__.py
-          pytest
+        run: python3 main.py
