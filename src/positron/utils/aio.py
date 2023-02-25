@@ -21,16 +21,12 @@ import re
 import socket
 import sys
 import uuid
-from contextlib import redirect_stdout, contextmanager
+from contextlib import asynccontextmanager, redirect_stdout, contextmanager
 from dataclasses import dataclass
 from enum import auto
-from functools import cache
+from functools import cache, wraps
 from typing import Callable, Literal
 from urllib.parse import unquote_plus, urlparse
-
-import aiofiles
-import aiofiles.os
-import aiofiles.ospath as aospath
 
 import positron.config as config
 from positron.types import Enum, OpenMode, OpenModeReading, OpenModeWriting
@@ -39,7 +35,15 @@ from positron.utils.func import group_by_bool
 
 mimetypes.init()
 
-### asynchronous stuff
+# better aiofiles replacement
+def _wrap(func):
+    @wraps(func)
+    async def inner(*args, **kwargs):
+        return await asyncio.to_thread(func, *args, **kwargs)
+    return inner
+
+a_isfile = _wrap(os.path.isfile)
+aos_remove = _wrap(os.remove)
 
 
 async def acall(callback, *args, **kwargs):
@@ -84,9 +88,9 @@ def call(callback, *args, **kwargs):
         )
     ]
     return (
-        create_task(callback(*args, **kwargs))
-        if not inspect.iscoroutinefunction(callback)
-        else callback(*args, **kwargs)
+        create_task(callback(*_args, **kwargs))
+        if inspect.iscoroutinefunction(callback)
+        else callback(*_args, **kwargs)
     )
 
 
@@ -127,7 +131,8 @@ def create_task(
 async def gather_tasks(tasks: list[Task]):
     syncs, nosyncs = group_by_bool(tasks, lambda task: task.sync)
     tasks[:] = nosyncs
-    return await asyncio.gather(*syncs)
+    if syncs:
+        return await asyncio.wait(syncs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,7 +143,7 @@ class File:
 
     name: str
     mime_type: str | None = None
-    encoding: str | None = None
+    encoding: str | None = "utf-8"
 
     # TODO: init from file like buffer
 
@@ -154,13 +159,24 @@ class File:
         with open(self.name, mode, *args, **kwargs) as f:
             yield f
 
+    @asynccontextmanager
+    async def aopen(self, mode: OpenMode, *args, **kwargs):
+        if self.encoding:
+            kwargs.setdefault("encoding", self.encoding)
+        with await asyncio.to_thread(open, self.name, mode, *args, **kwargs) as f:
+            yield f
+
     def read(self, mode: OpenModeReading = "r", *args, **kwargs):
         with self.open(mode, *args, **kwargs) as f:
             return f.read()
 
+    aread = _wrap(read)
+
     def write(self, mode: OpenModeWriting = "w", *args, **kwargs):
         with self.open(mode, *args, **kwargs) as f:
             return f.write()
+
+    awrite = _wrap(write)
 
 
 def is_online() -> bool:
@@ -203,7 +219,7 @@ async def delete_created_files():
     if created_files:
         logging.info(f"Deleting: {created_files}")
         await asyncio.gather(
-            *(aiofiles.os.remove(file) for file in created_files),
+            *(aos_remove(file) for file in created_files),
             return_exceptions=True,
         )
 
@@ -337,8 +353,7 @@ async def fetch(url: str, raw: bool = False) -> Response:
     else:
         try:
             mode: Literal["rb", "r"] = "rb" if raw else "r"
-            async with aiofiles.open(url, mode) as f:
-                content = await f.read()
+            content = await File(url).aread(mode)
             return Response(url, content, ResponseType.File)
         except IOError as e:
             code: int = (
@@ -358,7 +373,7 @@ async def download(url: str) -> str:
     if url.startswith("http"):
         async with config.aiosession.get(url) as resp:
             new_file = create_file(os.path.basename(urlparse(url).path))
-            async with aiofiles.open(new_file, "wb") as f:
+            async with File(new_file).aopen("wb") as f:
                 async for chunk in resp.content.iter_any():
                     await f.write(chunk)
         return new_file
@@ -368,15 +383,10 @@ async def download(url: str) -> str:
         )
         response = await fetch(url)
         new_file = create_file(uuid.uuid4().hex)
-        if isinstance(response.content, bytes):
-            async with aiofiles.open(new_file, "wb") as f:
-                await f.write(response.content)
-        else:
-            async with aiofiles.open(new_file, "w") as f:
-                await f.write(response.content)
+        await File(new_file).awrite("wb" if isinstance(response.content, bytes) else "w")
         return new_file
     else:
-        if await aospath.isfile(url):
+        if await a_isfile(url):
             return url
         else:
             raise ValueError("Invalid Path")

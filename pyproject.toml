@@ -24,7 +24,6 @@ dependencies = [
     "html5lib    == 1.1",
     "numpy       == 1.24.2",
     "aiohttp     == 3.8.4",
-    "aiofiles    == 23.1.0",
     "aiodns      == 3.0.0",
     "cchardet    == 2.1.7",
     "lxml        == 4.9.2",
