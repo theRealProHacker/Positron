@@ -11,11 +11,6 @@ We currently only care about input elements.
 Also we only support plain text, so no copying of lists
 or any formatting.
 
-However, we do want to support a History for every editing
-context. Every InputElement must have an EditingContext that
-remembers its history, and maybe other things like the 
-current cursor position in that EditingContext
-
 cursor positions are always equal to the position of the character after the cursor
 |0123 -> 0
 012|3 -> 3
@@ -30,7 +25,14 @@ from positron.utils.History import History as _History
 from positron.utils.regex import GeneralParser, whitespace_re
 
 
-__all__ = ["Insert", "Replace", "Delete", "History", "EditingMethod", "InputType"]
+__all__ = [
+    "Void",
+    "Insert",
+    "Delete",
+    "History",
+    "EditingMethod",
+    "InputType",
+]
 
 
 class InputType(Protocol):
@@ -45,17 +47,13 @@ class EditingMethod(Enum):
 
     Normal = auto()
     """ Normal is anything else but the below """
-    Cut = auto()
-    """ Ctrl+X """
-    Paste = auto()
-    """ Ctrl+V """
+    CutPaste = auto()
+    """ Ctrl+V/Ctrl+X """
     DnD = auto()
     """ Drag and Drop with the mouse """
 
 
 class ApplyDescriptor:
-    # def __new__(self, *args) -> str:
-    #     ...
     def __get__(self, obj, type=None) -> str:
         apply = getattr(obj, "apply")
         rv = apply(getattr(obj, "before"))
@@ -64,42 +62,55 @@ class ApplyDescriptor:
 
 
 @dataclass
-class Insert:
-    """
-    User presses a letter, space, enter or similar
-    """
-
-    content: str
-    pos: int
-    method: EditingMethod
-
+class Void:
     def apply(self, text: str) -> str:
-        return "".join([*text[: self.pos], *self.content, *text[self.pos :]])
+        return text
 
     before: str
     after = ApplyDescriptor()
 
 
 @dataclass
-class Replace:
+class Insert:
     """
-    User selects text and then inserts other text.
-    This will delete the selected text and also insert the new text
+    User presses a letter, space, enter or similar
+
+    The type of .pos determines whether this is a Replace operation or a real Insert.
+
+    A real Insert is when pos is an int. A Replace is when pos is a selection (tuple[int, int])
+
+    To check this use `is_insert` and `is_replace` which are mutually exclusive.
     """
 
     content: str
-    range: tuple[int, int]
+    pos: int | tuple[int, int]
     method: EditingMethod
 
+    @property
+    def start(self):
+        return self.pos if isinstance(self.pos, int) else self.pos[0]
+
+    @property
+    def end(self):
+        return self.pos if isinstance(self.pos, int) else self.pos[1]
+
     def apply(self, text: str) -> str:
-        start, end = self.range
-        return "".join([*text[:start], *self.content, *text[end:]])
+        return "".join([*text[: self.start], *self.content, *text[self.end :]])
+
+    def is_insert(self) -> bool:
+        return isinstance(self.pos, int)
+
+    def is_replace(self) -> bool:
+        return isinstance(self.pos, tuple)
 
     before: str
     after = ApplyDescriptor()
 
 
 _ctrl_ident_re = re.compile(r"[\w_]+|.")
+
+
+# TODO: Probably join Delete into Insert. A Delete is technically just a Replace with content="".
 
 
 @dataclass
@@ -109,10 +120,10 @@ class Delete:
         In which direction the deletion happened
         """
 
-        unspecified = auto()
-        forward = auto()
-        backward = auto()
-        entire = auto()
+        Unspecified = auto()
+        For = auto()
+        Back = auto()
+        Entire = auto()
 
     class What(Enum):
         """
@@ -136,29 +147,32 @@ class Delete:
     # int or range depending on thing
     pos: int | tuple[int, int]
     what: What
-    dir: Direction
+    dir: Direction = Direction.Unspecified
 
     def apply(self, text: str):
         match self.what:
             case Delete.What.Content:
-                if isinstance(self.pos, int):
-                    if self.dir == Delete.Direction.backward:
-                        return text[: self.pos-1] + text[self.pos :]
-                    elif self.dir == Delete.Direction.forward:
-                        return text[: self.pos] + text[self.pos+1 :]
-                    else:
-                        raise NotImplementedError
+                if isinstance(self.pos, tuple):
+                    frm, to = self.pos
                 else:
-                    raise NotImplementedError
+                    frm = to = self.pos
+                    match self.dir:
+                        case Delete.Direction.Back:
+                            frm -= 1
+                        case Delete.Direction.For:
+                            to += 1
+                        case _:
+                            raise NotImplementedError
+                return text[:frm] + text[to:]
             case Delete.What.Word:
                 assert isinstance(self.pos, int)
-                if self.dir == Delete.Direction.forward:
+                if self.dir == Delete.Direction.For:
                     # "rea|dy, set, go" -> "rea, set, go"
                     parser = GeneralParser(text[self.pos :])
                     if not parser.consume(whitespace_re):
                         parser.consume(_ctrl_ident_re)
                     return parser.x
-                elif self.dir == Delete.Direction.backward:
+                elif self.dir == Delete.Direction.Back:
                     # "rea|dy, set, go" -> "dy, set, go"
                     parser = GeneralParser(text[: self.pos][::-1])
                     parser.consume(whitespace_re)
@@ -167,14 +181,14 @@ class Delete:
             case _:
                 raise NotImplementedError
 
-    before: str
+    before: str = ""
     after = ApplyDescriptor()
 
 
 @dataclass
 class History:
     """
-    Ctrl+z, Ctrl+Y
+    Ctrl+Z, Ctrl+Y
     """
 
     class Type(Enum):
@@ -185,17 +199,33 @@ class History:
     before: str
     after: str
 
+    @classmethod
+    def from_history(cls, type: Type, history: _History):
+        after = history.peek_back() if type == History.Type.Undo else history.forward()
+        return cls(type, history.current, after)
 
-# class Format (this is in the far future)
-# things like Ctrl+b (bold), Ctrl+i (italic)
+    def execute(self, history: _History):
+        if self.type == History.Type.Undo:
+            history.back()
+        else:
+            history.forward()
+
+
+# class Format:
+#   (this is in the far future)
+#   things like Ctrl+b (bold), Ctrl+i (italic)
 
 
 class EditingContext:
     """
-    An editing context is special for every editable element.
+    An editing context is for every editable element.
     """
 
+    cursor: int = 0
+    selection: tuple[int, int] | None = None
+    # TODO: The History should also save cursor positions and selections
     his: _History[str]
 
     def __init__(self, value: str):
-        self.his = _History([value])
+        self.his = _History()
+        self.his.add_entry(value)

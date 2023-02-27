@@ -5,7 +5,8 @@ import asyncio
 import logging
 import os
 from contextlib import redirect_stdout, suppress
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
+from typing import overload
 from weakref import WeakSet
 
 import aiohttp
@@ -20,22 +21,19 @@ import positron.Media as Media
 import positron.Selector as Selector
 import positron.Style as Style
 import positron.utils as util
+import positron.utils.clipboard
 
-# fmt: off
 from .config import default_style_sheet, g
 from .EventManager import EventManager, _Event
 from .J import SingleJ
 from .modals.Alert import Alert
-from .types import ColorValue, FrozenDCache, Color, Surface
+from .types import Color, ColorValue, FrozenDCache, Surface
 from .utils.Console import Console
 from .utils.FileWatcher import FileWatcher
 from .utils.Navigator import LOADPAGE, URL, push
 
-# fmt: on
-
 # setup
 pg.init()
-logging.basicConfig(level=logging.INFO)
 
 CLOCK = pg.time.Clock()
 """ The global pygame clock """
@@ -44,10 +42,11 @@ CLOCK = pg.time.Clock()
 default_sheet = Style.parse_sheet(default_style_sheet)
 """ The default ua-sheet """
 
-config.jinja_env = jinja2.Environment(loader=jinja2.loaders.FileSystemLoader("."))
+config.jinja_env = jinja2.Environment(
+    loader=jinja2.loaders.FileSystemLoader("."), enable_async=True
+)
 config.file_watcher = FileWatcher()
 config.event_manager = EventManager()
-event_manager = config.event_manager
 
 
 def _reset_config():
@@ -70,29 +69,26 @@ def _reset_config():
     )
 
 
-@dataclass
-class Mode:
-    width: int | None = None
-    height: int | None = None
-    bg_color: ColorValue | None = None
-    resizable: bool | None = None
-    frameless: bool | None = None
-    screen_saver: bool | None = None
-    icon: None | Media.Image = None
-    title: str | None = None
-    default_font_size: int | None = None
-    key_delay: int | None = None
-    key_repeat: int | None = None
-    fps: float | None = None
+@overload
+def set_mode(
+    width: int | None = None,
+    height: int | None = None,
+    bg_color: ColorValue | None = None,
+    resizable: bool | None = None,
+    frameless: bool | None = None,
+    screen_saver: bool | None = None,
+    icon: None | Media.Image = None,
+    title: str | None = None,
+    default_font_size: int | None = None,
+    key_delay: int | None = None,
+    key_repeat: int | None = None,
+    fps: float | None = None,
+):
+    ...
 
-    def __post_init__(self):
-        self.bg_color = None if self.bg_color is None else Color(self.bg_color)
 
-
-def set_mode(mode: Mode | None = None):
-    mode = util.make_default(mode, Mode())
-
-    if icon := mode.icon:
+def set_mode(**kwargs):
+    if (icon := kwargs.get("icon")) is not None:
         if icon.is_loading:
 
             def on_icon_loaded(future: asyncio.Future[Surface]):
@@ -106,11 +102,15 @@ def set_mode(mode: Mode | None = None):
             pg.display.set_icon(icon.surf)
 
     m2g = {"width": "W", "height": "H", "fps": "FPS"}
+    g.update(
+        {
+            key: v
+            for k, v in kwargs.items()
+            if (key := m2g.get(k, k)) in g and v is not None
+        }
+    )
 
-    for k, v in asdict(mode).items():
-        k = m2g.get(k, k)
-        if v is not None:
-            g[k] = v
+    g["bg_color"] = Color(g["bg_color"])
 
     flags = pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
     config.screen = pg.display.set_mode((g["W"], g["H"]), flags)
@@ -155,6 +155,7 @@ async def main(route: str):
     root: Element.HTMLElement
     if not hasattr(config, "screen"):
         set_mode()
+    positron.utils.clipboard.init()
     while True:
         if pg.event.peek(pg.QUIT):
             return
@@ -219,7 +220,7 @@ async def run(route: str = "/"):
 
 def runSync(route: str = "/"):
     """
-    Runs the application asynchronously
+    Runs the application synchronously
 
     ```py
     runSync("/")

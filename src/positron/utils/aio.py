@@ -40,7 +40,9 @@ def _wrap(func):
     @wraps(func)
     async def inner(*args, **kwargs):
         return await asyncio.to_thread(func, *args, **kwargs)
+
     return inner
+
 
 a_isfile = _wrap(os.path.isfile)
 aos_remove = _wrap(os.remove)
@@ -383,7 +385,9 @@ async def download(url: str) -> str:
         )
         response = await fetch(url)
         new_file = create_file(uuid.uuid4().hex)
-        await File(new_file).awrite("wb" if isinstance(response.content, bytes) else "w")
+        await File(new_file).awrite(
+            "wb" if isinstance(response.content, bytes) else "w"
+        )
         return new_file
     else:
         if await a_isfile(url):

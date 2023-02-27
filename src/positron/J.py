@@ -67,15 +67,14 @@ class SingleJ:
         if callback is None:
             return partial(self.on, event_type, repeat=repeat)
 
-        async def inner_callback(event):
-            assert event.target is self._elem
+        def inner_callback(event):
             related_target_cm = (
                 set_context(event, "related_target", SingleJ(event.related_target))
                 if event.related_target is not None
                 else nullcontext()
             )
             with set_context(event, "target", self), related_target_cm:
-                await util.acall(callback, event)
+                util.call(callback, event)
 
         config.event_manager.on(event_type, inner_callback, repeat, target=self._elem)
 

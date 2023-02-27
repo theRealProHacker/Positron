@@ -2,13 +2,16 @@
 body {
     width: 70%;
     margin: auto;
-    font-family: TimesNewRoman;
+    font-family: Arial;
 }
 p {
     padding: 10px;
 }
 .red {
     color: red;
+}
+.😁 {
+    color: rgb(229, 181, 67);
 }
 a {
     font-weight:bolder;
@@ -45,5 +48,11 @@ input:changed:invalid{
 @media (min-width: 800px) {
     a:hover { 
         color: red;
+    }
+}
+
+@media (max-width: 500px) {
+    * {
+        color: red !important
     }
 }

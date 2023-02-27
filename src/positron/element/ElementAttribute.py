@@ -80,9 +80,9 @@ class GeneralAttribute(Attribute[str]):
 
 
 @dataclass
-class RangeAttribute(Attribute[str]):
+class EnumeratedAttribute(Attribute[str]):
     """
-    Only allows the attribute to be in a specific range.
+    An enumerated attribute with a certain, predefined set of possible values
     """
 
     attr: str
@@ -212,6 +212,6 @@ __all__ = [
     "InputValueAttribute",
     "NumberAttribute",
     "Opposite",
-    "RangeAttribute",
+    "EnumeratedAttribute",
     "SameAs",
 ]

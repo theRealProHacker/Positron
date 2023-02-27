@@ -200,7 +200,11 @@ async def aload_dom(url: AnyURL):
     Loads the dom from any url asynchronously
     """
     response = await util.fetch(str(url))
-    kwargs = make_url(url).kwargs if response.type == util.ResponseType.File else {}
+    kwargs = {}
+    url = make_url(url)
+    if response.type == util.ResponseType.File:
+        config.file_watcher.add_file(url.route, reload)
+        kwargs = url.kwargs
     html = await config.jinja_env.from_string(response.text).render_async(**kwargs)
     g["root"] = Element.HTMLElement.from_string(html)
 
