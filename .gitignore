@@ -1,6 +1,5 @@
 __pycache__
 venv
-concepts
 .pytest_cache
 .mypy_cache
 .vscode
@@ -8,7 +7,7 @@ concepts
 positron.egg-info
 dist
 
+# for development
+concepts
+dev
 error.log
-test.*
-example.*
-playground.py

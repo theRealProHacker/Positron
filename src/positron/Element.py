@@ -27,10 +27,12 @@ import positron.Box as Box
 import positron.config as config
 import positron.Media as Media
 import positron.Style as Style
-import positron.util as util
+from positron.events.InputType import EditingContext
+import positron.utils as util
 import positron.utils.Navigator as Navigator
 import positron.utils.rounded as rounded_box
 from .config import add_sheet, cursors, g, input_type_check_res
+from .events.InputType import *
 from .element.ElementAttribute import *
 from .element.Parser import parse as parse_html
 from .types import (Auto, AutoLP4Tuple, AutoType, BugError, Color,
@@ -40,7 +42,7 @@ from .types import (Auto, AutoLP4Tuple, AutoType, BugError, Color,
 from .Style import (FullyComputedStyle, SourceSheet, bs_getter, bw_keys,
                    calculator, has_prio, inset_getter, is_custom,
                    pack_longhands, parse_file, parse_sheet)
-from .util import (draw_text, get_tag, group_by_bool, log_error, make_default,
+from .utils import (draw_text, get_tag, group_by_bool, log_error, make_default,
                   text_surf)
 from .utils.regex import GeneralParser, whitespace_re
 
@@ -146,10 +148,6 @@ def calc_inset(inset: AutoLP4Tuple, width: float, height: float) -> Float4Tuple:
     )
 
 
-class NotEditable(ValueError):
-    pass
-
-
 word_re = re.compile(r"[^\s]+")
 ########################## Element ########################################
 # common operations on Elements. TODO
@@ -162,7 +160,7 @@ class Element(Element_P):
     """
 
     # General
-    tag: str = ""
+    tag: str
     attrs: dict[str, str]
     children: list[Element | TextElement]
     parent: Element | None
@@ -215,8 +213,11 @@ class Element(Element_P):
     all_link: bool = False  # TODO: do we really need this? Isn't `[href]` sufficient?
     # input elements and their associated form elements
     changed: bool = False  # Not on spec but an extremely cool suggestion
-    enabled: bool = False
-    disabled: bool = False
+
+    enabled: bool = Opposite("disabled")
+    disabled: bool = BooleanAttribute("disabled")
+
+    read_only: bool = False
     checked: bool = False
     blank: bool = False
     placeholder_shown: bool = False
@@ -240,10 +241,7 @@ class Element(Element_P):
     def __init__(
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
     ):
-        if self.tag:
-            assert self.tag == tag
-        else:
-            self.tag = tag
+        self.tag = tag
         self.attrs = attrs
         self.children = children
         self.parent = None
@@ -571,11 +569,6 @@ class Element(Element_P):
             return self
         return None
 
-    def editcontent(self, func: Callable[[str], str]):
-        if self.attrs.get("contenteditable", "false") == "false":
-            raise NotEditable
-        # TODO: change own text if contenteditable set to True.
-
     def delete(self):
         self.deleted = True
         self.parent = None
@@ -583,7 +576,7 @@ class Element(Element_P):
             c.delete()
         self.children.clear()
 
-    ###############################  I/O for Elements  ##################################################################
+    ###############################  API for Elements  ##################################################################
     @property
     def text(self):
         """All the text in the element"""
@@ -619,6 +612,13 @@ class Element(Element_P):
             }
         )
         return ",\n".join(f"{k}: {v}" for k, v in out_style.items())
+
+    def setattr(self, name: str, value):
+        """
+        Set the elements attribute
+        """
+        # override for different behaviour
+        self.attrs[name] = value
 
     ############################## Helpers #####################################
     def iter_anc(self) -> Iterable[Element]:
@@ -1028,7 +1028,7 @@ class InputElement(ReplacedElement):
     """
     attributes
     TODO:
-        disabled, form, list, readonly, autofocus?
+        form, list
     TODO:
         accept -> file
         max, min, step
@@ -1036,34 +1036,38 @@ class InputElement(ReplacedElement):
 
     tag = "input"
     # fmt: off
-    type = RangeAttribute("type", range = {
+    type = EnumeratedAttribute("type", range = {
         "text", "tel", "password", "number", "email", "url", "search",
         "checkbox", "radio",
         "file", "color", "hidden"
     }, default="text")
-    value = InputValueAttribute()
     # fmt: on
+    value = InputValueAttribute()
+
+    @property
+    def _value(self) -> str:
+        return self.attrs.get("value", "")
+
     maxlength = NumberAttribute("maxlength", default=float("inf"))
     minlength = NumberAttribute("minlength")
     multiple = BooleanAttribute("multiple")
     # States
     changed: bool = False
     checked: bool = False
-    enabled: bool = Opposite("disabled")
-    disabled: bool = BooleanAttribute("disabled")
 
     @property
     def blank(self):
         return not self.attrs.get("value")  # value is either not set or empty.
 
-    placeholder_shown: bool = SameAs(
-        "blank"
-    )  # TODO: Does the input need to have a placeholder set for this to fire?
+    # TODO: Does the input need to have a placeholder set for this to fire?
+    placeholder_shown: bool = SameAs("blank")
 
     @property
     def valid(self):
+        if self.disabled or self.read_only:
+            return True
         type_ = self.type
-        value = self.attrs.get("value", "")
+        value = self._value
         if (default_pattern := input_type_check_res.get(type_)) is not None:
             if not value:
                 return not self.required
@@ -1094,6 +1098,10 @@ class InputElement(ReplacedElement):
                             return False
         return True
 
+    @property
+    def read_only(self):
+        return "readonly" in self.attrs
+
     invalid: bool = Opposite("valid")
     required = BooleanAttribute("required")
     optional: bool = Opposite("required")
@@ -1102,6 +1110,7 @@ class InputElement(ReplacedElement):
         super().__init__(*args)
         if "checked" in self.attrs:
             self.checked = True
+        self.editing_ctx = EditingContext(self.attrs.get("value", ""))
 
     def collide(self, pos: Coordinate) -> Element | None:
         return self if self.box.border_box.collidepoint(pos) else None
@@ -1125,11 +1134,9 @@ class InputElement(ReplacedElement):
         )
         if (_size := self.attrs.get("size", "20")).isnumeric():
             # "0" from the ch unit
-            # fmt: off
-            avrg_letter_width = self.font.metrics(
-                "•" if type_ == "password" else "0"
-            )[0][4]
-            # fmt: on
+            avrg_letter_width = self.font.metrics("•" if type_ == "password" else "0")[
+                0
+            ][4]
             self.box.set_width(int(_size) * avrg_letter_width, "content-box")
         set_height(self.line_height)
 
@@ -1138,7 +1145,8 @@ class InputElement(ReplacedElement):
             text: str = self.attrs.get("value") or self.attrs.get("placeholder", "")  # type: ignore
             if not self.placeholder_shown and self.type == "password":
                 text = "•" * len(text)
-            # what is happening below corresponds to the ::placeholder pseudo-element
+            # XXX: what is happening below corresponds to the ::placeholder pseudo-element
+            # but we can't make this happen with pure css
             color = Color(self.cstyle["color"])
             if self.placeholder_shown:
                 color.a = int(0.4 * color.a)
@@ -1155,14 +1163,43 @@ class InputElement(ReplacedElement):
                     window_l, 0, min(rendered_rect.w, text_rect.w), rendered_rect.bottom
                 ),
             )
+            # TODO: Draw cursor (and selection)
         else:
-            raise BugError("Disallowed input type")
+            raise NotImplementedError("Disallowed input type")
 
-    def editcontent(self, func: Callable[[str], str]):
-        self.changed = True
-        g["css_dirty"] = True
-        # TODO: don't allow invalid character inputs (eg. no letters in type=number)
-        self.attrs["value"] = func(self.attrs.get("value", ""))
+    @staticmethod
+    def _sanitize_number(num: str):
+        if not num:
+            return num
+        prepend = "-" if num[0] == "-" else ""
+        sanitized = "".join(c for c in num if c in "0123456789.")
+        if sanitized.count(".") >= 2:
+            part = sanitized.split(".")
+            sanitized = "".join([part[0], ".", *part[1:]])
+        return prepend + sanitized
+
+    def sanitize_input(self, type: InputType):
+        # TODO: A lot of thinking on how to sanitize user input with numbers, but this looks pretty solid at the moment
+        if self.type == "number" and isinstance(type, Insert) and type.content:
+            old_apply = type.apply
+
+            def new_apply(text: str) -> str:
+                result = self._sanitize_number(old_apply(text))
+                if Style.number_pattern.match(result) or Style.number_pattern.match(
+                    result + "0"
+                ):  # -0 and .0
+                    return result
+                else:
+                    return text
+
+            type.apply = new_apply
+
+    def setattr(self, name: str, value):
+        if name == "value":
+            if self.type == "number":
+                value = self._sanitize_number(value)
+            self.editing_ctx.his.add_entry(value)
+        super().setattr(name, value)
 
     def on_wheel(self, event):
         if self.type == "number":

@@ -11,9 +11,10 @@ import pygame as pg
 
 import positron.config as config
 import positron.Element as Element
-import positron.util as util
+import positron.utils as util
 from positron.config import g
-from positron.types import V_T, Enum, Event
+from positron.types import Enum, Event
+from positron.utils.History import History
 
 LOADPAGE = pg.event.custom_type()
 
@@ -70,41 +71,6 @@ class UrlLookupResult(Enum):
     Internal = auto()  # The URL was handled internally and resolved to an html file
     Browser = auto()  # The URL was opened in a browser
     Invalid = auto()  # The URL was invalid
-
-
-class History(list[V_T]):
-    """
-    A generalized History of things. Subclasses list for maximum usability
-    """
-
-    cur = -1
-
-    @property
-    def current(self):
-        # TODO: What should we do when the history is empty?
-        return self[self.cur]
-
-    # Navigation
-    def back(self):
-        self.cur = max(0, self.cur - 1)
-
-    def can_go_back(self) -> bool:
-        return bool(self.cur)
-
-    def forward(self):
-        self.cur = min(len(self) - 1, self.cur + 1)
-
-    def can_go_forward(self) -> bool:
-        return bool(self.cur - len(self) + 1)
-
-    def add_entry(self, entry: V_T):
-        self.cur += 1
-        self[:] = [*self[: self.cur], entry]
-
-    # overrides
-    def clear(self):
-        super().clear()
-        del self.cur
 
 
 ############################# Site navigation ############################
@@ -234,7 +200,11 @@ async def aload_dom(url: AnyURL):
     Loads the dom from any url asynchronously
     """
     response = await util.fetch(str(url))
-    kwargs = make_url(url).kwargs if response.type == util.ResponseType.File else {}
+    kwargs = {}
+    url = make_url(url)
+    if response.type == util.ResponseType.File:
+        config.file_watcher.add_file(url.route, reload)
+        kwargs = url.kwargs
     html = await config.jinja_env.from_string(response.text).render_async(**kwargs)
     g["root"] = Element.HTMLElement.from_string(html)
 

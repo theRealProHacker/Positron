@@ -14,12 +14,12 @@ g: dict[str, Any] = {
     # User settable
     "W": 900,                       # int
     "H": 600,                       # int
-    "window_bg": Color("white"),    # Color
+    "bg_color": Color("white"),     # Color
     "resizable": True,              # bool
     "frameless": False,             # bool
-    "allow_screen_saver": True,     # bool
+    "screen_saver": True,           # bool
     "icon": None,                   # None or Image
-    "default_title": "Positron",
+    "title": "Positron",
     "default_font_size": 16,        # float
     "key_delay": 500,               # int in ms
     "key_repeat": 30,               # int in ms
@@ -34,7 +34,7 @@ DEBUG = True
 # We avoid circular references by using if TYPE_CHECKING
 if TYPE_CHECKING:
     from positron.EventManager import EventManager
-    from positron.util import Task
+    from positron.utils import Task
     from positron.utils.FileWatcher import FileWatcher
     event_manager: EventManager
     file_watcher: FileWatcher
@@ -55,24 +55,6 @@ def add_sheet(sheet: Any):
     """
     g["css_sheets"].add(sheet)
     g["css_dirty"] = True
-
-
-async def set_mode():
-    """
-    Call this after setting g manually. This will probably change to an API function
-    """
-    global screen
-    # icon
-    if _icon := g["icon"]:
-        if await _icon.loading_task is not None:
-            pg.display.set_icon(_icon.surf)
-    # Display Mode
-    flags = pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
-    screen = pg.display.set_mode((g["W"], g["H"]), flags)
-    # Screen Saver
-    pg.display.set_allow_screensaver(g["allow_screen_saver"])
-    # key repeat
-    pg.key.set_repeat(g["key_delay"], g["key_repeat"])
 
 
 ################################ constant data ########################

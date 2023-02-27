@@ -1,18 +1,24 @@
-from positron.main import Event, pg, run, runSync, set_mode  # isort:skip
-import positron.main as main
-
-import positron.util
+from positron.main import Event, alert, pg, run, runSync, set_mode  # isort:skip
+import positron.config
+import positron.events.InputType as InputType
 import positron.utils.Navigator as Navigator
 import positron.config
 
 from .EventManager import EventManager
 from .J import J, SingleJ
-from .utils.Navigator import aload_dom, load_dom
+from .Media import Image
+from .utils.aio import create_file as create_file
+from .utils.Navigator import aload_dom, aload_dom_frm_str, load_dom, load_dom_frm_str
+
+
+def quit():
+    import pygame as pg
+
+    pg.event.post(pg.event.Event(pg.QUIT))
+
 
 route = Navigator.add_route
-set_title = pg.display.set_caption
-quit = pg.quit
-event_manager: EventManager = main.event_manager
+event_manager: EventManager = positron.config.event_manager
 URL = Navigator.URL
 
 
@@ -31,16 +37,13 @@ __all__ = [
     "J",
     "SingleJ",
     # browser interaction
-    "set_title",
+    "alert",
     "URL",
     "Event",
     "event_manager",
-    "Navigator",
-    # for routes and running
-    "route",
-    "load_dom",
-    "aload_dom",
-    "set_cwd",
+    "Image",
+    "InputType",
+    # run
     "run",
     "runSync",
     "set_mode",

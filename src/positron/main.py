@@ -5,6 +5,8 @@ import asyncio
 import logging
 import os
 from contextlib import redirect_stdout, suppress
+from dataclasses import asdict, dataclass
+from typing import overload
 from weakref import WeakSet
 
 import aiohttp
@@ -18,23 +20,20 @@ import positron.Element as Element
 import positron.Media as Media
 import positron.Selector as Selector
 import positron.Style as Style
-import positron.util as util
+import positron.utils as util
+import positron.utils.clipboard
 
-# fmt: off
-from .config import default_style_sheet, g, set_mode
-from .EventManager import EventManager, KeyboardLocation
+from .config import default_style_sheet, g
+from .EventManager import EventManager, _Event
 from .J import SingleJ
 from .modals.Alert import Alert
-from .types import FrozenDCache
+from .types import Color, ColorValue, FrozenDCache, Surface
 from .utils.Console import Console
 from .utils.FileWatcher import FileWatcher
 from .utils.Navigator import LOADPAGE, URL, push
 
-# fmt: on
-
 # setup
 pg.init()
-logging.basicConfig(level=logging.INFO)
 
 CLOCK = pg.time.Clock()
 """ The global pygame clock """
@@ -43,10 +42,11 @@ CLOCK = pg.time.Clock()
 default_sheet = Style.parse_sheet(default_style_sheet)
 """ The default ua-sheet """
 
-config.jinja_env = jinja2.Environment(loader=jinja2.loaders.FileSystemLoader("."))
+config.jinja_env = jinja2.Environment(
+    loader=jinja2.loaders.FileSystemLoader("."), enable_async=True
+)
 config.file_watcher = FileWatcher()
 config.event_manager = EventManager()
-event_manager = config.event_manager
 
 
 def _reset_config():
@@ -69,11 +69,60 @@ def _reset_config():
     )
 
 
+@overload
+def set_mode(
+    width: int | None = None,
+    height: int | None = None,
+    bg_color: ColorValue | None = None,
+    resizable: bool | None = None,
+    frameless: bool | None = None,
+    screen_saver: bool | None = None,
+    icon: None | Media.Image = None,
+    title: str | None = None,
+    default_font_size: int | None = None,
+    key_delay: int | None = None,
+    key_repeat: int | None = None,
+    fps: float | None = None,
+):
+    ...
+
+
+def set_mode(**kwargs):
+    if (icon := kwargs.get("icon")) is not None:
+        if icon.is_loading:
+
+            def on_icon_loaded(future: asyncio.Future[Surface]):
+                with suppress(Exception):
+                    pg.display.set_icon(future.result())
+
+            task = icon.loading_task
+            task.sync = True
+            task.add_done_callback(on_icon_loaded)
+        elif icon.is_loaded:
+            pg.display.set_icon(icon.surf)
+
+    m2g = {"width": "W", "height": "H", "fps": "FPS"}
+    g.update(
+        {
+            key: v
+            for k, v in kwargs.items()
+            if (key := m2g.get(k, k)) in g and v is not None
+        }
+    )
+
+    g["bg_color"] = Color(g["bg_color"])
+
+    flags = pg.RESIZABLE * g["resizable"] | pg.NOFRAME * g["frameless"]
+    config.screen = pg.display.set_mode((g["W"], g["H"]), flags)
+    pg.display.set_allow_screensaver(g["screen_saver"])
+    pg.key.set_repeat(g["key_delay"], g["key_repeat"])
+
+
 def _set_title():
     head = g["root"].children[0]
     assert isinstance(head, Element.MetaElement)
     titles = [title.text for title in head.children if title.tag == "title"]
-    pg.display.set_caption(titles[-1] if titles else g["default_title"])
+    pg.display.set_caption(titles[-1] if titles else g["title"])
 
 
 async def _load_page(event):
@@ -105,14 +154,14 @@ async def main(route: str):
     push(route)
     root: Element.HTMLElement
     if not hasattr(config, "screen"):
-        await set_mode()
+        set_mode()
+    positron.utils.clipboard.init()
     while True:
         if pg.event.peek(pg.QUIT):
             return
         if load_events := pg.event.get(LOADPAGE):
-            await _load_page(
-                load_events[-1]
-            )  # XXX: We only need to consider the last load event
+            # XXX: We only need to consider the last load event
+            await _load_page(load_events[-1])
         root = g["root"]
         await util.gather_tasks(config.tasks)
         if g["css_dirty"] or g["css_sheet_len"] != len(g["css_sheets"]):
@@ -123,7 +172,7 @@ async def main(route: str):
         root.compute()
         root.layout()
 
-        config.screen.fill(g["window_bg"])
+        config.screen.fill(g["bg_color"])
         root.draw(config.screen)
         config.event_manager.draw(config.screen)
         if config.DEBUG:
@@ -156,10 +205,6 @@ async def run(route: str = "/"):
     config.tasks.append(Console(globals()))
     config.aiosession = aiohttp.ClientSession()
     try:
-        if config.DEBUG and not hasattr(config, "screen"):
-            # TODO: put the window to the right side of the screen (opposite of left)
-            # https://stackoverflow.com/a/49482308/15046005
-            await set_mode()
         await main(route)
     except asyncio.exceptions.CancelledError:
         pass
@@ -175,7 +220,7 @@ async def run(route: str = "/"):
 
 def runSync(route: str = "/"):
     """
-    Runs the application asynchronously
+    Runs the application synchronously
 
     ```py
     runSync("/")
@@ -192,30 +237,7 @@ def alert(title: str, msg: str, can_escape: bool = False):
     config.event_manager.modals.append(Alert(title, msg, can_escape))
 
 
-class Event:
+class Event(_Event):
     # this is the only difference to EventManager._Event
-    target: SingleJ
-    # related_target is not in here atm
-
-    # the rest is copied
-    timestamp: float
-    type: str
-    current_target: Element.Element
-    cancelled: bool = False
-    propagation: bool = True
-    immediate_propagation: bool = True
-
-    # mouse events
-    pos: tuple[int, int] = (0, 0)
-    mods: int = 0
-    button: int = 0
-    buttons: int = 0
-    detail: int = 0
-    delta: tuple[int, int] = (0, 0)
-    # keyboard events
-    key: str = ""
-    code: str = ""
-    location: KeyboardLocation = KeyboardLocation.INVALID
-    # other
-    x: int = 0
-    y: int = 0
+    target: SingleJ  # type: ignore
+    related_target: SingleJ  # type: ignore

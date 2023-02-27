@@ -29,7 +29,7 @@ from .types import (V_T, Angle, Auto, AutoType, BugError, Color, CompStr,
 from .style.itemgetters import *
 from .style.MediaQuery import *
 from .style.Parser import Parser, parse_important, set_curr_file
-from .util import (consume_list, fetch_txt, find_index, group_by_bool,
+from .utils import (consume_list, fetch_txt, find_index, group_by_bool,
                   in_bounds, log_error, make_default, noop, print_once,
                   tup_replace)
 from .utils.colors import hsl2rgb, hwb2rgb

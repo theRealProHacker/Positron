@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable, Protocol
 
 import positron.types as types
-import positron.util as util
+import positron.utils as util
 from positron.config import input_type_check_res
 
 # def set_attrs(elem: own_types.Element_P, attrs: Iterable[Attribute]):
@@ -80,9 +80,9 @@ class GeneralAttribute(Attribute[str]):
 
 
 @dataclass
-class RangeAttribute(Attribute[str]):
+class EnumeratedAttribute(Attribute[str]):
     """
-    Only allows the attribute to be in a specific range.
+    An enumerated attribute with a certain, predefined set of possible values
     """
 
     attr: str
@@ -212,6 +212,6 @@ __all__ = [
     "InputValueAttribute",
     "NumberAttribute",
     "Opposite",
-    "RangeAttribute",
+    "EnumeratedAttribute",
     "SameAs",
 ]

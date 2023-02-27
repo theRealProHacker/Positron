@@ -7,7 +7,7 @@ import pygame as pg
 
 import positron.utils.Navigator as Navigator
 from positron.types import Color, Coordinate, Enum, Font, Rect, Surface, Vector2
-from positron.util import draw_text
+from positron.utils.pg import draw_text
 
 
 class Orient(Enum):

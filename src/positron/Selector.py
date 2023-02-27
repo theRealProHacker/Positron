@@ -13,7 +13,7 @@ from typing import Callable, Iterable, Protocol
 
 import positron.Style as Style
 from .types import BugError, Element_P
-from .util import find_index
+from .utils import find_index
 from .utils.regex import get_groups
 
 ########################## Specificity and Rules #############################
@@ -288,6 +288,7 @@ class NextSiblingSelector(CompositeSelector):
 ########################################## Parser #######################################################
 s = r"\s*"
 _id = r"[\w\-]+"
+_id = r"[^#.:[ >+~]+"  # XXX: this also allows things like emojis in selectors
 sngl_p = re.compile(
     rf"((?:\*|(?:#{_id})|(?:\.{_id})|(?:\[\s*{_id}\s*\])|(?:\[\s*{_id}\s*[~|^$*]?=\s*{_id}\s*\])|(?:\:{_id})|(?:{_id})))$"
 )
@@ -326,10 +327,8 @@ class InvalidSelector(ValueError):
 def parse_selector(s: str) -> Selector:
     """
     Parses a selector string. Raises an InvalidSelector exception when unparsable.
-    https://drafts.csswg.org/selectors/#grammar
-    https://drafts.csswg.org/css-syntax-3/#parse-comma-list
     """
-    s = start = s.strip()
+    s = start = " ".join(s.strip().split())  # reduce any whitespace to a single space
     if not s:
         raise InvalidSelector("Empty selector")
     if "," in s:
