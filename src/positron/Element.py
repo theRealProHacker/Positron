@@ -170,7 +170,7 @@ class Element(Element_P):
     class_list = ClassListAttribute()
     data = DataAttribute()
     # Style
-    istyle: Style.Style = frozendict() # inline style
+    istyle: Style.Style = frozendict()  # inline style
     estyle: Style.Style = frozendict()  # external style
     cstyle: Style.FullyComputedStyle  # computed_style
     # Layout + Draw
@@ -252,7 +252,7 @@ class Element(Element_P):
         for c in children:
             self.add_child(c)
 
-    def add_child(self, child: Element|TextElement):
+    def add_child(self, child: Element | TextElement):
         """
         What should be done when a child is added
         """
