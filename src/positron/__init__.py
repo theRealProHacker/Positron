@@ -2,6 +2,7 @@ from positron.main import Event, alert, pg, run, runSync, set_mode  # isort:skip
 import positron.config
 import positron.events.InputType as InputType
 import positron.utils.Navigator as Navigator
+import positron.config
 
 from .EventManager import EventManager
 from .J import J, SingleJ
@@ -32,13 +33,6 @@ def set_cwd(file: str):
 
 
 __all__ = [
-    # for routes
-    "route",
-    "load_dom",
-    "aload_dom",
-    "aload_dom_frm_str",
-    "load_dom_frm_str",
-    "set_cwd",
     # J
     "J",
     "SingleJ",
@@ -53,8 +47,13 @@ __all__ = [
     "run",
     "runSync",
     "set_mode",
-    # navigation
-    "Navigator",
 ]
+
+# things that should be exported but not in __all__
+watch_file = positron.config.file_watcher.add_file
+alert = main.alert
+aload_dom_frm_str = Navigator.aload_dom_frm_str
+load_dom_frm_str = Navigator.load_dom_frm_str
+
 
 del pg

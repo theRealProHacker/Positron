@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import webbrowser
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import auto
 from typing import Any, Callable
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -25,8 +25,8 @@ __all__ = ["URL", "history", "back", "forward", "push", "get_url", "reload"]
 @dataclass(frozen=True)
 class URL:
     route: str  # aka path
-    kwargs: dict[str, Any]  # aka query
-    target: str  # aka fragment
+    kwargs: dict[str, Any] = field(default_factory=dict)  # aka query
+    target: str = ""  # aka fragment
     scheme: str = ""
     netloc: str = ""
     params: str = ""

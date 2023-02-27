@@ -15,6 +15,12 @@ from functools import cache, partial
 from itertools import chain
 from typing import Callable, Iterable, Protocol
 
+uses_markdown = True
+try:
+    import mistune
+except ImportError:
+    uses_markdown = False
+
 import pygame as pg
 
 import positron.Box as Box
@@ -28,9 +34,10 @@ import positron.utils.rounded as rounded_box
 from .config import add_sheet, cursors, g, input_type_check_res
 from .events.InputType import *
 from .element.ElementAttribute import *
+from .element.Parser import parse as parse_html
 from .types import (Auto, AutoLP4Tuple, AutoType, BugError, Color,
                        Coordinate, Cursor, DisplayType, Element_P, Float4Tuple,
-                       Font, FontStyle, Leaf_P, Length, Number, Percentage,
+                       Font, FontStyle, frozendict, Leaf_P, Length, Number, Percentage,
                        Rect, Surface, Vector2)
 from .Style import (FullyComputedStyle, SourceSheet, bs_getter, bw_keys,
                    calculator, has_prio, inset_getter, is_custom,
@@ -161,8 +168,8 @@ class Element(Element_P):
     class_list = ClassListAttribute()
     data = DataAttribute()
     # Style
-    istyle: Style.Style  # inline style
-    estyle: Style.Style  # external style
+    istyle: Style.Style = frozendict()  # inline style
+    estyle: Style.Style = frozendict()  # external style
     cstyle: Style.FullyComputedStyle  # computed_style
     # Layout + Draw
     box: Box.Box
@@ -241,7 +248,13 @@ class Element(Element_P):
         self.istyle = Style.parse_inline_style(attrs.get("style", ""))
 
         for c in children:
-            c.parent = self
+            self.add_child(c)
+
+    def add_child(self, child: Element | TextElement):
+        """
+        What should be done when a child is added
+        """
+        child.parent = self
 
     @classmethod
     def from_lxml(cls, lxml) -> Element:
@@ -662,17 +675,14 @@ class Element(Element_P):
 
 class HTMLElement(Element):
     """
-    Represents the exact <html> element
+    Represents the <html> element
     """
 
     tag = "html"
 
     @classmethod
     def from_string(cls, html: str):
-        import lxml.html.html5parser as html5
-
-        _root = html5.document_fromstring(html, parser=html5.HTMLParser())
-        return cls.from_lxml(_root)
+        return cls.from_lxml(parse_html(html))
 
     def get_height(self) -> float:
         return self.box.height
@@ -726,6 +736,35 @@ class AnchorElement(Element):
         pass
 
 
+class MarkdownElement(Element):
+    tag = "md"
+
+    def __init__(
+        self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
+    ):
+        super().__init__(tag, attrs, children)
+        if (src := attrs.get("src")) is not None and uses_markdown:
+            self.src = src
+            if os.path.isfile(src):
+                config.file_watcher.add_file(src, self.reload_src)
+            util.create_task(util.fetch_txt(src), True, self.parse_callback)
+
+    def parse_callback(self, future: asyncio.Future[str]):
+        """
+        What should happen when new markdown arrives
+        """
+        with suppress(Exception):
+            markdown = future.result()
+            html = mistune.html(markdown)
+            html_element = HTMLElement.from_string(html)
+            self.children = html_element.children[1].children
+            for c in self.children:
+                self.add_child(c)
+
+    def reload_src(self):
+        util.create_task(util.fetch_txt(self.src), True, self.parse_callback)
+
+
 class MetaElement(Element):
     """
     A MetaElement is an Element thats sole purpose is conveying information
@@ -772,7 +811,7 @@ class StyleElement(MetaElement):
             self.inline_sheet = parse_sheet(self.text)
             add_sheet(self.inline_sheet)
 
-    def parse_callback(self, future: asyncio.Future):
+    def parse_callback(self, future: asyncio.Future[str]):
         with suppress(Exception):
             self.src_sheet = future.result()
             add_sheet(self.src_sheet)
@@ -1272,5 +1311,6 @@ elem_type_map: dict[str, type[Element]] = {
     "!comment": CommentElement,
     "a": AnchorElement,
     "input": InputElement,
+    "md": MarkdownElement
     # "button": ButtonElement,
 }
