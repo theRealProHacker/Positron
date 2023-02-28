@@ -10,8 +10,7 @@ I personally would split the input types into the following groups
 
 # Text Inputs
 text, tel, password, number, email, url and search
-> Note: A big TODO is replacing any hard-coded data with config variables. This could also make the app more costumizable. For example you could set the passwords replace character with "😎" or you could set the default regex pattern for the telephone input. 
-> Another Note: In real browsers the input types also have additional semantic meaning by providing the browser with information on what to autofill. 
+> Note: In real browsers the input types have additional semantic meaning by providing the browser with information on what to autofill. 
 
 ## text
 <input>  
@@ -20,6 +19,7 @@ This is the most general text type and also the default. The user can focus it a
 
 ## general text attributes
 - `placeholder`: The placeholder is shown in an empty text field to guide the user what form of input to enter. I personally really love placeholders and prefer them over labels, even though they are condemned by spec writers because of their accessibility issues. To implement placeholder we just check if the value is empty and if so, we show the placeholder and set the texts opacity to some value`<`1.
+
 ```python
 value: str = self.attrs["value"] or self.attrs.get("placeholder", "")
 # we must not mutate the original color or self.cstyle due to style sharing. 
@@ -27,13 +27,17 @@ color = Color(self.cstyle["color"])
 color.a = int(0.4 * color.a)
 extra_style = {"color": color} if self.placeholder_shown else {}
 ```
+
 - `size`: The size attribute sets how wide the input element should be in characters. So if the size is `20` then the input should be so wide that 20 average characters fit in. We define the average character's width to be the width of "M" for normal text. 
+
 ```python
 if (_size := self.attrs.get("size")) is not None and _size.isnumeric():
     avrg_letter_width = self.font.metrics("M")[0][4] # index 4 is the advance
     width = int(_size) * avrg_letter_width
 ```
+
 - `maxlength` and `minlength`: These are constraints on the length of an input. For example you might want a username to be at lest four characters long and not more than 20. This is pretty straightforward. 
+
 ```python
 # in the validity check
 if (max_length := self.attrs.get("maxlength")) is not None and len(
@@ -45,11 +49,14 @@ elif (min_length := self.attrs.get("minlength")) is not None and len(
 ) < min_length:
     return False
 ```
+
 - `pattern`: This is the most powerful validity check attribute; a regular expression that the input must match. 
+
 ```python
 if (pattern := self.attrs.get("pattern")) is not None and not re.fullmatch(pattern, value):
     return False
 ```
+
 - `required`: The input most not be empty on submission
 
 ## tel
@@ -62,12 +69,14 @@ In the current implementation we have no control about the keyboard whatsoever.
 <input type="password">
 
 So with the password input their is one big difference. The password that is being typed should be hidden. This is done by replacing the passwords characters with "*" or "•". 
+
 ```python
 if not self.placeholder_shown and type_ == "password":
     value = "•" * len(value)
 # because we know the exact characters widths:
 avrg_letter_width = self.font.metrics("•" if type_ == "password" else "M")[0][4]
 ```
+
 Additionally, I want to add a password visibility button to the end of the input. But that is something for later maybe. 
 
 ## number
@@ -76,14 +85,17 @@ Here, the biggest difference is that the input should be a valid number. This is
 `[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?` (any valid python float).
 Another difference are the input methods. The user can not just type but often also wheel or click provided up and down buttons.  
 These buttons are not implemented yet. But the wheel was just implemented (and also reinvented) while writing this text (so there might still be bugs)
+
 ```python
 # in on_wheel
 if type_ == "number":
     with suppress(ValueError):
         self.attrs["value"] = nice_number(float(value or "0")+event.delta[0])
 ```
+
 Also, the number input introduces two new attributes `max` and `min` which, unlike `maxlength` and `minlength`, actually look at the value to determine whether they hold valid. For number this is simple. 
-> Note: In efficient languages this for-loop is unfold in compile time, because the iterated list is constant. Whether python does this, is left as a research exercise for the reader (I always wanted to say this some time 😂). 
+> Note: In efficient languages this for-loop is unfold in compile time, because the iterated list is constant. 
+
 ```python
 for constraint, operator in [
     ("max", operator.gt),
@@ -103,7 +115,8 @@ The email input has two key differences to the regular text input. Firstly, it i
     [\w\d.!#$%&'*+/=?^_\`{|}~-]+@[\w\d](?:[\w\d-]{0,61}[\w\d])?(?:\.[\w\d](?:[-\w\d]{0,61}[\w\d])?)*  
 From [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/email#basic_validation) (as always).  
 
-Secondly, the email introduces the `multiple` attribute. That just means that a user can enter multiple emails seperated by commas. For some stupid reason this is allowed exactly for the file and email inputs. I don't understand why a user shouldn't also be able to input multiple urls or colors, but whatever. The emails should be checked individually. We do this by splitting on `\s*,\s*`
+Secondly, the email introduces the `multiple` attribute. That just means that a user can enter multiple emails seperated by commas. For some stupid reason this is allowed exactly for the file and email inputs. I don't understand why a user shouldn't also be able to input multiple urls or colors, but whatever. The emails should be checked individually. We do this by splitting on `\s*,\s*`.
+
 ```python
 values = (
     [value]
@@ -214,8 +227,6 @@ If an InputElement is disabled, it is:
 1. muted (higher opacity and more greys instead of black)
     This could be done by using the `input:disabled` selector.
 2. Non-reactive:
-    - No hover
-    - No active
     - No focus
     - Not editable
 

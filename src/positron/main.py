@@ -5,7 +5,6 @@ import asyncio
 import logging
 import os
 from contextlib import redirect_stdout, suppress
-from dataclasses import asdict, dataclass
 from typing import overload
 from weakref import WeakSet
 
@@ -16,10 +15,10 @@ with open(os.devnull, "w") as f, redirect_stdout(f):
     import pygame as pg
 
 import positron.config as config
+import positron.Style as Style  # isort:skip
 import positron.Element as Element
 import positron.Media as Media
 import positron.Selector as Selector
-import positron.Style as Style
 import positron.utils as util
 import positron.utils.clipboard
 
@@ -69,7 +68,7 @@ def _reset_config():
     )
 
 
-@overload
+@overload  # type: ignore
 def set_mode(
     width: int | None = None,
     height: int | None = None,

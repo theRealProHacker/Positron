@@ -36,7 +36,6 @@ async def _Console(context):
     while True:
         try:
             __x_______ = await aioconsole.ainput(">>> ")
-            print("Thing:", repr(bytes(__x_______, encoding="ascii")))
             args = [__x_______, globals(), context]
             try:
                 r = eval(*args)

@@ -8,31 +8,33 @@ The EventManager is responsible for handling the following:
 - modals
 """
 
-from itertools import count
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Callable
+from itertools import count
+from typing import Any, Callable, Sequence
 from weakref import WeakKeyDictionary
 
 import pygame as pg
 
+import positron.config as config
 import positron.utils.aio as autils
-from positron.utils.func import in_bounds
+from positron.modals.ContextMenu import TextButton
+from positron.utils.func import join
 
-from .config import g
-from .Element import Element, HTMLElement, InputElement
+from .config import ALT_MB, MAIN_MB, MIDDLE_MB, g
+from .Element import AnchorElement, Element, HTMLElement, InputElement
 from .events.InputType import *
 from .modals import *
-from .types import Cursor, Rect, Surface
-from .utils.clipboard import put_clip, get_clip
+from .types import Cursor, Surface
+from .utils.clipboard import get_clip, put_clip
 
 UIElem = Element | Modal
 
 
 class _Event:
     """
-    An internal Event that gets passed to callbacks
+    An Event that gets passed to callbacks
     """
 
     timestamp: float
@@ -100,7 +102,7 @@ class EventData:
 supported_events: dict[str, EventData] = {
     ### Mouse Events
     **dict.fromkeys(
-        ("click", "auxclick"),
+        ("click", "auxclick", "contextmenu"),
         EventData(bubbles=True, attrs=("pos", "mods", "button", "buttons", "detail")),
     ),
     **dict.fromkeys(
@@ -108,8 +110,11 @@ supported_events: dict[str, EventData] = {
         EventData(bubbles=True, attrs=("pos", "mods", "buttons")),
     ),
     "wheel": EventData(bubbles=True, attrs=("pos", "mods", "buttons", "delta")),
+    **dict.fromkeys(
+        ("focus", "blur"),
+        EventData(attrs=("related_target",)),
+    ),
     ### Keyboard Events
-    # XXX: Won't implement "location"
     "keydown": EventData(
         bubbles=True, attrs=("key", "code", "pgcode", "mods", "repeat")
     ),
@@ -126,6 +131,17 @@ supported_events: dict[str, EventData] = {
     "windowmoved": EventData(attrs=("x", "y")),
     "windowsizechanged": EventData(attrs=("x", "y")),
 }
+
+
+def is_focusable(elem: UIElem) -> bool:
+    """
+    Whether a UIElem is focusable
+    """
+    return (
+        not isinstance(elem, Element)
+        or isinstance(elem, (AnchorElement, InputElement))
+        and not elem.disabled
+    )
 
 
 class EventManager:
@@ -184,7 +200,7 @@ class EventManager:
         else:
             setattr(self, name, value)
             return True
-        # for fun: use that setattr always returns None:
+        # for fun: use that setattr always returns None
         # return False if getattr(self, name) == value else return setattr(self, name, value) or True
 
     def release(self, event: _Event):
@@ -194,7 +210,7 @@ class EventManager:
                 callback := getattr(event.current_target, f"on_{event.type}", None)
             ) is not None:
                 autils.call(callback, event)
-                return
+            return
         # Elements
         self.call_callbacks(event)
         if supported_events.get(event.type, EventData()).bubbles:
@@ -215,11 +231,24 @@ class EventManager:
         # then we call all callbacks
         event = _Event(time.monotonic(), type_, target, **kwargs)
         self.release(event)
+        # Not cancellable default actions
+        if type_ == "focus":
+            self.focus = event.target
+            g["css_dirty"] = True  # :focus
+        elif type_ == "blur" and self.focus == event.target:
+            self.focus = event.related_target
+        # Some default default actions ;)
+        if event.cancelled:
+            return event
         return event
 
     def call_callbacks(self, event: _Event):
-        # Every callback has a number of times it will be executed.
-        # This number is decreased and if it falls to 0, the callback is removed.
+        """
+        Calls all callbacks that are registered for the events target and type.
+
+        Every callback has a number of times it will be executed.
+        This number is decreased and if it falls to 0, the callback is removed.
+        """
         callbacks = [
             (callback, repeat - 1)
             for (callback, repeat) in self.callbacks[event.type].get(
@@ -285,18 +314,25 @@ class EventManager:
                     button=button,
                     buttons=self.buttons,
                 )
-                if not mouse_down_event.cancelled and button == 1:
+                if not mouse_down_event.cancelled and button == MAIN_MB:
                     if self.change("active", hov_elem):
                         g["css_dirty"] = True
                     # FIXME: This is ad-hoc focus
                     # https://html.spec.whatwg.org/multipage/interaction.html#focusable-area
                     # The specs define focusable areas not as elements but as special objects.
-                    # A good example are the controls on a <video> element.
+                    # A good example are the controls of a <video> element.
                     # The question is of course how we implement this.
-                    # https://stackoverflow.com/questions/1599660/which-html-elements-can-receive-focus
-                    if self.change("focus", hov_elem):
-                        g["css_dirty"] = True  # :focus
-                        self.release_event("focus", hov_elem)
+                    if self.focus != hov_elem:
+                        if is_focusable(hov_elem):
+                            self.release_event(
+                                "focus", hov_elem, related_target=self.focus
+                            )
+                            self.release_event(
+                                "blur", self.focus, related_target=hov_elem
+                            )
+                        else:
+                            self.release_event("blur", self.focus)
+
             elif event.type == pg.MOUSEBUTTONUP:
                 self.buttons_down.remove(button)
                 self.release_event(
@@ -315,54 +351,63 @@ class EventManager:
                         target=self.drag,
                     )
                     self.drag = None
-                else:
-                    # click
-                    # there is no current drag and the primary mouse button goes down
-                    last_click_time, last_click_pos = self.last_click
-                    if not (
-                        time.monotonic() - last_click_time <= 0.5
-                        and last_click_pos == _pos
-                    ):
-                        self.click_count = 0
-                    self.click_count += 1
-                    if hov_elem is self.active or button != 1:
-                        mouse_pos: tuple[int, int] = event.pos
-                        click_event = self.release_event(
-                            "click" if button == 1 else "auxclick",
+                    continue
+                # click
+                # there is no current drag and the primary mouse button goes down
+                last_click_time, last_click_pos = self.last_click
+                self.last_click = (time.monotonic(), _pos)
+                if not (
+                    time.monotonic() - last_click_time <= 0.5 and last_click_pos == _pos
+                ):
+                    self.click_count = 0
+                self.click_count += 1
+                if hov_elem is self.active or button != 1:
+                    if self.release_event(
+                        "click" if button == MAIN_MB else "auxclick",
+                        target=hov_elem,
+                        pos=_pos,
+                        mods=self.mods,
+                        button=button,
+                        buttons=self.buttons,
+                        detail=self.click_count,
+                    ).cancelled:
+                        continue
+                    # remove modals that are escapable and don't overlap with the mouse position
+                    self.modals = [
+                        modal
+                        for modal in self.modals
+                        if not modal.can_escape or modal.rect.collidepoint(_pos)
+                    ]
+                    if (
+                        button == ALT_MB
+                        and isinstance(hov_elem, Element)
+                        and not self.release_event(
+                            "contextmenu",
                             target=hov_elem,
-                            pos=mouse_pos,
+                            pos=_pos,
                             mods=self.mods,
                             button=button,
                             buttons=self.buttons,
                             detail=self.click_count,
-                        )
-                        if click_event.cancelled:
-                            continue
-                        # remove modals that are escapable and don't overlap with the mouse position
-                        self.modals = [
-                            modal
-                            for modal in self.modals
-                            if not modal.can_escape
-                            or modal.rect.collidepoint(mouse_pos)
+                        ).cancelled
+                    ):
+                        menus: dict[str, Sequence[TextButton]] = {}
+                        for anc in [hov_elem, *hov_elem.iter_anc()]:
+                            if cm := anc.contextmenu:
+                                menus.setdefault(anc.tag, cm)
+                        default_ctx_menu = [
+                            BackButton(),
+                            ForwardButton(),
+                            Divider(),
+                            ReloadButton(),
                         ]
-                        if button == 3:
-                            # TODO: make this dependant on the hit UIElem
-                            # The UIElem could have a property contextmenu: ContextMenu|None
-                            # that indicates which Menu should be displayed
-                            self.modals.insert(
-                                0,
-                                ContextMenu(
-                                    (
-                                        BackButton(),
-                                        ForwardButton(),
-                                        Divider(),
-                                        ReloadButton(),
-                                    )
-                                ).fit_into_rect(Rect(0, 0, g["W"], g["H"]), mouse_pos),
-                            )
-                    self.active = None
-                    g["css_dirty"] = True
-                    self.last_click = (time.monotonic(), _pos)
+                        self.modals.append(
+                            ContextMenu(
+                                join(*menus.values(), default_ctx_menu, div=Divider())
+                            ).fit_into_rect(config.screen.get_rect(), _pos)
+                        )
+                self.active = None
+                g["css_dirty"] = True
             elif event.type == pg.MOUSEMOTION:
                 self.mouse_pos = _pos
                 self.release_event(
@@ -406,60 +451,110 @@ class EventManager:
                 if not isinstance(elem, InputElement):
                     continue
                 input_type: InputType
-                value = elem._value
-                # TODO: actually get the position from the cursor
+                value, pos, selection = elem.editing_ctx.current
                 max_pos = len(value)
-                pos = elem.editing_ctx.cursor
                 if event.type == pg.KEYDOWN:
+                    # TODO: tab -> go to next focusable area
+                    # TODO: enter -> click a focused <a> or <button>,
+                    #                submit the form of an <input> and definitely loose focus
+                    # Select All
+                    if event.mod & pg.KMOD_CTRL and event.key == pg.K_a:
+                        elem.editing_ctx.add_entry((value, max_pos, (0, pos)))
+                        continue
                     # Deleting
                     if event.key in (pg.K_BACKSPACE, pg.K_DELETE):
-                        # TODO: When there is a selection just delete that
-                        # Delete(selection, Delete.What.Content, Delete.Direction.Unspecified, before = value)
-                        input_type = Delete(
-                            pos,
-                            what=Delete.What.Word
-                            if event.mod & pg.KMOD_CTRL
-                            else Delete.What.Content,
-                            dir=Delete.Direction.Back
-                            if event.key == pg.K_BACKSPACE
-                            else Delete.Direction.For,
-                            before=value,
-                        )
+                        if selection is not None:
+                            dir = (
+                                Delete.Direction.For
+                                if selection[0] == pos
+                                else Delete.Direction.For
+                            )
+                            input_type = Delete(
+                                selection,
+                                Delete.What.Content,
+                                dir,
+                                before=value,
+                            )
+                        else:
+                            what = (
+                                Delete.What.Word
+                                if event.mod & pg.KMOD_CTRL
+                                else Delete.What.Content
+                            )
+                            dir = (
+                                Delete.Direction.Back
+                                if event.key == pg.K_BACKSPACE
+                                else Delete.Direction.For
+                            )
+                            input_type = Delete(
+                                pos,
+                                what,
+                                dir,
+                                before=value,
+                            )
+                        selection = None
                     # Undo, Redo
                     elif event.mod & pg.KMOD_CTRL and event.key in (pg.K_z, pg.K_y):
-                        history = elem.editing_ctx.his
                         input_type = History.from_history(
                             History.Type.Undo
                             if event.key == pg.K_z
                             else History.Type.Redo,
-                            history,
+                            elem.editing_ctx,
                         )
                     # Copy/Cut/Paste
-                    elif event.mod & pg.KMOD_CTRL and event.key in (
-                        pg.K_v,
-                        pg.K_x,
-                        pg.K_c,
+                    elif (
+                        event.mod & pg.KMOD_CTRL
+                        and event.key
+                        in (
+                            pg.K_v,
+                            pg.K_x,
+                            pg.K_c,
+                        )
+                        or event.key == pg.K_INSERT
                     ):
-                        selection = (0, pos)  # TODO: get actual selection
+                        if event.key == pg.K_INSERT:
+                            event.key = pg.K_v
+                        selection = selection or (0, pos)
                         method = EditingMethod.CutPaste
                         if event.key != pg.K_v:
-                            put_clip(value)  # TODO: apply the selection
+                            put_clip(value[slice(*selection)])
+                        if event.key == pg.K_c:
+                            continue
                         input_type = (
-                            # TODO: Replace if selection
                             Insert(get_clip(), pos, method, value)
                             if event.key == pg.K_v
-                            else Delete(selection, Delete.What.Content, before=value)
-                            if event.key == pg.K_x
-                            else Void(value)
+                            else Delete(
+                                selection,
+                                Delete.What.Content,
+                                method=method,
+                                before=value,
+                            )
                         )
-                    # Arrows
-                    elif event.key in (pg.K_LEFT, pg.K_RIGHT):
-                        # TODO: Make/alter selection when holding shift,
-                        # TODO: Also, change all of this to skipping a whole word when pressing ctrl
-                        move = -1 if event.key == pg.K_LEFT else +1
-                        elem.editing_ctx.cursor = in_bounds(
-                            elem.editing_ctx.cursor + move, 0, max_pos
-                        )
+                        selection = None
+                    # Cursor Movement
+                    elif event.key in (pg.K_LEFT, pg.K_RIGHT, pg.K_END, pg.K_HOME):
+                        # TODO: Skip a whole word when pressing ctrl
+                        old_pos = pos
+                        if event.key == pg.K_LEFT:
+                            pos = max(0, pos - 1)
+                        elif event.key == pg.K_RIGHT:
+                            pos = min(max_pos, pos + 1)
+                        elif event.key == pg.K_HOME:
+                            pos = 0
+                        else:
+                            pos = max_pos
+                        if event.mod & pg.KMOD_SHIFT:
+                            match selection:
+                                case None:
+                                    selection = (old_pos, pos)
+                                case (start, end) if end == old_pos:
+                                    selection = (start, pos)
+                                case (start, end) if start == old_pos:
+                                    selection = (pos, end)
+                            selection = EditingContext.clean_selection(selection)
+                        else:
+                            selection = None
+                        elem.editing_ctx.add_entry((value, pos, selection))
                         continue
                     else:
                         continue
@@ -468,31 +563,28 @@ class EventManager:
                         event.text, pos, EditingMethod.Normal, before=value
                     )
 
+                if elem.read_only:
+                    continue
                 elem.sanitize_input(input_type)
-                beforeinput_event = self.release_event(
-                    "beforeinput", input_type=input_type
-                )
-                if beforeinput_event.cancelled:
+                if self.release_event("beforeinput", input_type=input_type).cancelled:
                     continue
                 elem.attrs["value"] = input_type.after
                 if isinstance(input_type, History):
-                    input_type.execute(elem.editing_ctx.his)
+                    input_type.execute(elem.editing_ctx)
                 else:
-                    elem.editing_ctx.his.add_entry(input_type.after)
                     if isinstance(input_type, Insert):
-                        elem.editing_ctx.cursor = input_type.start + len(
-                            input_type.content
-                        )
+                        pos = input_type.start + len(input_type.content)
                     elif isinstance(input_type, Delete):
                         # XXX: Get the first position in which before and after differ
-                        elem.editing_ctx.cursor = len(input_type.after)
+                        pos = len(input_type.after)
                         for i, before_c, after_c in zip(
                             count(), input_type.before, input_type.after
                         ):
                             if before_c != after_c:
-                                elem.editing_ctx.cursor = i
+                                pos = i
                                 break
-
+                    # Unreal selections become None
+                    elem.editing_ctx.add_entry((input_type.after, pos, None))
                 self.release_event("input")
             elif event.type == pg.KEYUP:
                 self.release_event(
@@ -518,11 +610,6 @@ class EventManager:
                 self.release_event("resize", size=(event.x, event.y))
             elif _type.startswith("window"):
                 self.release_event(_type, **event.__dict__)
-            elif event.type == pg.ACTIVEEVENT:
-                # whether the mouse is active on the window
-                pass
-            else:
-                print(pg.event.event_name(event.type))
 
     def on(
         self,
@@ -548,5 +635,5 @@ class EventManager:
             ]
 
     def draw(self, surf: Surface):
-        for modal in reversed(self.modals):
+        for modal in self.modals:
             modal.draw(surf)

@@ -21,7 +21,7 @@ import re
 import socket
 import sys
 import uuid
-from contextlib import asynccontextmanager, redirect_stdout, contextmanager
+from contextlib import asynccontextmanager, redirect_stdout, contextmanager, suppress
 from dataclasses import dataclass
 from enum import auto
 from functools import cache, wraps
@@ -77,24 +77,32 @@ def call(callback, *args, **kwargs):
     """
     Synchronous version of acall
     """
-    sig = inspect.signature(callback)
-    _args = args[
-        : min(
-            len(
-                [
-                    param
-                    for param in sig.parameters.values()
-                    if not param.kind is inspect.Parameter.KEYWORD_ONLY
-                ]
-            ),
-            len(args),
-        )
-    ]
-    return (
-        create_task(callback(*_args, **kwargs))
-        if inspect.iscoroutinefunction(callback)
-        else callback(*_args, **kwargs)
-    )
+    _args = args
+    with suppress(ValueError):
+        sig = inspect.signature(callback)
+        _args = args[
+            : min(
+                len(
+                    [
+                        param
+                        for param in sig.parameters.values()
+                        if not param.kind is inspect.Parameter.KEYWORD_ONLY
+                    ]
+                ),
+                len(args),
+            )
+        ]
+    rv = callback(*_args, **kwargs)
+    if inspect.isawaitable(rv):
+        return create_task(rv)
+    return rv
+    # This below is actually nice but it is less flexible, 
+    # when it is not known whether callbacks are sync or async when defined (the real problem)
+    # return (
+    #     create_task(callback(*_args, **kwargs))
+    #     if inspect.iscoroutinefunction(callback)
+    #     else callback(*_args, **kwargs)
+    # )
 
 
 ############################## I/O #################################
@@ -129,6 +137,13 @@ def create_task(
     task = Task.create(coro, sync, callback, **kwargs)
     config.tasks.append(task)
     return task
+
+
+def task_in_thread(func, *args, **kwargs):
+    """
+    Runs the given synchronous task as a thread
+    """
+    return create_task(asyncio.to_thread(func, *args, **kwargs))
 
 
 async def gather_tasks(tasks: list[Task]):

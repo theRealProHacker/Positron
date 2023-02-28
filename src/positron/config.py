@@ -28,6 +28,7 @@ g: dict[str, Any] = {
     # reserved
     "root": None,                   # the root HTMLElement
 }
+# fmt: on
 
 DEBUG = True
 
@@ -36,17 +37,16 @@ if TYPE_CHECKING:
     from positron.EventManager import EventManager
     from positron.utils import Task
     from positron.utils.FileWatcher import FileWatcher
+
     event_manager: EventManager
     file_watcher: FileWatcher
     default_task: Task
     tasks: list[Task]
 tasks = []
-jinja_env: jinja2.Environment           # The global jinja Environment used for all html loading
-aiosession: aiohttp.ClientSession       # The global aiohttp session used for http requests
-event_loop: asyncio.AbstractEventLoop   # The global asyncio event loop
+jinja_env: jinja2.Environment  # The global jinja Environment used for all html loading
+aiosession: aiohttp.ClientSession  # The global aiohttp session used for http requests
+event_loop: asyncio.AbstractEventLoop  # The global asyncio event loop
 screen: Surface
-
-# fmt: on
 
 
 def add_sheet(sheet: Any):
@@ -127,7 +127,7 @@ abs_resolution_units = {"dpi": 1, "dpcm": 2.54, "x": 96, "dppx": 96}
 cursors = {
     "default": Cursor(),
     # the cursor just vanishes by setting the smallest possible size full of zeros
-    "none": Cursor((8, 8), (0, 0), (0x00,) * 8, (0x00,) * 8),
+    "none": Cursor((8, 8), (0, 0), (0,) * 8, (0,) * 8),
     # TODO: context-menu
     # TODO: help
     "pointer": Cursor(pg.SYSTEM_CURSOR_HAND),
@@ -163,8 +163,14 @@ input_type_check_res = {
     "email": re.compile(
         r"[\w\d.!#$%&'*+/=?^_`{|}~-]+@[\w\d](?:[\w\d-]{0,61}[\w\d])?(?:\.[\w\d](?:[-\w\d]{0,61}[\w\d])?)*"
     ),
-    "url": re.compile(r""),
+    "url": re.compile(r".*"),
 }
+
+default_text_input_size = "20"
+password_replace_char = "•"
+placeholder_opacity = 0.4
+ch_unit_char = "0"  # The character used for the "ch" unit
+selection_color = Color(45, 140, 180, int(255 * 0.4))
 
 default_style_sheet = """
 a:visited{
@@ -174,3 +180,11 @@ input:focus{
     outline: solid rgb(45, 140, 180) medium;
 }
 """
+
+
+MAIN_MB = 1
+""" The left mouse button"""
+MIDDLE_MB = 2
+""" The mouse wheel """
+ALT_MB = 3
+""" The right mouse button"""

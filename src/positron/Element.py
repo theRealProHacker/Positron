@@ -27,23 +27,26 @@ import positron.Box as Box
 import positron.config as config
 import positron.Media as Media
 import positron.Style as Style
-from positron.events.InputType import EditingContext
 import positron.utils as util
 import positron.utils.Navigator as Navigator
 import positron.utils.rounded as rounded_box
+from positron.events.InputType import EditingContext
+from positron.modals.ContextMenu import EasyTextButton, MenuItem
+from positron.utils.clipboard import put_clip
+
 from .config import add_sheet, cursors, g, input_type_check_res
-from .events.InputType import *
 from .element.ElementAttribute import *
+from .element.Parser import get_tag
 from .element.Parser import parse as parse_html
-from .types import (Auto, AutoLP4Tuple, AutoType, BugError, Color,
-                       Coordinate, Cursor, DisplayType, Element_P, Float4Tuple,
-                       Font, FontStyle, frozendict, Leaf_P, Length, Number, Percentage,
-                       Rect, Surface, Vector2)
+from .events.InputType import *
 from .Style import (FullyComputedStyle, SourceSheet, bs_getter, bw_keys,
-                   calculator, has_prio, inset_getter, is_custom,
-                   pack_longhands, parse_file, parse_sheet)
-from .utils import (draw_text, get_tag, group_by_bool, log_error, make_default,
-                  text_surf)
+                    calculator, has_prio, inset_getter, is_custom,
+                    pack_longhands, parse_file, parse_sheet)
+from .types import (Auto, AutoLP4Tuple, AutoType, Color, Coordinate, Cursor,
+                    DisplayType, Element_P, Float4Tuple, Font, FontStyle,
+                    Leaf_P, Length, Number, Percentage, Rect, Surface, Vector2,
+                    frozendict)
+from .utils import draw_text, group_by_bool, log_error, make_default, text_surf
 from .utils.regex import GeneralParser, whitespace_re
 
 # fmt: on
@@ -167,6 +170,7 @@ class Element(Element_P):
     id = GeneralAttribute("id")
     class_list = ClassListAttribute()
     data = DataAttribute()
+    contextmenu: tuple[MenuItem,...] = ()
     # Style
     istyle: Style.Style = frozendict()  # inline style
     estyle: Style.Style = frozendict()  # external style
@@ -181,8 +185,6 @@ class Element(Element_P):
     cursor: Cursor
     # Not always present
     inline_items: list[InlineItem]  # only use if layout_type is "inline"
-    # in Input Elements
-    value: str
 
     # Dynamic states https://html.spec.whatwg.org/multipage/semantics-other.html#pseudo-classes
     @property
@@ -708,32 +710,47 @@ class AnchorElement(Element):
     tag = "a"
 
     @property
+    def href(self) -> str | None:
+        return self.attrs.get("href")
+
+    @property
     def link(self):
-        return (href := self.attrs.get("href")) and href not in Navigator.visited_links
+        return self.href and self.href not in Navigator.visited_links
 
     @property
     def visited(self):
-        return (href := self.attrs.get("href")) and href in Navigator.visited_links
+        return self.href and self.href in Navigator.visited_links
 
     @property
     def all_link(self):
         return "href" in self.attrs
 
     def on_click(self):
-        if href := self.attrs.get("href"):
-            Navigator.push(href)
+        if self.href:
+            Navigator.push(self.href)
         else:
             log_error("Anchor without href clicked")
 
-    def on_auxclick(self):
-        # Always new tab?
-        if href := self.attrs.get("href"):
-            Navigator.push(href)
-        else:
-            log_error("Anchor without href alt-clicked")
+    # def on_auxclick(self):
+    #     # Always new tab?
+    #     if self.href:
+    #         Navigator.push(self.href)
+    #     else:
+    #         log_error("Anchor without href alt-clicked")
 
     def on_drag_start(self):
         pass
+
+    @property
+    def contextmenu(self):
+        if not self.href or Navigator.make_url(self.href).is_internal:
+            return ()
+        @EasyTextButton("Copy link")
+        def copy_link():
+            if self.href:
+                put_clip(self.href)
+
+        return (copy_link,)
 
 
 class MarkdownElement(Element):
@@ -946,7 +963,7 @@ class ImageElement(ReplacedElement):
             self.image = Media.Image(
                 attrs["src"],
                 load=attrs.get("loading", "eager") != "lazy",
-                # "auto" is synonymous with "async"
+                # XXX: "auto" is synonymous with "async"
                 sync=attrs.get("decoding", "async") == "sync",
             )
         except (KeyError, ValueError):
@@ -972,6 +989,8 @@ class ImageElement(ReplacedElement):
         intrw, intrh = (
             self.image.surf.get_size() if self.image.is_loaded else (None, None)
         )
+        # TODO: Automatically adjust width to height and height to width
+        # To respect aspect ratio
         w = make_default(
             int(w) if (w := self.attrs.get("width")) is not None else None,
             make_default(intrw, 0),
@@ -988,6 +1007,7 @@ class ImageElement(ReplacedElement):
     def draw(self, surf: Surface):
         if self.image is None:
             return
+        self.layout_type = "block"
         super().draw(surf)
 
     def draw_content(self, surf: Surface):
@@ -997,6 +1017,17 @@ class ImageElement(ReplacedElement):
                 self.crop_image(self.image.surf, (self.box.width, self.box.height)),
                 self.box.pos,
             )
+
+    @property
+    def contextmenu(self):
+        if not self.image.is_loaded:
+            return ()
+        @EasyTextButton("Open image")
+        def open_image():
+            util.task_in_thread(os.startfile, os.path.abspath(self.image.url))
+
+        return (open_image,)
+        
 
 
 class AudioElement(ReplacedElement):
@@ -1111,6 +1142,7 @@ class InputElement(ReplacedElement):
         if "checked" in self.attrs:
             self.checked = True
         self.editing_ctx = EditingContext(self.attrs.get("value", ""))
+        self.window_slide = 0
 
     def collide(self, pos: Coordinate) -> Element | None:
         return self if self.box.border_box.collidepoint(pos) else None
@@ -1132,11 +1164,15 @@ class InputElement(ReplacedElement):
         self.box, set_height = Box.make_box(
             width, self.cstyle, self.parent.box.width, self.parent.get_height()
         )
-        if (_size := self.attrs.get("size", "20")).isnumeric():
+        if (
+            _size := self.attrs.get("size", config.default_text_input_size)
+        ).isnumeric():
             # "0" from the ch unit
-            avrg_letter_width = self.font.metrics("•" if type_ == "password" else "0")[
-                0
-            ][4]
+            avrg_letter_width = self.font.metrics(
+                config.password_replace_char
+                if type_ == "password"
+                else config.ch_unit_char
+            )[0][4]
             self.box.set_width(int(_size) * avrg_letter_width, "content-box")
         set_height(self.line_height)
 
@@ -1144,31 +1180,63 @@ class InputElement(ReplacedElement):
         if self.type in input_type_check_res:
             text: str = self.attrs.get("value") or self.attrs.get("placeholder", "")  # type: ignore
             if not self.placeholder_shown and self.type == "password":
-                text = "•" * len(text)
+                text = config.password_replace_char * len(text)
             # XXX: what is happening below corresponds to the ::placeholder pseudo-element
             # but we can't make this happen with pure css
             color = Color(self.cstyle["color"])
             if self.placeholder_shown:
-                color.a = int(0.4 * color.a)
+                color.a = int(config.placeholder_opacity * color.a)
             rendered_text = text_surf(text, self.font, color)
             rendered_rect = rendered_text.get_rect()
             text_rect = self.box.content_box
-            window_l = (rendered_rect.right - text_rect.w) * (
-                rendered_rect.w > text_rect.w and not self.placeholder_shown
-            )
+            # TODO: Draw selection
+            if self.focus:
+                cursor_rect = text_surf(
+                    text[: self.editing_ctx.cursor], self.font, color
+                ).get_rect()
+                pg.draw.line(
+                    surf,
+                    color,
+                    (text_rect.x + cursor_rect.w, text_rect.y + 0),
+                    (text_rect.x + cursor_rect.w, text_rect.y + cursor_rect.height),
+                )
+                selection = self.editing_ctx.selection
+                if selection:
+                    upto_rect = text_surf(
+                        text[: selection[0]], self.font, color
+                    ).get_rect()
+                    selection_rect = text_surf(
+                        text[selection[0] : selection[1]], self.font, color
+                    ).get_rect()
+                    util.draw_rect(
+                        surf,
+                        config.selection_color,
+                        Rect(
+                            text_rect.x + upto_rect.w, text_rect.y, *selection_rect.size
+                        ),
+                        border_radius=30,
+                    )
             surf.blit(
                 rendered_text,
                 text_rect,
                 area=Rect(
-                    window_l, 0, min(rendered_rect.w, text_rect.w), rendered_rect.bottom
+                    self.window_slide,
+                    0,
+                    min(rendered_rect.w, text_rect.w),
+                    rendered_rect.bottom,
                 ),
             )
-            # TODO: Draw cursor (and selection)
         else:
             raise NotImplementedError("Disallowed input type")
 
     @staticmethod
     def _sanitize_number(num: str):
+        """
+        Sanitizes an input to be a valid number input.
+
+        Removes any "-" except for an optional one at position 0.
+        also removes every "." but the first one.
+        """
         if not num:
             return num
         prepend = "-" if num[0] == "-" else ""
@@ -1198,7 +1266,7 @@ class InputElement(ReplacedElement):
         if name == "value":
             if self.type == "number":
                 value = self._sanitize_number(value)
-            self.editing_ctx.his.add_entry(value)
+            self.editing_ctx.history.add_entry((value, len(value), None))
         super().setattr(name, value)
 
     def on_wheel(self, event):

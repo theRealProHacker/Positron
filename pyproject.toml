@@ -60,6 +60,3 @@ all = [
 [project.urls]
 "Homepage" = "https://github.com/theRealProHacker/Positron"
 "Bug Tracker" = "https://github.com/theRealProHacker/Positron/issues"
-
-[tool.isort]
-profile = "black"

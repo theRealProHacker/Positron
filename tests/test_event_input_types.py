@@ -23,6 +23,18 @@ def test_delete():
     assert delete_word_backword.after == ""
 
 
-def test_replace():
-    # we can't really replace anything right now anyway
-    pass
+def test_editing_ctx():
+    x = EditingContext("")
+
+    x.add_entry(("1", 1, None))
+    x.add_entry(("1", 0, None))
+    x.add_entry(("21", 1, None))
+    x.add_entry(("21", 2, None))
+
+    assert x.peek_back() == ("1", 0, None)
+    x.back()
+    assert x.current == ("1", 0, None)
+
+    assert x.peek_for() == ("21", 1, None)
+    x.forward()
+    assert x.current == ("21", 1, None)

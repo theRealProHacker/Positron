@@ -1,5 +1,6 @@
 from positron import *
 from positron import quit
+import positron.config as config
 
 
 @route("/")  # the index route
@@ -21,6 +22,7 @@ async def startpage():
             quit()
 
 
+config.password_replace_char = "*"
 set_cwd(__file__)
 set_mode(title="Features")
 runSync("/#link")

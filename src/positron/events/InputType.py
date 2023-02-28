@@ -21,17 +21,19 @@ from typing import Protocol
 from enum import auto
 
 from positron.types import Enum
+import positron.utils as utils
 from positron.utils.History import History as _History
 from positron.utils.regex import GeneralParser, whitespace_re
 
 
 __all__ = [
-    "Void",
+    # "Void",
     "Insert",
     "Delete",
     "History",
     "EditingMethod",
     "InputType",
+    "EditingContext",
 ]
 
 
@@ -61,13 +63,12 @@ class ApplyDescriptor:
         return rv
 
 
-@dataclass
-class Void:
-    def apply(self, text: str) -> str:
-        return text
+# @dataclass
+# class Void:
+#     before: str
 
-    before: str
-    after = ApplyDescriptor()
+#     def __post_init__(self):
+#         self.after = self.before
 
 
 @dataclass
@@ -148,6 +149,7 @@ class Delete:
     pos: int | tuple[int, int]
     what: What
     dir: Direction = Direction.Unspecified
+    method: EditingMethod = EditingMethod.Normal
 
     def apply(self, text: str):
         match self.what:
@@ -202,7 +204,7 @@ class History:
     @classmethod
     def from_history(cls, type: Type, history: _History):
         after = history.peek_back() if type == History.Type.Undo else history.forward()
-        return cls(type, history.current, after)
+        return cls(type, history.current, after[0])
 
     def execute(self, history: _History):
         if self.type == History.Type.Undo:
@@ -215,17 +217,153 @@ class History:
 #   (this is in the far future)
 #   things like Ctrl+b (bold), Ctrl+i (italic)
 
+Selection = tuple[int, int] | None
 
-class EditingContext:
+
+class EditingContext(_History[tuple[str, int, Selection]]):
     """
     An editing context is for every editable element.
+
+    It stores a history of the states the input element was in.
+
+    This includes the value of the input, the cursor and the current selection
+
+    An important invariant that must be uphold is that if there is a selection, the cursor position
+    is a boundary of that selection: cursor in selection.
+
+    The other important invariant is that selection[0] < selection[1]. Yeah, that is a strict greater!
     """
 
-    cursor: int = 0
-    selection: tuple[int, int] | None = None
-    # TODO: The History should also save cursor positions and selections
-    his: _History[str]
+    @property
+    def value(self):
+        return self.current[0]
 
-    def __init__(self, value: str):
-        self.his = _History()
-        self.his.add_entry(value)
+    @property
+    def cursor(self):
+        return self.current[1]
+
+    @property
+    def selection(self):
+        return self.current[2]
+
+    @staticmethod
+    def clean_selection(selection):
+        match selection:
+            case (start, end) if start > end:
+                return (end, start)
+            case (start, end) if start < end:
+                return selection
+            case _:
+                return None
+
+    def peek_back(self):
+        value = self.value
+        for x in self[: self.cur][::-1]:
+            if x[0] != value:
+                return x
+        return self.current
+
+    def peek_for(self):
+        value = self.value
+        for x in utils.after(self, self.cur):
+            if x[0] != value:
+                return x
+        return x
+
+    def back(self):
+        value = self.value
+        for i in range(self.cur)[::-1]:
+            if self[i][0] != value:
+                self.cur = i
+                return
+
+    def forward(self):
+        value = self.value
+        while self.current[0] == value and self.cur < len(self) - 1:
+            super().forward()
+
+    def __init__(self, value: str = ""):
+        self.add_entry((value, 0, None))
+
+
+"""
+
+
+class EditingContext:
+    \"""
+    An editing context is for every editable element.
+
+    It stores a history of the states the input element was in.
+
+    This includes the value of the input, the cursor and the current selection
+
+    An important invariant that must be uphold is that if there is a selection, the cursor position
+    is a boundary of that selection: cursor in selection.
+
+    The other important invariant is that selection[0] < selection[1]. Yeah, that is a strict greater!
+    \"""
+
+    @property
+    def value(self):
+        return self.history.current[0]
+
+    @property
+    def cursor(self):
+        return self.history.current[1]
+
+    @property
+    def selection(self):
+        return self.history.current[2]
+
+    @staticmethod
+    def clean_selection(selection):
+        match selection:
+            case (start, end) if start > end:
+                return (end, start)
+            case (start, end) if start < end:
+                return selection
+            case _:
+                return None
+
+    history: _History[tuple[str, int, Selection]]
+
+    def add_entry(self, entry: tuple[str, int, Selection]):
+        if entry != self.history.current:
+            self.history.add_entry(entry)
+        
+    def peek_back(self):
+        value = self.value
+        for x in self.history[:self.history.cur][::-1]:
+            if x[0] != value:
+                return x
+        return self.history.current
+
+    def peek_for(self):
+        value = self.value
+        h = self.history
+        for x in utils.after(h, h.cur):
+            if x[0] != value:
+                return x
+        return self.current
+
+    def back(self):
+        value = self.value
+        h = self.history
+        for i in range(h.cur)[::-1]:
+            if h[i][0] != value:
+                self.history.cur = i
+                return
+
+    def forward(self):
+        value = self.value
+        h = self.history
+        while h.current[0]==value and h.cur < len(h)-1:
+            h.forward()
+
+
+    def __init__(self, value: str = ""):
+        self.history = _History()
+        self.history.add_entry((value, 0, None))
+
+
+"""

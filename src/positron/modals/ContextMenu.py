@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import pygame as pg
 
+import positron.config as config
 import positron.utils.Navigator as Navigator
 from positron.types import Color, Coordinate, Enum, Font, Rect, Surface, Vector2
 from positron.utils.pg import draw_text
@@ -18,7 +19,7 @@ class Orient(Enum):
 DEF_FONT: Font = pg.font.SysFont("Arial", 16)
 
 
-class MenuElement:
+class MenuItem:
     w: int
     h: int
 
@@ -27,7 +28,7 @@ class MenuElement:
 
 
 @dataclass
-class Divider(MenuElement):
+class Divider(MenuItem):
     length: int = 300
     width: int = 1
     h: int = 3
@@ -42,7 +43,7 @@ class Divider(MenuElement):
 
 
 @dataclass
-class TextButton(MenuElement):
+class TextButton(MenuItem):
     text: str
     w: int = 300
     h: int = 30
@@ -64,6 +65,12 @@ class TextButton(MenuElement):
 
     def on_click(self):
         ...
+
+
+class EasyTextButton(TextButton):
+    def __call__(self, callback):
+        self.on_click = callback
+        return self
 
 
 class BackButton(TextButton):
@@ -92,9 +99,9 @@ class ReloadButton(TextButton):
         Navigator.reload()
 
 
-class ContextMenu(list[MenuElement]):
+class ContextMenu(list[MenuItem]):
     """
-    A ContextMenu is a list of MenuElements
+    A ContextMenu is a list of MenuItems
     """
 
     # TODO: investigate native windows/linux/mac contextmenus
@@ -108,7 +115,7 @@ class ContextMenu(list[MenuElement]):
         super().__init__(val)
         self.rect = Rect((0, 0), (self.WIDTH, sum(item.h for item in self) + 10))
 
-    def get_hovered_elem(self, mouse_pos: Coordinate) -> MenuElement | None:
+    def get_hovered_elem(self, mouse_pos: Coordinate) -> MenuItem | None:
         _, mouse_y = mouse_pos
         _, y = self.rect.topleft
         for item in self:
@@ -117,9 +124,10 @@ class ContextMenu(list[MenuElement]):
                 return item
         return None
 
-    async def on_click(self):
+    def on_click(self):
+        config.event_manager.modals.remove(self)
         if isinstance(self.hover_elem, TextButton) and not self.hover_elem.disabled:
-            self.hover_elem.on_click()
+            return self.hover_elem.on_click()
 
     def on_mousemove(self, event):
         hovered_elem = self.get_hovered_elem(event.pos)

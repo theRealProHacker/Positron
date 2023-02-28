@@ -1,9 +1,7 @@
 from contextlib import contextmanager
+from copy import copy
 from typing import Callable, Iterable, Sequence, TypeVar
 
-import pygame as pg
-
-# fmt: off
 from positron.types import CO_T, K_T, V_T, Index
 
 
@@ -38,6 +36,15 @@ def not_neg(x: float):
     return max(0, x)
 
 
+def after(seq: list[V_T], index: int) -> list:
+    """
+    Returns everything that comes after the index in the sequence
+    """
+    if index + 1 >= len(seq):
+        return []
+    return seq[index + 1 :]
+
+
 def abs_div(x):
     """
     Return the absolute of a fraction.
@@ -49,22 +56,23 @@ def abs_div(x):
     return 1 / x if x < 1 else x
 
 
-def get_tag(elem) -> str:
-    """
-    Get the tag of an _XMLElement or "comment" if the element has no valid tag
-    """
-    return (
-        elem.tag.removeprefix("{http://www.w3.org/1999/xhtml}").lower()
-        if isinstance(elem.tag, str)
-        else "!comment"
-    )
-
-
 def ensure_suffix(s: str, suf: str) -> str:
     """
     Ensures that `s` definitely ends with the suffix `suf`
     """
     return s if s.endswith(suf) else s + suf
+
+
+def join(*args: Sequence[V_T], div: V_T):
+    """
+    Concats args but puts div between every given argument
+    """
+    if not args:
+        return
+    yield from args[0]
+    for x in args[1:]:
+        yield div
+        yield from x
 
 
 def all_equal(l: Sequence):
@@ -134,8 +142,14 @@ def map_dvals(d: dict[K_T, V_T], func: Callable[[V_T], V_T2]) -> dict[K_T, V_T2]
     return {k: func(v) for k, v in d.items()}
 
 
+def copy_with(obj, **kwargs):
+    obj = copy(obj)
+    for k, v in kwargs.items():
+        setattr(obj, k, v)
+
+
 # tuple mutations
-def mutate_tuple(tup: tuple, val, slicing: Index)->tuple:
+def mutate_tuple(tup: tuple, val, slicing: Index) -> tuple:
     """
     Mutate a tuple given the tuple, a slicing and the value to fill into that slicing
     Example:
@@ -161,7 +175,6 @@ def tup_replace(
         start, stop = slice_
         return *t[:start], elem, *t[stop:]
     return
-
 
 
 def nice_number(num: complex) -> str:

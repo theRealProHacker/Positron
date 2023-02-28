@@ -8,7 +8,7 @@ import numpy as np
 import pygame as pg
 
 # fmt: off
-from positron.types import Color, Coordinate, Font, Rect, Surface, Vector2
+from positron.types import Color, ColorValue, Coordinate, Font, Rect, Surface, Vector2
 
 # fmt: on
 
@@ -17,7 +17,27 @@ from positron.types import Color, Coordinate, Font, Rect, Surface, Vector2
 pg.init()
 
 
-def surf_opaque(surf: Surface):
+def draw_rect(surf: Surface, color: ColorValue, rect: Rect, **kwargs):
+    """
+    Draws a better rect than default pygame (handles transparent colors)
+    """
+    surf.blit(get_rect(rect, color, **kwargs), rect)
+
+
+def get_rect(rect: Rect, color: ColorValue, **kwargs):
+    color = Color(color)
+    drawn_rect = Surface(rect.size, flags=pg.HWSURFACE)
+    drawn_rect.fill("transparent")
+    pg.draw.rect(drawn_rect, color, rect, **kwargs)
+    if color.a != 255:
+        drawn_rect.set_alpha(color.a)
+    return drawn_rect
+
+
+def surf_opaque(surf: Surface) -> bool:
+    """
+    Returns whether the given Surface is fully opaque
+    """
     return np.all(pg.surfarray.array_alpha(surf) == 255)
 
 

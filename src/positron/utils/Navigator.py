@@ -46,6 +46,10 @@ class URL:
             raise NotImplemented
         return str(self) == str(other)
 
+    @property
+    def is_internal(self):
+        return os.path.exists(self.route)
+
 
 AnyURL = URL | str
 
@@ -113,10 +117,10 @@ def goto(url: AnyURL) -> UrlLookupResult:
     elif status == UrlLookupResult.Internal:
         _url = make_url(url)
         callback = routes.get(_url.route)
-        if callback is None and os.path.isfile(path := os.path.abspath(_url.route)):
+        if callback is None and _url.is_internal:
 
             def callback(**kwargs):
-                load_dom(path, **kwargs)
+                load_dom(_url.route, **kwargs)
 
         elif callback is None:
             status = UrlLookupResult.Browser
