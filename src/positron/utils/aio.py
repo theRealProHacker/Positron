@@ -96,7 +96,7 @@ def call(callback, *args, **kwargs):
     if inspect.isawaitable(rv):
         return create_task(rv)
     return rv
-    # This below is actually nice but it is less flexible, 
+    # This below is actually nice but it is less flexible,
     # when it is not known whether callbacks are sync or async when defined (the real problem)
     # return (
     #     create_task(callback(*_args, **kwargs))

@@ -170,7 +170,7 @@ class Element(Element_P):
     id = GeneralAttribute("id")
     class_list = ClassListAttribute()
     data = DataAttribute()
-    contextmenu: tuple[MenuItem,...] = ()
+    contextmenu: tuple[MenuItem, ...] = ()
     # Style
     istyle: Style.Style = frozendict()  # inline style
     estyle: Style.Style = frozendict()  # external style
@@ -745,6 +745,7 @@ class AnchorElement(Element):
     def contextmenu(self):
         if not self.href or Navigator.make_url(self.href).is_internal:
             return ()
+
         @EasyTextButton("Copy link")
         def copy_link():
             if self.href:
@@ -1022,12 +1023,12 @@ class ImageElement(ReplacedElement):
     def contextmenu(self):
         if not self.image.is_loaded:
             return ()
+
         @EasyTextButton("Open image")
         def open_image():
             util.task_in_thread(os.startfile, os.path.abspath(self.image.url))
 
         return (open_image,)
-        
 
 
 class AudioElement(ReplacedElement):

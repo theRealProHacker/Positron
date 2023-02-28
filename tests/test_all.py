@@ -31,7 +31,6 @@ from positron.types import Auto, Color, FrozenDCache, Length, Percentage, Rect
 # fmt: on
 
 
-
 pg.init()
 
 

@@ -5,7 +5,6 @@ import positron.utils.colors as color_utils
 import positron.utils.regex as regex_utils
 from positron.types import Color
 from positron.utils.aio import _make_new_filename
-from positron.utils.func import join
 
 
 # https://stackoverflow.com/a/70016047/15046005
@@ -14,7 +13,7 @@ pytest_plugins = ("pytest_asyncio",)
 
 def test_func():
     l = ["one", "two", "three"]
-    assert "".join(join(*l, div=", ")) == ", ".join(l)
+    assert "".join(util.join(*l, div=", ")) == ", ".join(l)
 
     assert util.tup_replace((1, 2, 2, 2, 4), (2, 4), 3) == (1, 2, 3, 4)
 
