@@ -26,7 +26,6 @@ dependencies = [
     "aiohttp     == 3.8.4",
     "aiodns      == 3.0.0",
     "cchardet    == 2.1.7",
-    "lxml        == 4.9.2",
     "Jinja2      == 3.1.2",
 ]
 
@@ -60,3 +59,18 @@ all = [
 [project.urls]
 "Homepage" = "https://github.com/theRealProHacker/Positron"
 "Bug Tracker" = "https://github.com/theRealProHacker/Positron/issues"
+
+[tool.ruff]
+
+ignore = [
+    "E402",
+    "F401", # unused import
+    "F403",
+    "F405",
+    "F901", # just wrong, should be disabled by default
+
+    # ?
+    "E731", # lambda expressions
+    "E741", # ambiguous var name?
+    "E501", # black already takes care of this
+]
