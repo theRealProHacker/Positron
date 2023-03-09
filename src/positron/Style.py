@@ -18,6 +18,8 @@ import positron.Media as Media
 import positron.Selector as Selector
 import tinycss
 import tinycss.token_data
+
+from positron.utils.func import map_dvals
 from .config import (abs_angle_units, abs_border_width, abs_font_size,
                     abs_font_weight, abs_length_units, abs_resolution_units,
                     abs_time_units, cursors, g, rel_font_size,
@@ -438,7 +440,7 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
             ):
                 raise ValueError
             l_type, r_type = type(l_val), type(r_val)
-            if not l_type is r_type and not (
+            if l_type is not r_type and not (
                 l_type is Percentage or r_type is Percentage
             ):
                 raise ValueError
@@ -453,6 +455,10 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
 
 def no_change(value: str, p_style) -> str:
     return value
+
+
+def comma_sep(value: str, p_style) -> tuple[str, ...]:
+    return tuple(x.strip().strip('"') for x in value.split(","))
 
 
 number = cast(Acceptor[float], Calc(float))
@@ -732,13 +738,13 @@ def has_prio(key: str):
 style_attrs: dict[str, StyleAttr[CompValue]] = {
     "color": StyleAttr("canvastext", acc=color, inherits=True),
     "font-weight": StyleAttr("normal", abs_font_weight, font_weight, inherits=True),
-    "font-family": StyleAttr("Arial", acc=no_change, inherits=True),
+    "font-family": StyleAttr("Arial", acc=comma_sep, inherits=True),
     "font-size": StyleAttr("medium", acc=font_size, inherits=True),
     "font-style": StyleAttr("normal", acc=font_style, inherits=True),
     "line-height": StyleAttr("normal", normal, Calc(float, Length, Percentage), True),
     "word-spacing": StyleAttr("normal", normal, length_percentage, True),
     # "vertical-align": ...,
-    # "text-align": ...,
+    "text-align": StyleAttr("left", {"left", "right", "center", "justify"}),
     "display": StyleAttr("inline", {"inline", "block", "none"}),
     "background-color": StyleAttr("transparent", acc=color),
     "background-image": StyleAttr("none", {"none": tuple()}, background_image),
@@ -1016,8 +1022,8 @@ def process_dir(value: list[str]):
     Takes a split direction shorthand and returns the 4 resulting values
     """
     _len = len(value)
-    assert _len <= 4, f"Too many values: {len(value)}/4"
-    return value + value[1:2] if _len == 3 else value * (4 // _len)
+    assert _len <= 4, f"Too many values: {_len}/4"
+    return [*value, value[1]] if _len == 3 else value * (4 // _len)
 
 
 # IDEA: cache this
@@ -1144,6 +1150,7 @@ def compute_style(
 
 def pack_longhands(d: ResolvedStyle | FullyComputedStyle) -> ResolvedStyle:
     """Pack longhands back into their shorthands for readability"""
+    d = dict(d)
     for shorthand, keys in dir_shorthands.items():
         if any(f not in d for f in keys):
             continue
@@ -1162,9 +1169,8 @@ def pack_longhands(d: ResolvedStyle | FullyComputedStyle) -> ResolvedStyle:
 
 element_styles: dict[str, dict[str, str]] = defaultdict(
     dict,
-    {
-        k: process_input(v.items())
-        for k, v in {
+    map_dvals(
+        {
             "html": {
                 **{k: attr.initial for k, attr in style_attrs.items() if attr.inherits},
                 "display": "block",
@@ -1196,17 +1202,18 @@ element_styles: dict[str, dict[str, str]] = defaultdict(
                 "cursor": "pointer",
                 # "text-decoration": "underline"
             },
-            "button": {
-                "cursor": "pointer",
-            },
+            "center": {"display": "block", "text-align": "center"},
+            "button": {"cursor": "pointer", "text-align": "center"},
             "input": {
                 "border-style": "solid",
                 "border-radius": "3px",
                 "outline-offset": "1px",
                 "padding": "3px",
             },
-        }.items()
-    },
+            "strong": {"font-weight": "bold"},
+        },
+        lambda v: process_input(v.items()),
+    ),
 )
 
 

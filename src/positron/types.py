@@ -8,23 +8,25 @@ from dataclasses import dataclass
 from enum import Enum as _Enum
 
 # fmt: off
-from typing import (Any, Generic, Hashable, Iterable, Iterator, Literal, Protocol,
+from typing import (Any, Generic, Hashable, Iterable, Literal, Protocol,
                     Sequence, TypeVar, Union)
 # fmt: on
 from weakref import WeakValueDictionary
 
 import pygame as pg
 from frozendict import FrozenOrderedDict as _frozendict
-from pygame.cursors import Cursor
-from pygame.event import Event
-from pygame.font import Font
+from pygame.cursors import Cursor as Cursor
+from pygame.event import Event as Event
+from pygame.font import Font as Font
 from pygame.math import Vector2 as _Vector2
 from pygame.rect import Rect as _Rect
 from pygame.surface import Surface
 
 
 class BugError(AssertionError):
-    """A type of error that should never occur. If it occurs, something needs to be fixed. Please report any BugErrors found."""
+    """A type of error that should never occur.
+    If it occurs, something needs to be fixed.
+    Please report any BugErrors found."""
 
 
 # Aliases

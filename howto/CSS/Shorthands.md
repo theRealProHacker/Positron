@@ -1,7 +1,7 @@
 # Shorthands
 
 Shorthands have the purpose of writing css-properties as short as possible and hopefully the least redundant.  
-Right now we have to shorthand categories.
+Right now we have two shorthand categories.
 1. Directional shorthands
 2. Smart shorthands (I haven't found a better name yet)
 
@@ -9,27 +9,34 @@ Right now we have to shorthand categories.
 
 These are shorthands like `margin` or `border-width`.
 and they work very simple. You can give 1-4 values and they will be spread out onto the longhands. The order is always the same.
+
 ```py
 def process_dir(value: list[str]):
     """
     Takes a split direction shorthand and returns the 4 resulting values
     """
     _len = len(value)
-    assert _len <= 4, f"Too many values: {len(value)}/4"
-    return value + value[1:2] if _len == 3 else value * (4 // _len)
+    assert _len <= 4, f"Too many values: {_len}/4"
+    return [*value, value[1]] if _len == 3 else value * (4 // _len)
 ```
+
 So that 
+
 ```
 x -> [x]*4
-x,y -> [x,y,x,y]
-x,y,z -> [x,y,z,y] and
-x,y,z,w -> [x,y,z,w]
-``` 
+x,y -> [x,y]*2
+x,y,z -> [x,y,z, y]
+x,y,z,w -> [x,y,z,w]*1
+```
+
 For most properties the longhands are
+
 ```py
 directions = ("top", "right", "bottom", "left")
 ```
+
 corners are
+
 ```py
 corners = ("top-left", "top-right", "bottom-right", "bottom-left")
 ```
@@ -43,6 +50,7 @@ Example:
 2. "medium" doesn't match `style` or `color` but matches `width`. The set of possible values is reduced to `style` and `color`
 3. "solid" matches `style`. The set of possible values is reduced to just `color`
 4. "blue" matches `color`. Perfect we are done! 😉
+
 ```py
 # shorthand is the set of accepted longhands
 elif (shorthand := smart_shorthands.get(key)) is not None:

@@ -17,7 +17,7 @@ cursor positions are always equal to the position of the character after the cur
 """
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, TYPE_CHECKING, cast
 from enum import auto
 
 from positron.types import Enum
@@ -55,13 +55,15 @@ class EditingMethod(Enum):
     """ Drag and Drop with the mouse """
 
 
-class ApplyDescriptor:
+class _ApplyDescriptor:
     def __get__(self, obj, type=None) -> str:
         apply = getattr(obj, "apply")
         rv = apply(getattr(obj, "before"))
         setattr(obj, "after", rv)
         return rv
 
+
+ApplyDescriptor = cast(type[str], _ApplyDescriptor)
 
 # @dataclass
 # class Void:

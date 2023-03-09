@@ -19,7 +19,6 @@ import pygame as pg
 
 import positron.config as config
 import positron.utils.aio as autils
-from positron.modals.ContextMenu import TextButton
 from positron.utils.func import join
 
 from .config import ALT_MB, MAIN_MB, MIDDLE_MB, g
@@ -42,7 +41,7 @@ class _Event:
     target: UIElem
     current_target: Element
     cancelled: bool = False
-    """ A cancelled event is almost like an event that never happened"""
+    """ A cancelled event is almost like an event that never happened """
     propagation: bool = True
     immediate_propagation: bool = True
 
@@ -80,7 +79,8 @@ class _Event:
 # Events to implement
 # https://w3c.github.io/uievents/
 # File dropping can be done by looking for the DROPBEGIN Event.
-# Then we can track the mouse position to tell elements, we are currently dragging something over.
+# Then we can track the mouse position to tell elements, we are
+# currently dragging something over.
 # Drag links:
 #   https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
 #   https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/Drag_operations#specifying_drop_targets
@@ -118,7 +118,7 @@ supported_events: dict[str, EventData] = {
     "keydown": EventData(
         bubbles=True, attrs=("key", "code", "pgcode", "mods", "repeat")
     ),
-    "beforeinput": EventData(attrs="input_type"),
+    "beforeinput": EventData(attrs=("input_type",)),
     "input": EventData(),
     # Global Events
     "online": EventData(),
@@ -180,7 +180,8 @@ class EventManager:
         self.online = autils.is_online()
 
     def reset(self):
-        # XXX: we don't update some things like mouse_pos because they are route unspecific
+        # XXX: we don't update some things like mouse_pos
+        # because they are route unspecific
         self.callbacks = defaultdict(WeakKeyDictionary)
         self.modals.clear()
         self.last_click = (0, (-1, -1))
@@ -222,7 +223,7 @@ class EventManager:
                 event.current_target = parent
                 self.call_callbacks(event)
 
-    def release_event(self, type_: str, target: str | None = None, **kwargs):
+    def release_event(self, type_: str, target: UIElem | None = None, **kwargs):
         """
         Release an event with the type_ and the given kwargs.
         This deals with calling all appropriate callbacks
@@ -268,10 +269,12 @@ class EventManager:
         # if the event was not cancelled the default action is called if defined on the element
         if (
             not event.cancelled
-            and (callback := getattr(event.current_target, f"on_{event.type}", None))
+            and (
+                elem_callback := getattr(event.current_target, f"on_{event.type}", None)
+            )
             is not None
         ):
-            autils.call(callback, event)
+            autils.call(elem_callback, event)
 
     async def handle_events(self, events: list[pg.event.Event]):
         # online, offline
@@ -317,21 +320,21 @@ class EventManager:
                 if not mouse_down_event.cancelled and button == MAIN_MB:
                     if self.change("active", hov_elem):
                         g["css_dirty"] = True
-                    # FIXME: This is ad-hoc focus
-                    # https://html.spec.whatwg.org/multipage/interaction.html#focusable-area
-                    # The specs define focusable areas not as elements but as special objects.
-                    # A good example are the controls of a <video> element.
-                    # The question is of course how we implement this.
-                    if self.focus != hov_elem:
-                        if is_focusable(hov_elem):
-                            self.release_event(
-                                "focus", hov_elem, related_target=self.focus
-                            )
-                            self.release_event(
-                                "blur", self.focus, related_target=hov_elem
-                            )
-                        else:
-                            self.release_event("blur", self.focus)
+                        # FIXME: This is ad-hoc focus
+                        # https://html.spec.whatwg.org/multipage/interaction.html#focusable-area
+                        # The specs define focusable areas not as elements but as special objects.
+                        # A good example are the controls of a <video> element.
+                        # The question is of course how we implement this.
+                        if self.focus != hov_elem:
+                            if is_focusable(hov_elem):
+                                self.release_event(
+                                    "focus", hov_elem, related_target=self.focus
+                                )
+                                self.release_event(
+                                    "blur", self.focus, related_target=hov_elem
+                                )
+                            else:
+                                self.release_event("blur", self.focus)
 
             elif event.type == pg.MOUSEBUTTONUP:
                 self.buttons_down.remove(button)
@@ -391,7 +394,7 @@ class EventManager:
                             detail=self.click_count,
                         ).cancelled
                     ):
-                        menus: dict[str, Sequence[TextButton]] = {}
+                        menus: dict[str, Sequence[MenuItem]] = {}
                         for anc in [hov_elem, *hov_elem.iter_anc()]:
                             if cm := anc.contextmenu:
                                 menus.setdefault(anc.tag, cm)
@@ -404,7 +407,9 @@ class EventManager:
                         self.modals.append(
                             ContextMenu(
                                 join(*menus.values(), default_ctx_menu, div=Divider())
-                            ).fit_into_rect(config.screen.get_rect(), _pos)
+                            ).fit_into_rect(
+                                config.screen.get_rect(), _pos  # type: ignore
+                            )
                         )
                 self.active = None
                 g["css_dirty"] = True
@@ -520,16 +525,15 @@ class EventManager:
                             put_clip(value[slice(*selection)])
                         if event.key == pg.K_c:
                             continue
-                        input_type = (
-                            Insert(get_clip(), pos, method, value)
-                            if event.key == pg.K_v
-                            else Delete(
+                        if event.key == pg.K_v:
+                            input_type = Insert(get_clip(), pos, method, value)
+                        else:
+                            input_type = Delete(
                                 selection,
                                 Delete.What.Content,
                                 method=method,
                                 before=value,
                             )
-                        )
                         selection = None
                     # Cursor Movement
                     elif event.key in (pg.K_LEFT, pg.K_RIGHT, pg.K_END, pg.K_HOME):
@@ -547,9 +551,9 @@ class EventManager:
                             match selection:
                                 case None:
                                     selection = (old_pos, pos)
-                                case (start, end) if end == old_pos:
+                                case (start, end) if end == old_pos:  # type: ignore
                                     selection = (start, pos)
-                                case (start, end) if start == old_pos:
+                                case (start, end) if start == old_pos:  # type: ignore
                                     selection = (pos, end)
                             selection = EditingContext.clean_selection(selection)
                         else:
@@ -593,7 +597,6 @@ class EventManager:
                     key=event.unicode,
                     code=pg.key.name(event.key),
                     pgcode=event.key,  # inofficial api
-                    # TODO: location
                     mods=event.mod,
                     # TODO: repeat = event.key in self.pressed_keys
                 )

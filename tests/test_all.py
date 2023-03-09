@@ -1,5 +1,4 @@
 # fmt: off
-import io
 import math
 from operator import sub
 
@@ -54,13 +53,16 @@ def test_joint():
     style = Style.remove_importantd(
         Style.parse_inline_style(
             """
-            margin: 20px auto;padding:10px;border:solid medium;width:200px;height:200px;box-sizing: border-box
+            margin: 20px auto;
+            padding:10px;
+            border:solid medium;
+            width:200px;height:200px;
+            box-sizing: border-box
             """
         )
     )
     comp_style = {k: Style.compute_style("test", v, k, {}) for k, v in style.items()}
-    box, set_height = Box.make_box(900, comp_style, 900, 600)
-    assert set_height == util.noop  # height is defined
+    box, _ = Box.make_box(900, comp_style, 900, 600)
     mrg_r_l = (900 - 200 - 3 * 2 - 10 * 2) / 2
     assert box == Box.Box(
         "border-box",

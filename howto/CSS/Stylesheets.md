@@ -1,4 +1,3 @@
-
 # Stylesheets
 
 ## Global stylesheets
@@ -6,7 +5,7 @@
     - inherited values have a default of inherit
     - others have other default values:  
     `display: "inline"`
-- User stylesheet overrides
+- User stylesheet overrides (Positron?)
 
 ## Specific stylesheets
 - User agent stylesheet for element x  
@@ -20,5 +19,5 @@
         display: "block"
     }
     ```
-- User stylesheet overrides
+- User stylesheet overrides (Positron?)
 - Author stylesheet overrides (element selectors)

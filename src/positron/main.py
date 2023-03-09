@@ -189,12 +189,12 @@ async def main(route: str):
         )
 
 
-async def run(route: str = "/"):
+async def arun(route: str = "/"):
     """
     Runs the application
 
     ```py
-    await run("/")
+    await arun("/")
     ```
     """
     logging.info("Starting")
@@ -217,15 +217,15 @@ async def run(route: str = "/"):
         await asyncio.sleep(1)
 
 
-def runSync(route: str = "/"):
+def run(route: str = "/"):
     """
     Runs the application synchronously
 
     ```py
-    runSync("/")
+    run("/")
     ```
     """
-    asyncio.run(run(route))
+    asyncio.run(arun(route))
 
 
 def alert(title: str, msg: str, can_escape: bool = False):

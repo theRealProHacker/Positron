@@ -25,4 +25,4 @@ async def index():
 
 
 set_cwd(__file__)
-runSync("/")
+run("/")

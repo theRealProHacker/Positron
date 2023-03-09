@@ -27,10 +27,14 @@ button {
     width: calc(200px -10%);
     height: 100px;
     margin: auto;
+    text-align: justify;
     background-color: royalblue;
 }
 .cursor {
     cursor: none;
+}
+input {
+    margin-left: 30px;
 }
 input:changed:valid{
     border-color: rgb(76, 193, 26);

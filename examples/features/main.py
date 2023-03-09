@@ -9,10 +9,12 @@ async def startpage():
 
     i = 0
     colors = ["red", "green", "yellow", "royalblue"]
+    alignments = ["left", "right", "center", "justify"]
 
     @J("button").on("click")
     def _(event: Event):
         nonlocal i
+        event.target.set_style("text-align", alignments[i])
         event.target.set_style("background-color", colors[i])
         i = (i + 1) % len(colors)
 
@@ -25,4 +27,4 @@ async def startpage():
 config.password_replace_char = "*"
 set_cwd(__file__)
 set_mode(title="Features")
-runSync("/#link")
+run("/#link")

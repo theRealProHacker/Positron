@@ -49,8 +49,10 @@ def abs_div(x):
     """
     Return the absolute of a fraction.
     Just like `abs(x*-1)` is `(x*1)`, `abs_div(x**-1)` is `(x**1)`.
-    Or in other words just like abs is the 'distance' to 0 (the neutral element of addition) using addition,
-    abs_div is the distance to 1 (the neutral element of multiplication) using multiplication.
+    Or in other words just like abs is the 'distance' to 0
+    (the neutral element of addition) using addition,
+    abs_div is the distance to 1
+    (the neutral element of multiplication) using multiplication.
     """
     # or exp(abs(ln(x)))
     return 1 / x if x < 1 else x
@@ -63,9 +65,16 @@ def ensure_suffix(s: str, suf: str) -> str:
     return s if s.endswith(suf) else s + suf
 
 
+Tuple_T = TypeVar("Tuple_T", bound=tuple[float, ...])
+
+
+def sum_tuples(ts: Iterable[Tuple_T]) -> Tuple_T:
+    return tuple(map(sum, zip(*ts)))  # type: ignore
+
+
 def join(*args: Sequence[V_T], div: V_T):
     """
-    Concats args but puts div between every given argument
+    Concats *args but puts div between every given argument
     """
     if not args:
         return
@@ -139,6 +148,9 @@ V_T2 = TypeVar("V_T2")
 
 
 def map_dvals(d: dict[K_T, V_T], func: Callable[[V_T], V_T2]) -> dict[K_T, V_T2]:
+    """
+    Maps a function over the values of a dictionary
+    """
     return {k: func(v) for k, v in d.items()}
 
 

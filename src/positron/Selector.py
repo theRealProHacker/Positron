@@ -283,7 +283,9 @@ class NextSiblingSelector(CompositeSelector):
         return False
 
 
-# IDEA: A Within(selector) selector that matches all elements that match the selector and also the parents of those in the flat tree
+# IDEA: A Within(selector) selector that matches all elements
+# that match the selector and also the parents of those in the
+# flat tree
 
 ########################################## Parser #######################################################
 s = r"\s*"

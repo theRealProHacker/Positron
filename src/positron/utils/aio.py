@@ -60,7 +60,7 @@ async def acall(callback, *args, **kwargs):
                 [
                     param
                     for param in sig.parameters.values()
-                    if not param.kind is inspect.Parameter.KEYWORD_ONLY
+                    if param.kind is not inspect.Parameter.KEYWORD_ONLY
                 ]
             ),
             len(args),
@@ -86,7 +86,7 @@ def call(callback, *args, **kwargs):
                     [
                         param
                         for param in sig.parameters.values()
-                        if not param.kind is inspect.Parameter.KEYWORD_ONLY
+                        if param.kind is not inspect.Parameter.KEYWORD_ONLY
                     ]
                 ),
                 len(args),
@@ -181,7 +181,7 @@ class File:
     async def aopen(self, mode: OpenMode, *args, **kwargs):
         if self.encoding:
             kwargs.setdefault("encoding", self.encoding)
-        with await asyncio.to_thread(open, self.name, mode, *args, **kwargs) as f:
+        with await asyncio.to_thread(open, self.name, mode, *args, **kwargs) as f:  # type: ignore
             yield f
 
     def read(self, mode: OpenModeReading = "r", *args, **kwargs):
@@ -300,7 +300,7 @@ class Response:
         return self._ext
 
 
-media_type_pattern = re.compile(rf"[\w\-]+\/[\w\-]+(?:\;\w+\=\w+)*")
+media_type_pattern = re.compile(r"[\w\-]+\/[\w\-]+(?:\;\w+\=\w+)*")
 
 
 def parse_media_type(
@@ -397,7 +397,8 @@ async def download(url: str) -> str:
         return new_file
     elif url.startswith("data"):
         logging.warning(
-            "Downloading data URI. This means you are likely putting something into a data uri that is too big (like an image)"
+            "Downloading data URI. \
+            This means you are likely putting something into a data uri that is too big (like an image)"
         )
         response = await fetch(url)
         new_file = create_file(uuid.uuid4().hex)

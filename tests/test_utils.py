@@ -68,6 +68,17 @@ def test_regex():
         == "123, 124, 125"
     )
 
+    # string = "Are you ready?"
+    # for frm,to in [
+    #     (0,3),
+    #     (3,4),
+    #     (4,7),
+    #     (7,8),
+    #     (13,14),
+    # ]:
+    #     assert regex_utils.next_wb(string, frm) == to
+    #     assert regex_utils.prev_wb(string, to) == frm
+
 
 async def test_async():
     # from https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URLs#syntax

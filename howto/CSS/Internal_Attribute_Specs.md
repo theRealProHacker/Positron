@@ -18,9 +18,8 @@ These specify the attributes with their types and constraints. Every computed ty
         If a weight greater than 500 is given, look for available weights greater than the target, in ascending order. If no match is found, look for available weights less than the target, in descending order.
 
 - font-family: 
-    - From: anything
-    - To: CompStr
-    - Implementation: complex; defined in some `get_font` method
+    - From: comma-seperated list of font families, last one can be generic
+    - To: tuple of families
 - font-size:
     - From: `length-percentage`, absolute kw, relative kw
     - To: `Length` > 0

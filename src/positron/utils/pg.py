@@ -38,7 +38,7 @@ def surf_opaque(surf: Surface) -> bool:
     """
     Returns whether the given Surface is fully opaque
     """
-    return np.all(pg.surfarray.array_alpha(surf) == 255)
+    return bool(np.all(pg.surfarray.array_alpha(surf) == 255))
 
 
 def text_surf(text: str, font: Font, color: Color):

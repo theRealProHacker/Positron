@@ -68,9 +68,8 @@ ignore = [
     "F403",
     "F405",
     "F901", # just wrong, should be disabled by default
-
-    # ?
+    # Not sure
     "E731", # lambda expressions
-    "E741", # ambiguous var name?
+    "E741", # ambiguous var name, whatever that means?
     "E501", # black already takes care of this
 ]

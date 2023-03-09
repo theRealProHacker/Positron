@@ -16,7 +16,8 @@ text-align and vertical-align
 """
 """
 Pseudo-Code:
-Put all elements into lines from the elements widths (with word-spacing) and the lines max widths. 
+Put all elements into lines 
+from the elements widths (with word-spacing) and the lines max widths. 
 For every line get its top, center, baseline and bottom (with line-height and more). 
 Align elements inside lines with text-align. 
 Align lines inside the height if given, else don't vertical-align. 
@@ -37,5 +38,6 @@ Pseudo-Code:
 
 ## Float layout
 """
-We will not implement Float layout because it is redundant with flexbox and grid, but annoying and destructive. 
+We will not implement Float layout because it 
+is redundant with flexbox and grid, but annoying and destructive. 
 """

@@ -1,4 +1,4 @@
-from positron.main import Event, alert, pg, run, runSync, set_mode  # isort:skip
+from positron.main import Event, alert, pg, arun, run, set_mode  # isort:skip
 import positron.config
 import positron.events.InputType as InputType
 import positron.utils.Navigator as Navigator
@@ -43,8 +43,8 @@ __all__ = [
     "Image",
     "InputType",
     # run
+    "arun",
     "run",
-    "runSync",
     "set_mode",
     "load_dom",
     "aload_dom",

@@ -138,4 +138,26 @@ def split_value(s: str) -> list[str]:
     return result
 
 
+wb_re = re.compile(r"\b")
+
+
+def next_wb(string: str, pos: int):
+    """
+    Find the next word boundary
+    """
+    if not (match := wb_re.search(string, pos + 1)):
+        return max(pos + 1, len(string))
+    return match.start()
+
+
+def prev_wb(string: str, pos: int):
+    """
+    Find the previos word boundary
+    """
+    rev_pos = len(string) - pos
+    if not (match := wb_re.search(string[::-1], rev_pos + 1)):
+        return min(pos - 1, 0)
+    return len(string) - match.start()
+
+
 ##########################################################################

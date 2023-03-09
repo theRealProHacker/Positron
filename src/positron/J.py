@@ -128,7 +128,8 @@ class J:
     def on(self, event_type: str, callback=None, repeat: int = -1):
         """
         Attach an event handler with events of type `event_type`.
-        The handler will be called every time the event is emitted but only `repeat` many times
+        The handler will be called every time the event is emitted
+        but only `repeat` many times
 
         Examples:
 
@@ -181,8 +182,10 @@ class J:
         elif __name in supported_events:
             # activate event
             def event_emitter(**kwargs):
-                # TODO: what happens with the kwargs? For example with the mouse position on click
-                # Possibly we have to implement all these methods individually or at least more specific than this
+                # TODO: what happens with the kwargs?
+                # For example with the mouse position on click
+                # Possibly we have to implement all these methods
+                # individually or at least more specific than this
                 # Or at least document this
                 return asyncio.wait(
                     [

@@ -94,7 +94,8 @@ def adj_corners(corners: list[V_T]) -> list[tuple[V_T, V_T]]:
 
 
 def radii2pg(radii: Sequence[V_T]) -> tuple[V_T, V_T, V_T, V_T]:
-    return (*radii[:2], radii[3], radii[2])  # type: ignore # swap bottomleft and bottom right
+    # swap bottomleft and bottom right
+    return (*radii[:2], radii[3], radii[2])  # type: ignore
 
 
 @cache
@@ -179,7 +180,8 @@ def draw_rounded_border(
                     )  # if t[0] else
                     for color, angles, width in zip(ecolors, (corner_angles), ewidths):
                         # Problem with pygames arc function
-                        # TODO: find solution (for example creating an svg file on the fly in memory and loading it in)
+                        # TODO: find solution
+                        # (for example creating an svg file on the fly in memory and loading it in)
                         draw_arc(color, ell_rect, *angles, width)
 
         for vector, adjcorners, adjvectors, color, width in zip(
@@ -256,7 +258,7 @@ def round_surf(surf: Surface, size: Coordinate, radii: Radii):
     if not any(any(t) for t in radii):
         return surf
     size = surf.get_size()
-    assert size == box.size, BugError(f"Surface is not equal to box")
+    assert size == box.size, BugError("Surface is not equal to box")
     surf.convert_alpha()
     clip_surf = Surface(size, flags=pg.SRCALPHA)
     draw_rounded_background(clip_surf, box, Color("black"), radii)

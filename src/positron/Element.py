@@ -10,10 +10,8 @@ import operator
 import os
 import re
 from contextlib import suppress
-from dataclasses import dataclass, field
-from functools import cache, partial
 from itertools import chain
-from typing import Callable, Iterable, Protocol
+from typing import Iterable
 
 uses_markdown = True
 try:
@@ -39,116 +37,18 @@ from .element.ElementAttribute import *
 from .element.Parser import get_tag
 from .element.Parser import parse as parse_html
 from .events.InputType import *
-from .Style import (FullyComputedStyle, SourceSheet, bs_getter, bw_keys,
-                    calculator, has_prio, inset_getter, is_custom,
-                    pack_longhands, parse_file, parse_sheet)
-from .types import (Auto, AutoLP4Tuple, AutoType, Color, Coordinate, Cursor,
-                    DisplayType, Element_P, Float4Tuple, Font, FontStyle,
-                    Leaf_P, Length, Number, Percentage, Rect, Surface, Vector2,
-                    frozendict)
-from .utils import draw_text, group_by_bool, log_error, make_default, text_surf
-from .utils.regex import GeneralParser, whitespace_re
+from .Style import (SourceSheet, bs_getter, bw_keys, calculator, has_prio,
+                    is_custom, pack_longhands, parse_file, parse_sheet)
+from .types import (Auto, AutoType, Color, Coordinate, Cursor, DisplayType,
+                    Element_P, Leaf_P, Length, Number, Percentage, Rect,
+                    Surface, frozendict)
+from .utils import log_error, make_default
+from .utils.fonts import Font
 
 # fmt: on
 
 
 ################################# Globals ###################################
-class InlineItem(Protocol):
-    xpos: float = 0
-    ypos: float = 0
-    width: float
-    height: float
-
-    def rel_pos(self, pos: Coordinate):
-        pass
-
-    def draw(self, surf: Surface):
-        """
-        Draws the InlineItem
-        """
-
-
-@dataclass
-class TextDrawItem(InlineItem):
-    text: str
-    parent: Element
-    whitespace: bool = True
-    extra_style: FullyComputedStyle = field(default_factory=dict)
-
-    @property
-    def pos(self):
-        return self.xpos, self.ypos
-
-    def draw(self, surf: Surface):
-        style = self.parent.cstyle | dict(self.extra_style)
-        draw_text(
-            surf,
-            self.text,
-            self.parent.font,
-            style["color"],
-            topleft=self.pos,
-        )
-
-    def rel_pos(self, pos: Coordinate):
-        self.xpos, self.ypos = Vector2(pos) + (self.xpos, self.ypos)
-
-    @property
-    def width(self):
-        return (
-            self.parent.font.size(self.text)[0]
-            + self.whitespace * self.parent.word_spacing
-        )
-
-    @property
-    def height(self):
-        return self.parent.line_height
-
-
-@dataclass
-class ElementDrawItem(InlineItem):
-    elem: Element
-
-    @property
-    def width(self):
-        return self.elem.box.outer_box.width
-
-    @property
-    def height(self):
-        return self.elem.box.outer_box.height
-
-    def rel_pos(self, pos: Coordinate):
-        self.xpos, self.ypos = new_pos = Vector2(pos) + (self.xpos, self.ypos)
-        self.elem.box.set_pos(new_pos)
-
-    def draw(self, surf: Surface):
-        self.elem.draw(surf)
-
-
-# TODO: Get an actually acceptable font and also give a list of possible fonts
-@cache
-def get_font(family: list[str], size: float, style: FontStyle, weight: int) -> Font:
-    """
-    Takes some font constraints and tries to find the most fitting
-    """
-    _font: str | None = pg.font.match_font(
-        name=family,
-        italic=style.value == "italic",
-        bold=weight > 500,  # we don't support actual weight TODO
-    ) or log_error("Failed to find font", family, style, weight)
-    font: Font = Font(_font, int(size))
-    font.italic = style.value == "oblique"
-    return font
-
-
-def calc_inset(inset: AutoLP4Tuple, width: float, height: float) -> Float4Tuple:
-    """
-    Calculates the inset data
-    top, right, bottom, left -> top, bottom, right, left
-    """
-    top, right, bottom, left = inset
-    return calculator.multi2((top, bottom), 0, height) + calculator.multi2(
-        (right, left), 0, width
-    )
 
 
 word_re = re.compile(r"[^\s]+")
@@ -180,13 +80,12 @@ class Element(Element_P):
     line_height: float
     word_spacing: float
     display: DisplayType
-    layout_type: DisplayType
+    layout_type: layout.Layout
     position: str
     cursor: Cursor
-    # Not always present
-    inline_items: list[InlineItem]  # only use if layout_type is "inline"
 
-    # Dynamic states https://html.spec.whatwg.org/multipage/semantics-other.html#pseudo-classes
+    # Dynamic states
+    # https://html.spec.whatwg.org/multipage/semantics-other.html#pseudo-classes
     @property
     def active(self) -> bool:
         return self is config.event_manager.active
@@ -254,37 +153,31 @@ class Element(Element_P):
 
     def add_child(self, child: Element | TextElement):
         """
-        What should be done when a child is added
+        This is called when a child is added
+        (could be before or after)
         """
         child.parent = self
 
     @classmethod
-    def from_lxml(cls, lxml) -> Element:
+    def from_parsed(cls, parsed) -> Element:
         """
-        Creates an Element from the given lxml
+        Creates an Element from the given parsed tree
         """
-        tag = get_tag(lxml)
+        tag = get_tag(parsed)
         type_: type[Element] = elem_type_map.get(tag, Element)
-        text = lxml.text or ""
-        attrs = dict(lxml.attrib)
+        text = parsed.text or ""
+        attrs = dict(parsed.attrib)
         children: list[Element | TextElement] = []
         if text:
             children.append(TextElement(text))
-        for _c in lxml:
-            c = Element.from_lxml(_c)
+        for _c in parsed:
+            c = Element.from_parsed(_c)
             children.append(c)
             if text := _c.tail:
                 children.append(TextElement(text))
         return type_(tag, attrs, children)
 
-    def set_attr(self, name: str, value: str):
-        self.attrs[name] = value
-        if name == "style":
-            self.istyle = Style.parse_inline_style(value)
-        elif name in ("id", "class"):
-            pass  # TODO: add and remove element to and from the global map
-
-    ####################################  Main functions ######################################################
+    ###########################  Main functions ##############################################
     @property
     def input_style(self) -> Style.ResolvedStyle:
         """The total input style. Fused from inline and external style"""
@@ -345,21 +238,26 @@ class Element(Element_P):
         self.display = str(style["display"])
         # fonts
         fsize: float = style["font-size"]
-        self.font = get_font(
-            style["font-family"], fsize, style["font-style"], style["font-weight"]
+        self.font = Font(
+            [*style["font-family"]],
+            fsize,
+            style["font-style"],
+            style["font-weight"],
+            style["color"],
         )
         # https://developer.mozilla.org/en-US/docs/Web/CSS/line-height#values
         lh: AutoType | float | Length | Percentage = style["line-height"]
         self.line_height = (
             lh * fsize
             if isinstance(lh, Number)
-            else calculator(lh, auto_val=self.font.get_linesize(), perc_val=fsize)
+            else calculator(lh, auto_val=self.font.linesize, perc_val=fsize)
         )
         # https://developer.mozilla.org/en-US/docs/Web/CSS/word-spacing#values
         wspace = style["word-spacing"]
-        wspace: float | Percentage = Percentage(100) if wspace is Auto else wspace
-        d_ws = self.font.size(" ")[0]
-        self.word_spacing = (calculator(wspace, 0, d_ws)) + d_ws
+        default_word_spacing = self.font.size(" ")[0]
+        self.word_spacing = default_word_spacing + (
+            calculator(wspace, 0, default_word_spacing)
+        )
         self.position = str(style["position"])
         cursor: Cursor | AutoType = style["cursor"]
         self.cursor = (
@@ -375,17 +273,13 @@ class Element(Element_P):
     def is_block(self) -> bool:
         """
         Returns whether an element is a block.
-        Includes side effects (as a feature) that automatically adjust false inline elements to block layout
+        Includes side effects (as a feature) that automatically adjust
+        false inline elements to block layout
         """
-        children = self.display_children
-        if self.display != "none":
-            if any(
-                [child.is_block() for child in children]
-            ):  # set all children to block
-                self.display = "block"
-                for child in children:
-                    child.display = "block"
-        self.layout_type = self.display
+        if self.display == "none":
+            return False
+        if any(child.is_block() for child in self.display_children):
+            self.display = "block"
         return self.display == "block"
 
     def get_height(self) -> float:
@@ -405,125 +299,34 @@ class Element(Element_P):
         """
         Layout an element. Gets the width it has available
         """
-        self.layout_type = self.display
-        if self.display == "none":
+        if self.display in "none":
+            self.layout_type = layout.EmptyLayout()
             return
-        style = self.cstyle
         parent_size = (
             (self.parent.box.width, self.parent.get_height()) if self.parent else (0, 0)
         )
-        self.box, set_height = Box.make_box(width, style, *parent_size)
-        self.layout_children(set_height)
+        self.box, _ = Box.make_box(width, self.cstyle, *parent_size)
+        self.layout_inner()
 
-    def layout_children(self, set_height: Callable[..., None]):
-        """
-        We layout the children.
-        """
+    def layout_inner(self):
         children = self.display_children
-        if not children:
-            set_height(0)
-        elif any(c.display == "inline" for c in children):
-            self.layout_type = "inline"
-            width = self.box.content_box.width
-            xpos: float = 0
-            ypos: float = 0
-            current_line: list[InlineItem] = []
-            items: list[InlineItem] = []
-
-            def line_break(explicit: None | Element = None):
-                nonlocal xpos, ypos  # , current_line, items
-                xpos = 0
-                for item in current_line:
-                    item.ypos = ypos
-                items.extend(current_line)
-                line_height = max((item.height for item in current_line), default=0)
-                ypos += line_height or getattr(explicit, "line_height", 0)
-                current_line.clear()
-
-            def add_item(item: InlineItem):
-                nonlocal xpos  # , current_line
-                item_width = item.width
-                if xpos + item_width > width:
-                    line_break()
-                item.xpos = xpos
-                item.ypos = ypos
-                current_line.append(item)
-                xpos += item_width
-
-            for elem in self.iter_inline():
-                if isinstance(elem, TextElement):
-                    c = elem.parent
-                    parser = GeneralParser(elem.text.lstrip())
-                    while parser.x:
-                        if word := parser.consume(word_re):
-                            has_whitespace = bool(parser.consume(whitespace_re))
-                            add_item(TextDrawItem(word, c, whitespace=has_whitespace))
-                else:
-                    elem.layout(width)
-                    add_item(ElementDrawItem(elem))
-            line_break()
-            set_height(ypos)
-            self.inline_items = items
+        # XXX: If an element with display inline appears here
+        # It has yielded itself in iter_inline
+        # and should have overriden this method anywhay
+        if not children or self.display == "inline":
+            self.layout_type = layout.EmptyLayout()
+        elif any(c.display == "block" for c in children):
+            self.layout_type = layout.BlockLayout(self, children)
         else:
-            inner: Rect = self.box.content_box
-            x_pos = inner.x
-            y_cursor = inner.y
-            # https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Box_Model/Mastering_margin_collapsing
-            flow, no_flow = group_by_bool(
-                children,
-                lambda x: x.position in ("static", "relative", "sticky"),
-            )
-            for child in flow:
-                child.layout(inner.width)
-                # top, bottom, right, left = calc_inset(
-                #     inset_getter(c.cstyle), self.box.width, self.box.height
-                # )
-                child.box.set_pos(
-                    # (
-                    #     (x_pos, y_cursor)
-                    #     if child.position == "sticky"
-                    #     else (bottom - top + x_pos, right - left + y_cursor)
-                    # )
-                    (x_pos, y_cursor)
-                )
-                y_cursor += child.box.outer_box.height
-            set_height(y_cursor)
-            for child in no_flow:
-                child.layout(inner.width)
-                # calculate position
-                top, bottom, right, left = calc_inset(
-                    inset_getter(self.cstyle), self.box.width, self.box.height
-                )
-                child.box.set_pos(
-                    (
-                        (
-                            top
-                            if top is not Auto
-                            else self.get_height() - bottom
-                            if bottom is not Auto
-                            else 0
-                        ),
-                        (
-                            left
-                            if left is not Auto
-                            else inner.width - right
-                            if right is not Auto
-                            else 0
-                        ),
-                    )
-                )
+            self.layout_type = layout.InlineLayout(self, self.iter_inline())
+        self.layout_type.layout(self.box.content_box.width)
 
     def rel_pos(self, pos: Coordinate):
         """
         Makes the previously relative position to the parent absolute to the screen
         """
         self.box.pos += pos
-        content_pos = self.box.content_box.topleft
-        items: list[Element | TextElement] | list[InlineItem] = (
-            self.display_children if self.layout_type == "block" else self.inline_items
-        )
-        for item in items:
-            item.rel_pos(content_pos)
+        self.layout_type.rel_pos(self.box.content_box.topleft)
 
     def draw(self, surf: Surface):
         """
@@ -541,42 +344,26 @@ class Element(Element_P):
         rounded_box.draw_outline(surf, self.box, style)
 
     def draw_content(self, surf: Surface):
-        # concept: the children should already know, where they belong
-        items: list[Element | TextElement] | list[InlineItem] = (
-            self.children if self.layout_type == "block" else self.inline_items
-        )
-        for item in items:
-            item.draw(surf)
+        self.layout_type.draw(surf)
 
     # Events
     def collide(self, pos: Coordinate) -> Element | None:
         """
-        The idea of this function is to get which elements were hit by a mouse event
+        Get which elements were hit by a mouse event at pos
         """
         # TODO: z-index
-        # TODO: collide should only return a single Element, which parents can later be iterated over.
-        if self.layout_type == "block":
-            for c in self.display_children:
-                if target := c.collide(pos):
-                    return target
-        elif self.layout_type == "inline":
-            for item in reversed(self.inline_items):
-                if isinstance(item, ElementDrawItem):
-                    if target := item.elem.collide(pos):
-                        return target
-                elif isinstance(item, TextDrawItem):
-                    if Rect(item.pos, (item.width, item.height)).collidepoint(pos):
-                        return item.parent
+        if elem := self.layout_type.collide(pos):
+            return elem
         if self.box.border_box.collidepoint(pos):
             return self
         return None
 
-    def delete(self):
-        self.deleted = True
-        self.parent = None
-        for c in self.children:
-            c.delete()
-        self.children.clear()
+    # def delete(self):
+    #     self.deleted = True
+    #     self.parent = None
+    #     for c in self.children:
+    #         c.delete()
+    #     self.children.clear()
 
     ###############################  API for Elements  ##################################################################
     @property
@@ -591,7 +378,7 @@ class Element(Element_P):
         indentation = " " * indent
         body = f"{self.tag} {' '.join(attrs)}".strip()
         if self.children:
-            children = f"\n".join(c.to_html(indent + 2) for c in self.children)
+            children = "\n".join(c.to_html(indent + 2) for c in self.children)
             return f"""{indentation}<{body}>
 {children}
 {indentation}</{self.tag}>"""
@@ -621,6 +408,10 @@ class Element(Element_P):
         """
         # override for different behaviour
         self.attrs[name] = value
+        if name == "style":
+            self.istyle = Style.parse_inline_style(value)
+        elif name in ("id", "class"):
+            pass  # TODO: add and remove element to and from the global map
 
     ############################## Helpers #####################################
     def iter_anc(self) -> Iterable[Element]:
@@ -649,9 +440,8 @@ class Element(Element_P):
 
     def iter_inline(self) -> Iterable[Element | TextElement]:
         """
-        Alternative iteration over all descendants
-        used in text layout.
-        Shouldn't be called out of this context.
+        Iteration over all descendants used in text layout.
+        In other words the leafs of the layout tree.
         """
         if self.display == "none":
             return
@@ -668,11 +458,9 @@ class Element(Element_P):
     @property
     def real_children(self):
         """
-        All direct children that are not MetaElements or TextElements
+        All direct children that are not TextElements
         """
-        return [
-            c for c in self.children if not isinstance(c, (TextElement, MetaElement))
-        ]
+        return [c for c in self.children if not isinstance(c, TextElement)]
 
 
 class HTMLElement(Element):
@@ -684,7 +472,7 @@ class HTMLElement(Element):
 
     @classmethod
     def from_string(cls, html: str):
-        return cls.from_lxml(parse_html(html))
+        return cls.from_parsed(parse_html(html))
 
     def get_height(self) -> float:
         return self.box.height
@@ -693,13 +481,12 @@ class HTMLElement(Element):
         self.box = Box.Box(t="content-box", width=g["W"], height=g["H"])
         # all children correct their display
         assert self.is_block()
-        super().layout_children(partial(setattr, self.box, "height"))
+        self.layout_inner()
         # all children correct their position
-        super().rel_pos((0, 0))
+        self.rel_pos((0, 0))
 
-    def draw(self, screen):
-        for c in self.children:
-            c.draw(screen)
+    def draw(self, surf: Surface):
+        self.draw_content(surf)
 
 
 class AnchorElement(Element):
@@ -806,7 +593,8 @@ class StyleElement(MetaElement):
     It can be used in two seperate ways:
 
     By specifiying the src attribute a style sheet can be linked.
-    When the linked stylesheet is changed, the style sheet will hot reload using the new content.
+    When the linked stylesheet is changed, the style sheet
+    will hot reload using the new content.
 
     Additionally, css can be inserted directly into the style element.
     """
@@ -829,7 +617,7 @@ class StyleElement(MetaElement):
             self.inline_sheet = parse_sheet(self.text)
             add_sheet(self.inline_sheet)
 
-    def parse_callback(self, future: asyncio.Future[str]):
+    def parse_callback(self, future: asyncio.Future[SourceSheet]):
         with suppress(Exception):
             self.src_sheet = future.result()
             add_sheet(self.src_sheet)
@@ -885,7 +673,7 @@ class LinkElement(MetaElement):
     """
 
     tag = "link"
-    src_sheet: SourceSheet | None = None
+    src_sheet: SourceSheet
 
     def __init__(
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
@@ -896,8 +684,8 @@ class LinkElement(MetaElement):
         if self.src:
             match self.rel:
                 case "stylesheet":
-                    # TODO: What is with an actual href
-                    config.file_watcher.add_file(self.src, self.hot_reload)
+                    if os.path.exists(self.src):
+                        config.file_watcher.add_file(self.src, self.hot_reload)
                     util.create_task(parse_file(self.src), True, self.parse_callback)
                 case "icon":
                     g["icon_srcs"].append(self.src)
@@ -936,7 +724,7 @@ class ReplacedElement(Element):
     def rel_pos(self, pos: Coordinate):
         self.box.pos += pos
 
-    def iter_inline(self) -> Iterable[Element | TextElement]:
+    def iter_inline(self):
         yield self
 
 
@@ -969,6 +757,7 @@ class ImageElement(ReplacedElement):
             )
         except (KeyError, ValueError):
             self.image = None
+        self.__dict__["display_children"] = []
 
     @staticmethod
     def crop_image(surf: Surface, to_size: Coordinate):
@@ -1006,9 +795,9 @@ class ImageElement(ReplacedElement):
         set_height(h)
 
     def draw(self, surf: Surface):
+        self.layout_type = layout.EmptyLayout()
         if self.image is None:
             return
-        self.layout_type = "block"
         super().draw(surf)
 
     def draw_content(self, surf: Surface):
@@ -1143,10 +932,7 @@ class InputElement(ReplacedElement):
         if "checked" in self.attrs:
             self.checked = True
         self.editing_ctx = EditingContext(self.attrs.get("value", ""))
-        self.window_slide = 0
-
-    def collide(self, pos: Coordinate) -> Element | None:
-        return self if self.box.border_box.collidepoint(pos) else None
+        self.scrollx = 0
 
     def compute(self):
         super().compute()
@@ -1156,24 +942,22 @@ class InputElement(ReplacedElement):
             self.display = "none"
 
     def layout(self, width: float):
+        self.layout_type = layout.EmptyLayout()
         if not self.parent:
             self.display = "none"
-            self.layout_type = "none"
             return
         type_ = self.type
-        self.layout_type = "inline"
         self.box, set_height = Box.make_box(
             width, self.cstyle, self.parent.box.width, self.parent.get_height()
         )
         if (
             _size := self.attrs.get("size", config.default_text_input_size)
         ).isnumeric():
-            # "0" from the ch unit
-            avrg_letter_width = self.font.metrics(
+            avrg_letter_width = self.font.size(
                 config.password_replace_char
                 if type_ == "password"
                 else config.ch_unit_char
-            )[0][4]
+            )[0]
             self.box.set_width(int(_size) * avrg_letter_width, "content-box")
         set_height(self.line_height)
 
@@ -1182,53 +966,48 @@ class InputElement(ReplacedElement):
             text: str = self.attrs.get("value") or self.attrs.get("placeholder", "")  # type: ignore
             if not self.placeholder_shown and self.type == "password":
                 text = config.password_replace_char * len(text)
-            # XXX: what is happening below corresponds to the ::placeholder pseudo-element
-            # but we can't make this happen with pure css
-            color = Color(self.cstyle["color"])
-            if self.placeholder_shown:
-                color.a = int(config.placeholder_opacity * color.a)
-            rendered_text = text_surf(text, self.font, color)
-            rendered_rect = rendered_text.get_rect()
             text_rect = self.box.content_box
-            # TODO: Draw selection
+            cursorw = self.font.size(text[: self.editing_ctx.cursor])[0]
             if self.focus:
-                cursor_rect = text_surf(
-                    text[: self.editing_ctx.cursor], self.font, color
-                ).get_rect()
+                cursor_draw_w = min(cursorw, text_rect.w)
                 pg.draw.line(
                     surf,
-                    color,
-                    (text_rect.x + cursor_rect.w, text_rect.y + 0),
-                    (text_rect.x + cursor_rect.w, text_rect.y + cursor_rect.height),
+                    "black",  # TODO: cursor color
+                    (text_rect.x + cursor_draw_w, text_rect.y),
+                    (text_rect.x + cursor_draw_w, text_rect.y + text_rect.height),
                 )
                 selection = self.editing_ctx.selection
                 if selection:
-                    upto_rect = text_surf(
-                        text[: selection[0]], self.font, color
-                    ).get_rect()
-                    selection_rect = text_surf(
-                        text[selection[0] : selection[1]], self.font, color
-                    ).get_rect()
+                    upto_w = self.font.size(text[: selection[0]])[0]
+                    selection_size = self.font.size(text[selection[0] : selection[1]])
                     util.draw_rect(
                         surf,
-                        config.selection_color,
-                        Rect(
-                            text_rect.x + upto_rect.w, text_rect.y, *selection_rect.size
-                        ),
+                        config.selection_color,  # TODO: selection color
+                        Rect(text_rect.x + upto_w, text_rect.y, *selection_size),
                         border_radius=30,
                     )
+            color = Color(self.cstyle["color"])
+            if self.placeholder_shown:
+                # XXX: what is happening below corresponds to the ::placeholder pseudo-element
+                # but we can't make this happen with pure css
+                color.a = int(config.placeholder_opacity * color.a)
+            self.font.color = color
+            render_h = self.font.size(text)[1]
+            # we do this to only render the part of the text that we need to render
+            rendered_text = self.font.render(text)
             surf.blit(
                 rendered_text,
                 text_rect,
                 area=Rect(
-                    self.window_slide,
+                    # self.scrollx,
+                    max(0, cursorw - text_rect.w),
                     0,
-                    min(rendered_rect.w, text_rect.w),
-                    rendered_rect.bottom,
+                    text_rect.w,
+                    render_h,
                 ),
             )
         else:
-            raise NotImplementedError("Disallowed input type")
+            util.print_once("Disallowed input type: {self.type}")
 
     @staticmethod
     def _sanitize_number(num: str):
@@ -1248,7 +1027,8 @@ class InputElement(ReplacedElement):
         return prepend + sanitized
 
     def sanitize_input(self, type: InputType):
-        # TODO: A lot of thinking on how to sanitize user input with numbers, but this looks pretty solid at the moment
+        # TODO: A lot of thinking on how to sanitize user input with numbers,
+        # but this looks pretty solid at the moment
         if self.type == "number" and isinstance(type, Insert) and type.content:
             old_apply = type.apply
 
@@ -1261,13 +1041,12 @@ class InputElement(ReplacedElement):
                 else:
                     return text
 
-            type.apply = new_apply
+            type.apply = new_apply  # type: ignore
 
     def setattr(self, name: str, value):
         if name == "value":
             if self.type == "number":
                 value = self._sanitize_number(value)
-            self.editing_ctx.history.add_entry((value, len(value), None))
         super().setattr(name, value)
 
     def on_wheel(self, event):
@@ -1284,7 +1063,7 @@ class BrElement(ReplacedElement):
 
     def layout(self, given_width):
         self.box = Box.Box("content-box", width=given_width, height=self.line_height)
-        self.inline_items = [TextDrawItem("", self)]
+        # TODO
 
     def draw(self, *args):
         pass
@@ -1295,10 +1074,10 @@ class TextElement(Leaf_P):
 
     text: str
     parent: Element
-    inline_items: list[TextDrawItem]
     tag: str = "Text"
     display: DisplayType = "inline"
-    position: str = "static"
+    # inline_items: list[TextDrawItem]
+    # position: str = "static"
 
     def is_block(self):
         return False
@@ -1306,59 +1085,59 @@ class TextElement(Leaf_P):
     def __init__(self, text: str):
         self.text = text
 
-    def collide(self, pos: Coordinate):
-        assert self.display == "block"
-        if self.box.border_box.collidepoint(pos):
-            return self.parent
+    # def collide(self, pos: Coordinate):
+    #     assert self.display == "block"
+    #     if self.box.border_box.collidepoint(pos):
+    #         return self.parent
 
     def compute(self):
         pass
 
-    def layout(self, width: float) -> None:
-        assert self.display == "block"
-        self.box = Box.Box("content-box", width=width)
-        xpos: float = 0
-        ypos: float = 0
-        current_line: list[TextDrawItem] = []
-        items: list[TextDrawItem] = []
+    # def layout(self, width: float) -> None:
+    #     assert self.display == "block"
+    #     self.box = Box.Box("content-box", width=width)
+    #     xpos: float = 0
+    #     ypos: float = 0
+    #     current_line: list[TextDrawItem] = []
+    #     items: list[TextDrawItem] = []
 
-        def line_break(explicit: None | Element = None):
-            nonlocal xpos, ypos  # , current_line, items
-            xpos = 0
-            for item in current_line:
-                item.ypos = ypos
-            items.extend(current_line)
-            line_height = max((item.height for item in current_line), default=0)
-            ypos += line_height or getattr(explicit, "line_height", 0)
-            current_line.clear()
+    #     def line_break(explicit: None | Element = None):
+    #         nonlocal xpos, ypos  # , current_line, items
+    #         xpos = 0
+    #         for item in current_line:
+    #             item.ypos = ypos
+    #         items.extend(current_line)
+    #         line_height = max((item.height for item in current_line), default=0)
+    #         ypos += line_height or getattr(explicit, "line_height", 0)
+    #         current_line.clear()
 
-        def add_item(item: TextDrawItem):
-            nonlocal xpos  # , current_line
-            item_width = item.width
-            if xpos + item_width > width:
-                line_break()
-            item.xpos = xpos
-            item.ypos = ypos
-            current_line.append(item)
-            xpos += item_width
+    #     def add_item(item: TextDrawItem):
+    #         nonlocal xpos  # , current_line
+    #         item_width = item.width
+    #         if xpos + item_width > width:
+    #             line_break()
+    #         item.xpos = xpos
+    #         item.ypos = ypos
+    #         current_line.append(item)
+    #         xpos += item_width
 
-        parser = GeneralParser(self.text.lstrip())
-        while parser.x:
-            if word := parser.consume(word_re):
-                has_whitespace = bool(parser.consume(whitespace_re))
-                add_item(TextDrawItem(word, self.parent, whitespace=has_whitespace))
-        line_break()
-        self.box.height = ypos
-        self.inline_items = items
+    #     parser = GeneralParser(self.text.lstrip())
+    #     while parser.x:
+    #         if word := parser.consume(word_re):
+    #             has_whitespace = bool(parser.consume(whitespace_re))
+    #             add_item(TextDrawItem(word, self.parent, whitespace=has_whitespace))
+    #     line_break()
+    #     self.box.height = ypos
+    #     self.inline_items = items
 
-    def rel_pos(self, pos: Coordinate):
-        if hasattr(self, "box"):
-            self.box.pos += Vector2(pos)
+    # def rel_pos(self, pos: Coordinate):
+    #     if hasattr(self, "box"):
+    #         self.box.pos += Vector2(pos)
 
-    def draw(self, surf: Surface):
-        assert self.display == "block"
-        for item in self.inline_items:
-            item.draw(surf)
+    # def draw(self, surf: Surface):
+    #     assert self.display == "block"
+    #     for item in self.inline_items:
+    #         item.draw(surf)
 
     def to_html(self, indent=0):
         return " " * indent + self.text
@@ -1367,10 +1146,8 @@ class TextElement(Leaf_P):
         return f"<Text: '{self.text}'>"
 
 
-meta_elements = {"head", "title"}
-
 elem_type_map: dict[str, type[Element]] = {
-    **{k: MetaElement for k in meta_elements},
+    **dict.fromkeys(("head", "title"), MetaElement),
     "html": HTMLElement,
     "img": ImageElement,
     "audio": AudioElement,
@@ -1383,3 +1160,6 @@ elem_type_map: dict[str, type[Element]] = {
     "md": MarkdownElement
     # "button": ButtonElement,
 }
+
+
+import positron.element.layout as layout

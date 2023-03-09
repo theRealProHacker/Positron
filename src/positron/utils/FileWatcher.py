@@ -28,7 +28,7 @@ class FileWatcher(FileSystemEventHandler):
         self.files.add(file)
         self.callbacks[file] = callback
         new_dir = os.path.dirname(file)
-        if not new_dir in self.dirs:
+        if new_dir not in self.dirs:
             self.dirs.add(new_dir)
             ob = Observer()
             ob.schedule(self, new_dir)

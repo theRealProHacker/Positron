@@ -1,27 +1,74 @@
-<!-- Use like just decent style tags with both content and a link -->
+<!-- Use decent style tags with both content and a link -->
 <style src="style.css">
+
+    body {
+        width: 70%;
+        margin: auto;
+        font-family: Arial;
+    }
+    p {
+        padding: 10px;
+    }
+    .red {
+        color: red;
+    }
+    .😁 {
+        color: rgb(229, 181, 67);
+    }
+    a {
+        font-weight:bolder;
+    }
+    a:target {
+        color: rgb(102, 255, 0);
+    }
+    a:hover { 
+        color: green;
+        font-size: large; 
+    }
+    button {
+        display: block;
+        width: calc(200px -10%);
+        height: 100px;
+        margin: auto;
+        text-align: justify;
+        background-color: royalblue;
+    }
+    .cursor {
+        cursor: none;
+    }
     input {
-        margin-left: 20px;
+        margin-left: 30px;
+    }
+    input:changed:valid{
+        border-color: rgb(76, 193, 26);
+    }
+    input:changed:invalid{
+        border-color: rgb(122, 44, 2);
+    }
+    * {
+        outline: solid grey thin;
+    }
+    *:active{
+        outline-width: thick;
     }
 </style>
 
 <p>
-    Here I introduce you to the anchor element that takes you to the
-    <a id="link" href="second.jinja?name=Manfred">
-        Second page
-    </a>. Perfect!
+    Here I introduce you to the anchor element that takes you to the 
+    <a id="link" href="second.jinja?name=Manfred">Second page</a>. 
+    Perfect!
 </p>
 <br>
 <p>
-<span class="cursor">Cool Cursor</span>
-<input placeholder="A number" type="number" size="10" name="age">
-<input placeholder="email@gmx.com" type="email" multiple size="20" name="email"> 
-<input placeholder="Password" type="password"> 
-<input type="hidden">
+    <span class="cursor">Cool Cursor</span>
+    <input placeholder="A number" type="number" size="10" name="age">
+    <input placeholder="email@gmx.com" type="email" multiple size="20" name="email"> 
+    <input placeholder="Password" type="password"> 
+    <input type="hidden">
 </p>
 <p>
     <span class="red">This is an inline test.</span> 
     <span class="😁">This span uses emojis 😀😁😂🤣😃😄</span>
     <span>Here comes much more text. That will go over the line hopefully. If not then your monitor is too large. Lorem, ipsum dolor sit amet consectetur adipisicing elit. Ex veritatis at natus voluptates quos neque autem rerum! Voluptate nihil numquam, molestias commodi, libero fuga facilis magni, placeat labore pariatur enim!</span>
-</p>
+</p> 
 <button id="test">Click Me!</button>

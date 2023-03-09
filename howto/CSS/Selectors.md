@@ -15,7 +15,7 @@ id_map = defaultdict(set)
 class Element:
     def __init__(self):
         ...
-        if (id_:=self.attrs.get("id")) is not None:
+        if (id_:=self.attrs.get("id")):
             id_map[id_].add(self)
         ...
 ```

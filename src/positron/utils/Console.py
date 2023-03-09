@@ -1,10 +1,12 @@
 """
 A console application
 
-`Console()` returns a `Task`. When that is run, user input can be taken asynchronously while other code is running.
+`Console()` returns a `Task`. When that is run, user input can be taken asynchronously 
+while other code is running.
 This console acts as an interpreter and evals the expression, printing the result.
 
-However, the console will only work if DEBUG mode is turned on and the dependency `aioconsole` can be imported.
+However, the console will only work if DEBUG mode is turned on 
+and the dependency `aioconsole` can be imported.
 If not `Console()` will just return a `sleep(0)` task.
 """
 import asyncio
@@ -18,7 +20,7 @@ if uses_aioconsole:
     except ImportError:
         uses_aioconsole = False
 
-from positron.J import SingleJ, J
+from positron.J import SingleJ, J as J
 import positron.utils as util
 
 
