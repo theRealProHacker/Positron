@@ -25,7 +25,7 @@ from contextlib import nullcontext
 import positron.config as config
 import positron.utils as util
 from .config import g
-from positron.Element import Element
+from positron.Element import Element, TextElement
 from .Selector import Selector, parse_selector
 from .Style import CompValue, parse_important, process_input
 from .utils.func import set_context
@@ -36,8 +36,12 @@ def find_in(elem: Element, selector: Selector) -> Element | None:
     """Breadth first search in element"""
     if selector(elem):
         return elem
-    for c in elem.real_children:
-        if (found := find_in(c, selector)) is not None:
+    for c in elem.children:
+        assert c is not None, elem
+        if (
+            not isinstance(c, TextElement)
+            and (found := find_in(c, selector)) is not None
+        ):
             return found
     return None
 
@@ -53,7 +57,10 @@ class SingleJ:
 
     def __init__(self, query: str | Element):
         if isinstance(query, str):
-            if (_elem := find_in(g["root"], parse_selector(query))) is None:
+            root: Element = g["root"]
+            if not isinstance(root, Element):
+                raise RuntimeError("SingleJ called before dom was loaded")
+            if (_elem := find_in(root, parse_selector(query))) is None:
                 raise RuntimeError(f"Couldn't find an Element that matches '{query}'")
             self._elem = _elem
         elif isinstance(query, Element):
@@ -73,6 +80,7 @@ class SingleJ:
                 if event.related_target is not None
                 else nullcontext()
             )
+            # TODO: this doesn't work correctly with an async callback
             with set_context(event, "target", self), related_target_cm:
                 util.call(callback, event)
 

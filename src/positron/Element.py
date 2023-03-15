@@ -11,13 +11,8 @@ import os
 import re
 from contextlib import suppress
 from itertools import chain
-from typing import Iterable
+from typing import Iterable, Sequence
 
-uses_markdown = True
-try:
-    import mistune
-except ImportError:
-    uses_markdown = False
 
 import pygame as pg
 
@@ -26,6 +21,7 @@ import positron.config as config
 import positron.Media as Media
 import positron.Style as Style
 import positron.utils as util
+import positron.utils.markdown as md
 import positron.utils.Navigator as Navigator
 import positron.utils.rounded as rounded_box
 from positron.events.InputType import EditingContext
@@ -40,8 +36,8 @@ from .events.InputType import *
 from .Style import (SourceSheet, bs_getter, bw_keys, calculator, has_prio,
                     is_custom, pack_longhands, parse_file, parse_sheet)
 from .types import (Auto, AutoType, Color, Coordinate, Cursor, DisplayType,
-                    Element_P, Leaf_P, Length, Number, Percentage, Rect,
-                    Surface, frozendict)
+                    Drawable, Element_P, Leaf_P, Length, Number, Percentage,
+                    Rect, Surface, frozendict)
 from .utils import log_error, make_default
 from .utils.fonts import Font
 
@@ -470,9 +466,9 @@ class HTMLElement(Element):
 
     tag = "html"
 
-    @classmethod
-    def from_string(cls, html: str):
-        return cls.from_parsed(parse_html(html))
+    @staticmethod
+    def from_string(html: str):
+        return HTMLElement.from_parsed(parse_html(html))
 
     def get_height(self) -> float:
         return self.box.height
@@ -548,7 +544,7 @@ class MarkdownElement(Element):
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
     ):
         super().__init__(tag, attrs, children)
-        if (src := attrs.get("src")) is not None and uses_markdown:
+        if (src := attrs.get("src")) is not None and md.enabled:
             self.src = src
             if os.path.isfile(src):
                 config.file_watcher.add_file(src, self.reload_src)
@@ -560,7 +556,7 @@ class MarkdownElement(Element):
         """
         with suppress(Exception):
             markdown = future.result()
-            html = mistune.html(markdown)
+            html = md.to_html(markdown)
             html_element = HTMLElement.from_string(html)
             self.children = html_element.children[1].children
             for c in self.children:
@@ -728,11 +724,6 @@ class ReplacedElement(Element):
         yield self
 
 
-class ButtonElement(ReplacedElement):
-    tag = "button"
-    pass
-
-
 class ImageElement(ReplacedElement):
     # attrs: src, loading, decoding, width, height
     size: None | tuple[int, int]
@@ -859,7 +850,7 @@ class InputElement(ReplacedElement):
     # fmt: off
     type = EnumeratedAttribute("type", range = {
         "text", "tel", "password", "number", "email", "url", "search",
-        "checkbox", "radio",
+        "checkbox", "radio", "slider",
         "file", "color", "hidden"
     }, default="text")
     # fmt: on
@@ -1054,6 +1045,54 @@ class InputElement(ReplacedElement):
             self.value += event.delta[1]
 
 
+class MeterElement(ReplacedElement):
+    """
+    <meter>
+    Attributes:
+    - value
+    - min/max
+    - low/high/optimum (ignored currently)
+    """
+
+    value = NumberAttribute("value")
+    _min = NumberAttribute("min", 0)
+    _max = NumberAttribute("max", 1)
+    low = NumberAttribute("low", float("-inf"))
+    high = NumberAttribute("high", float("inf"))
+
+    def draw(self, surf: Surface):
+        if self.display == "none":
+            return
+
+        style = dict(self.cstyle)
+        box = self.box
+        border_rect = box.border_box
+        radii = rounded_box.radii_frm_(border_rect, style)
+        # background
+        bg_img: Sequence[Drawable] = style["background-image"]
+        bg_color: Color = style["background-color"]
+        bg_size = border_rect.size
+        bg_surf = Surface(bg_size, pg.SRCALPHA)
+        bg_surf.fill(bg_color)
+        for drawable in bg_img:
+            drawable.draw(bg_surf, (0, 0))
+        # meter bar
+        value = self.value - self._min
+        full_bar = self._max - self._min
+        if value and full_bar:
+            color = Color("green")
+            rect = Rect(border_rect)
+            rect.topleft = (0,0)
+            rect.width *= value / full_bar
+            util.draw_rect(bg_surf, color, rect)
+        rounded_box.round_surf(bg_surf, bg_size, radii)
+        surf.blit(bg_surf, border_rect.topleft)
+        # border
+        rounded_box.draw_rounded_border(surf, border_rect, Style.bc_getter(style), box.border, radii)
+        # draw the outline
+        rounded_box.draw_outline(surf, self.box, style)
+
+
 class BrElement(ReplacedElement):
     """
     <br>: a line break
@@ -1155,10 +1194,10 @@ elem_type_map: dict[str, type[Element]] = {
     "link": LinkElement,
     "style": StyleElement,
     "!comment": CommentElement,
+    "meter": MeterElement,
     "a": AnchorElement,
     "input": InputElement,
-    "md": MarkdownElement
-    # "button": ButtonElement,
+    "md": MarkdownElement,
 }
 
 

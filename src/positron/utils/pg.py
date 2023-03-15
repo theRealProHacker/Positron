@@ -26,9 +26,8 @@ def draw_rect(surf: Surface, color: ColorValue, rect: Rect, **kwargs):
 
 def get_rect(rect: Rect, color: ColorValue, **kwargs):
     color = Color(color)
-    drawn_rect = Surface(rect.size, flags=pg.HWSURFACE)
-    drawn_rect.fill("transparent")
-    pg.draw.rect(drawn_rect, color, rect, **kwargs)
+    drawn_rect = Surface(rect.size)
+    drawn_rect.fill(color)
     if color.a != 255:
         drawn_rect.set_alpha(color.a)
     return drawn_rect
