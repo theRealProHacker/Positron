@@ -186,7 +186,6 @@ class EventManager:
         self.modals.clear()
         self.last_click = (0, (-1, -1))
         self.click_count = 0
-        self.cursor = Cursor()
         self.drag = None
         self.focus = None
         self.active = None
