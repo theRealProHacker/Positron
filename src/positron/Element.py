@@ -1082,13 +1082,15 @@ class MeterElement(ReplacedElement):
         if value and full_bar:
             color = Color("green")
             rect = Rect(border_rect)
-            rect.topleft = (0,0)
-            rect.width *= value / full_bar
+            rect.topleft = (0, 0)
+            rect.width = int(rect.width * value / full_bar)
             util.draw_rect(bg_surf, color, rect)
         rounded_box.round_surf(bg_surf, bg_size, radii)
         surf.blit(bg_surf, border_rect.topleft)
         # border
-        rounded_box.draw_rounded_border(surf, border_rect, Style.bc_getter(style), box.border, radii)
+        rounded_box.draw_rounded_border(
+            surf, border_rect, Style.bc_getter(style), box.border, radii
+        )
         # draw the outline
         rounded_box.draw_outline(surf, self.box, style)
 

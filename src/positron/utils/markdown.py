@@ -5,5 +5,5 @@ except ImportError:
     enabled = False
 
 
-def to_html(markdown: str)->str:
+def to_html(markdown: str) -> str:
     return mistune.html(markdown)

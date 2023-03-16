@@ -243,7 +243,7 @@ class InlineLayout(RealLayout):
 
     def draw(self, surf: Surface):
         super().draw(surf)
-        ... # TODO: draw outlines
+        ...  # TODO: draw outlines
 
     def collide(self, pos):
         for item in self.items:
@@ -254,9 +254,11 @@ class InlineLayout(RealLayout):
 
 Child = Element | TextElement
 
+
 def margin_collapsing(last: float, current: float):
     # XXX: There is no float, clear and no negative margins
     return min(last, current)
+
 
 @dataclass(init=False)
 class BlockLayout(RealLayout):
@@ -291,27 +293,26 @@ class BlockLayout(RealLayout):
             self.items,
             lambda x: x.position in ("static", "relative", "sticky"),
         )
-        y_cursor = 0
-        last_margin = 0
+        y_cursor: float = 0
+        last_margin: float = 0
         if flow:
             # margin-collapsing with margin-top of first child
-            if not box.padding[0] and not box.border[0]:
+            if not box.padding[Box.top] and not box.border[Box.top]:
                 last_margin = box.margin[0]
             for child in flow:
                 child.layout(inner.width)
                 current_margin = child.box.margin
                 # margin collapsing for empty boxes
                 if child.box.border_box.height == 0:
-                    y_cursor -= margin_collapsing(*current_margin[Box._vertical])
-                y_cursor -= margin_collapsing(last_margin, current_margin[0])
-                last_margin = current_margin[2]
+                    y_cursor -= margin_collapsing(*current_margin[Box._vertical])  # type: ignore
+                y_cursor -= margin_collapsing(last_margin, current_margin[Box.top])
+                last_margin = current_margin[Box.bottom]
                 child.box.set_pos((0, y_cursor))
                 y_cursor += child.box.outer_box.height
         if box.height == -1:
             # margin-collapsing with margin-bottom of last child
-            bottom = 2
-            if not box.padding[bottom] and not box.border[bottom]:
-                y_cursor -= margin_collapsing(last_margin, box.margin[bottom])
+            if not box.padding[Box.bottom] and not box.border[Box.bottom]:
+                y_cursor -= margin_collapsing(last_margin, box.margin[Box.bottom])
             box.set_height(y_cursor, "content")
         for child in no_flow:
             child.layout(inner.width)
