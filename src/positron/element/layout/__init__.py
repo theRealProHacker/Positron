@@ -314,6 +314,7 @@ class BlockLayout(RealLayout):
             if not box.padding[Box.bottom] and not box.border[Box.bottom]:
                 y_cursor -= margin_collapsing(last_margin, box.margin[Box.bottom])
             box.set_height(y_cursor, "content")
+        self.height = y_cursor
         for child in no_flow:
             child.layout(inner.width)
             # calculate position
