@@ -110,6 +110,8 @@ supported_events: dict[str, EventData] = {
         EventData(bubbles=True, attrs=("pos", "mods", "buttons")),
     ),
     "wheel": EventData(bubbles=True, attrs=("pos", "mods", "buttons", "delta")),
+    "scroll": EventData(attrs=("delta",)),
+    "scrollend": EventData(),
     **dict.fromkeys(
         ("focus", "blur"),
         EventData(attrs=("related_target",)),
@@ -434,7 +436,18 @@ class EventManager:
                     buttons=self.buttons,
                     delta=(event.x, event.y),
                 )
-                # TODO: emit the scroll event on the first scrollable element
+                if isinstance(hov_elem, Element):
+                    scroll_element = hov_elem or g["root"]
+                    for scroll_elem in (scroll_element, *scroll_element.iter_anc()):
+                        if scroll_elem.overflow:
+                            delta = event.y * (
+                                config.alt_scroll_factor
+                                if self.mods & pg.KMOD_ALT else                                
+                                config.scroll_factor
+                            )
+                            if not self.release_event("scroll", target=scroll_elem, delta=delta).cancelled:
+                                self.release_event("scrollend") # TODO: Add real scroll delta
+                            break
             ############################    Keyboard Events    ########################
             elif event.type in (pg.KEYDOWN, pg.TEXTINPUT):
                 if event.type == pg.KEYDOWN:

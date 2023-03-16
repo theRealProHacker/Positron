@@ -69,6 +69,11 @@ class Element(Element_P):
     contextmenu: tuple[MenuItem, ...] = ()
     scrolly = 0
     overflow = False
+
+    @property
+    def max_scroll(self):
+        return self.layout_type.height - self.get_height()
+
     # Style
     istyle: Style.Style = frozendict()  # inline style
     estyle: Style.Style = frozendict()  # external style
@@ -305,7 +310,8 @@ class Element(Element_P):
         )
         self.box, _ = Box.make_box(width, self.cstyle, *parent_size)
         self.layout_inner()
-        self.overflow = self.layout_type.height > self.box.content_box.height
+        self.overflow = self.max_scroll > 0
+        self.scrolly = util.in_bounds(self.scrolly, 0, self.max_scroll)
 
     def layout_inner(self):
         children = self.display_children
@@ -325,6 +331,7 @@ class Element(Element_P):
         Makes the previously relative position to the parent absolute to the screen
         """
         self.box.pos += pos
+        self.box.y -= self.scrolly
         self.layout_type.rel_pos(self.box.content_box.topleft)
 
     def draw(self, surf: Surface):
@@ -357,12 +364,10 @@ class Element(Element_P):
             return self
         return None
 
-    # def delete(self):
-    #     self.deleted = True
-    #     self.parent = None
-    #     for c in self.children:
-    #         c.delete()
-    #     self.children.clear()
+    ############################# Default Event Handlers ################################################################
+
+    def on_scroll(self, event):
+        self.scrolly = util.in_bounds(self.scrolly + event.delta, 0, self.max_scroll)
 
     ###############################  API for Elements  ##################################################################
     @property
@@ -481,6 +486,10 @@ class HTMLElement(Element):
         # all children correct their display
         assert self.is_block()
         self.layout_inner()
+        max_scroll = self.layout_type.height - self.box.content_box.height
+        self.overflow = max_scroll > 0
+        if self.overflow:
+            self.scrolly = min(self.scrolly, max_scroll)
         # all children correct their position
         self.rel_pos((0, 0))
 
@@ -954,6 +963,9 @@ class InputElement(ReplacedElement):
             )[0]
             self.box.set_width(int(_size) * avrg_letter_width, "content-box")
         set_height(self.line_height)
+        if self.type == "number":
+            # XXX: catch any scrolls
+            self.overflow = True 
 
     def draw_content(self, surf: Surface):
         if self.type in input_type_check_res:

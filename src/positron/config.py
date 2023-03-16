@@ -239,3 +239,6 @@ generic_font_families = {
     ],
     "math": ["Cambria Math"],
 }
+
+scroll_factor = -10
+alt_scroll_factor = -100

@@ -24,6 +24,7 @@ def in_bounds(x: float, lower: float, upper: float) -> float:
     """
     Make `x` be between lower and upper
     """
+    upper = max(lower, upper)
     x = max(lower, x)
     x = min(upper, x)
     return x
