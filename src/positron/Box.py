@@ -28,7 +28,9 @@ def box_sizing(name: str):
 
 
 _horizontal = slice(1, None, 2)  # [1::2] # right, left
+""" right and left """
 _vertical = slice(None, None, 2)  # [::2] # top, bottom
+""" top and bottom """
 part_slices: Mapping[str, Index] = {
     **{k: v for v, k in enumerate(directions)},
     **{"horizontal": _horizontal, "vertical": _vertical},

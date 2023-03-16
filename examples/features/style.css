@@ -3,6 +3,9 @@ body {
     margin: auto;
     font-family: Arial;
 }
+div {
+    margin: 20px;
+}
 p {
     padding: 10px;
 }
