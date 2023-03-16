@@ -241,6 +241,10 @@ class InlineLayout(RealLayout):
             box.set_height(y, "content")
         return self
 
+    def draw(self, surf: Surface):
+        super().draw(surf)
+        ...  # TODO: draw outlines
+
     def collide(self, pos):
         for item in self.items:
             if item.abs_rect.collidepoint(pos):
@@ -249,6 +253,11 @@ class InlineLayout(RealLayout):
 
 
 Child = Element | TextElement
+
+
+def margin_collapsing(last: float, current: float):
+    # XXX: There is no float, clear and no negative margins
+    return min(last, current)
 
 
 @dataclass(init=False)
@@ -274,33 +283,36 @@ class BlockLayout(RealLayout):
                 assert not isinstance(child, TextElement)
                 items.append(child)
 
-        self.items = [*items]
+        self.items = [item for item in items if item]
 
     def layout(self, width: float):
-        inner: Rect = self.elem.box.content_box
+        box = self.elem.box
+        inner: Rect = box.content_box
         # https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Box_Model/Mastering_margin_collapsing
         flow, no_flow = group_by_bool(
             self.items,
             lambda x: x.position in ("static", "relative", "sticky"),
         )
-        y_cursor = 0
-        for child in flow:
-            child.layout(inner.width)
-            # top, bottom, right, left = calc_inset(
-            #     inset_getter(c.cstyle), self.box.width, self.box.height
-            # )
-            # TODO: margin collapsing
-            child.box.set_pos(
-                # (
-                #     (x_pos, y_cursor)
-                #     if child.position == "sticky"
-                #     else (bottom - top + x_pos, right - left + y_cursor)
-                # )
-                (0, y_cursor)
-            )
-            y_cursor += child.box.outer_box.height
-        box = self.elem.box
+        y_cursor: float = 0
+        last_margin: float = 0
+        if flow:
+            # margin-collapsing with margin-top of first child
+            if not box.padding[Box.top] and not box.border[Box.top]:
+                last_margin = box.margin[0]
+            for child in flow:
+                child.layout(inner.width)
+                current_margin = child.box.margin
+                # margin collapsing for empty boxes
+                if child.box.border_box.height == 0:
+                    y_cursor -= margin_collapsing(*current_margin[Box._vertical])  # type: ignore
+                y_cursor -= margin_collapsing(last_margin, current_margin[Box.top])
+                last_margin = current_margin[Box.bottom]
+                child.box.set_pos((0, y_cursor))
+                y_cursor += child.box.outer_box.height
         if box.height == -1:
+            # margin-collapsing with margin-bottom of last child
+            if not box.padding[Box.bottom] and not box.border[Box.bottom]:
+                y_cursor -= margin_collapsing(last_margin, box.margin[Box.bottom])
             box.set_height(y_cursor, "content")
         for child in no_flow:
             child.layout(inner.width)
@@ -352,13 +364,13 @@ class VirtualBlock:
 
     def __init__(self, parent: Element, elems: list[Element | TextElement]):
         self.elem = parent
-        self.items: list[Element | TextElement] = []
+        items: list[Element | TextElement] = []
         for item in elems:
             if isinstance(item, Element):
-                self.items.extend(item.iter_inline())
+                items.extend(item.iter_inline())
             else:
-                self.items.append(item)
-        assert self.items
+                items.append(item)
+        self.items = [item for item in items if item.text.strip()]
 
     def layout(self, width: float):
         self.box = Box.Box(
@@ -380,7 +392,10 @@ class VirtualBlock:
     def collide(self, pos: Coordinate):
         return self.inline_layout.collide(pos)
 
-    def __getattr__(self, name):
-        if name in ("cstyle"):
+    def __getattr__(self, name: str):
+        if name in ("cstyle",):
             return getattr(self.elem, name)
         return NotImplemented
+
+    def __bool__(self):
+        return bool(self.items)

@@ -68,8 +68,14 @@ def _reset_config():
     )
 
 
-@overload  # type: ignore
+@overload
+def set_mode():
+    ...
+
+
+@overload
 def set_mode(
+    *,
     width: int | None = None,
     height: int | None = None,
     bg_color: ColorValue | None = None,

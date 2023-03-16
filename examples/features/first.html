@@ -1,70 +1,28 @@
 <!-- Use decent style tags with both content and a link -->
 <style src="style.css">
 
-    body {
-        width: 70%;
-        margin: auto;
-        font-family: Arial;
-    }
-    p {
-        padding: 10px;
-    }
-    .red {
-        color: red;
-    }
-    .😁 {
-        color: rgb(229, 181, 67);
-    }
-    a {
-        font-weight:bolder;
-    }
-    a:target {
-        color: rgb(102, 255, 0);
-    }
-    a:hover { 
-        color: green;
-        font-size: large; 
-    }
-    button {
-        display: block;
-        width: calc(200px -10%);
-        height: 100px;
-        margin: auto;
-        text-align: justify;
-        background-color: royalblue;
-    }
-    .cursor {
-        cursor: none;
-    }
-    input {
-        margin-left: 30px;
-    }
-    input:changed:valid{
-        border-color: rgb(76, 193, 26);
-    }
-    input:changed:invalid{
-        border-color: rgb(122, 44, 2);
-    }
-    * {
-        outline: solid grey thin;
-    }
-    *:active{
-        outline-width: thick;
-    }
 </style>
 
-<p>
-    Here I introduce you to the anchor element that takes you to the 
-    <a id="link" href="second.jinja?name=Manfred">Second page</a>. 
-    Perfect!
-</p>
+<div>
+    <p>
+        Here I introduce you to the anchor element that takes you to the 
+        <a id="link" href="second.jinja?name=Manfred">Second page</a>. 
+        Perfect!
+    </p>
+    <p>
+        Here is another paragraph to test margin collapsing
+    </p>
+    <p>
+        <!-- And here, this should not be visible-->
+    </p>
+</div>
 <br>
 <p>
     <span class="cursor">Cool Cursor</span>
     <input placeholder="A number" type="number" size="10" name="age">
-    <input placeholder="email@gmx.com" type="email" multiple size="20" name="email"> 
     <input placeholder="Password" type="password"> 
     <input type="hidden">
+    <meter value=20 max="100">
 </p>
 <p>
     <span class="red">This is an inline test.</span> 

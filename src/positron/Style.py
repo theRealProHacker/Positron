@@ -1210,6 +1210,12 @@ element_styles: dict[str, dict[str, str]] = defaultdict(
                 "outline-offset": "1px",
                 "padding": "3px",
             },
+            "meter": {
+                "width": "4em",
+                "height": "1em",
+                "border": "solid medium grey",
+                "border-radius": "5px",
+            },
             "strong": {"font-weight": "bold"},
         },
         lambda v: process_input(v.items()),

@@ -181,6 +181,8 @@ class File:
     async def aopen(self, mode: OpenMode, *args, **kwargs):
         if self.encoding:
             kwargs.setdefault("encoding", self.encoding)
+        if "b" in mode and "encoding" in kwargs:
+            del kwargs["encoding"]
         with await asyncio.to_thread(open, self.name, mode, *args, **kwargs) as f:  # type: ignore
             yield f
 
@@ -393,7 +395,7 @@ async def download(url: str) -> str:
             new_file = create_file(os.path.basename(urlparse(url).path))
             async with File(new_file).aopen("wb") as f:
                 async for chunk in resp.content.iter_any():
-                    await f.write(chunk)
+                    f.write(chunk)
         return new_file
     elif url.startswith("data"):
         logging.warning(

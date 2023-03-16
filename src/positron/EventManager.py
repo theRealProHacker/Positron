@@ -186,7 +186,6 @@ class EventManager:
         self.modals.clear()
         self.last_click = (0, (-1, -1))
         self.click_count = 0
-        self.cursor = Cursor()
         self.drag = None
         self.focus = None
         self.active = None
@@ -202,7 +201,7 @@ class EventManager:
             setattr(self, name, value)
             return True
         # for fun: use that setattr always returns None
-        # return False if getattr(self, name) == value else return setattr(self, name, value) or True
+        # return getattr(self, name) != value and (setattr(self, name, value) or True)
 
     def release(self, event: _Event):
         # Modal
@@ -260,6 +259,7 @@ class EventManager:
         self.callbacks[event.type][event.current_target] = callbacks
         for callback, _ in callbacks:
             try:
+                # print(f"Called {callback=} on {event.target=}")
                 autils.call(callback, event)
             except Exception as e:
                 autils.log_error(f"Exception in callback: {e}")
@@ -589,7 +589,7 @@ class EventManager:
                                 break
                     # Unreal selections become None
                     elem.editing_ctx.add_entry((input_type.after, pos, None))
-                self.release_event("input")
+                self.release_event("input", elem)
             elif event.type == pg.KEYUP:
                 self.release_event(
                     "keyup",

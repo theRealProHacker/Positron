@@ -178,7 +178,9 @@ def load_dom_frm_str(html: str, *args, **kwargs):
     """
     Loads the dom from the given html or jinja markup
     """
-    html = config.jinja_env.from_string(html).render(*args, **kwargs)
+    env = config.jinja_env
+    with util.set_context(env, "is_async", False):
+        html = env.from_string(html).render(*args, **kwargs)
     g["root"] = Element.HTMLElement.from_string(html)
 
 
@@ -186,7 +188,7 @@ async def aload_dom_frm_str(html: str, *args, **kwargs):
     """
     Loads the dom from the given html or jinja markup asynchronously
     """
-    html = config.jinja_env.from_string(html).render(*args, **kwargs)
+    html = await config.jinja_env.from_string(html).render_async(*args, **kwargs)
     g["root"] = Element.HTMLElement.from_string(html)
 
 
@@ -194,7 +196,9 @@ def load_dom(file: str, *args, **kwargs):
     """
     Loads the dom from a file
     """
-    html = config.jinja_env.from_string(util.File(file).read()).render(*args, **kwargs)
+    env = config.jinja_env
+    with util.set_context(env, "is_async", False):
+        html = env.from_string(util.File(file).read()).render(*args, **kwargs)
     g["root"] = Element.HTMLElement.from_string(html)
     config.file_watcher.add_file(file, reload)
 
