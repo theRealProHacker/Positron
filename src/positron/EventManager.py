@@ -395,7 +395,7 @@ class EventManager:
                         ).cancelled
                     ):
                         menus: dict[str, Sequence[MenuItem]] = {}
-                        for anc in [hov_elem, *hov_elem.iter_anc()]:
+                        for anc in (hov_elem, *hov_elem.iter_anc()):
                             if cm := anc.contextmenu:
                                 menus.setdefault(anc.tag, cm)
                         default_ctx_menu = [

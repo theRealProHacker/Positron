@@ -5,6 +5,8 @@ Includes parsing (text->Selector) and matching
 
 from __future__ import annotations
 from abc import abstractmethod
+from itertools import starmap
+import operator
 
 import re
 from dataclasses import dataclass
@@ -297,16 +299,16 @@ sngl_p = re.compile(
 rel_p = re.compile(r"\s*([>+~ ])\s*$")  # pretty simple
 
 attr_sel_data = [
-    ("", lambda soll, _is: soll == _is),
+    ("", operator.eq),
     ("~", lambda soll, _is: soll in _is.split()),
     ("|", lambda soll, _is: soll == _is or _is.startswith(soll + "-")),
     ("^", lambda soll, _is: _is.startswith(soll)),
     ("$", lambda soll, _is: _is.endswith(soll)),
-    ("*", lambda soll, _is: soll in _is),
+    ("*", operator.contains),
 ]
 attr_patterns: list[tuple[re.Pattern, type[Selector]]] = [
     (re.compile(r"\[(\w+)\]"), HasAttrSelector),
-    *(make_attr_selector(sign, validator) for sign, validator in attr_sel_data),
+    *starmap(make_attr_selector, attr_sel_data),
 ]
 
 

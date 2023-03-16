@@ -747,7 +747,7 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
     "text-align": StyleAttr("left", {"left", "right", "center", "justify"}),
     "display": StyleAttr("inline", {"inline", "block", "none"}),
     "background-color": StyleAttr("transparent", acc=color),
-    "background-image": StyleAttr("none", {"none": tuple()}, background_image),
+    "background-image": StyleAttr("none", {"none": ()}, background_image),
     "width": AALP,  # TODO: max-content, min-content, fit-content
     "height": AALP,
     "position": StyleAttr(

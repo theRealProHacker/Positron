@@ -73,3 +73,13 @@ ignore = [
     "E741", # ambiguous var name, whatever that means?
     "E501", # black already takes care of this
 ]
+
+[tool.refurb]
+
+
+ignore = [
+    123, # .copy() instead of dict()
+    126, # return in else
+    131, # see: https://github.com/dosisod/refurb/issues/234
+    141, # Path 
+]

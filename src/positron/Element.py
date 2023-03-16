@@ -67,6 +67,8 @@ class Element(Element_P):
     class_list = ClassListAttribute()
     data = DataAttribute()
     contextmenu: tuple[MenuItem, ...] = ()
+    scrolly = 0
+    overflow = False
     # Style
     istyle: Style.Style = frozendict()  # inline style
     estyle: Style.Style = frozendict()  # external style
@@ -303,6 +305,7 @@ class Element(Element_P):
         )
         self.box, _ = Box.make_box(width, self.cstyle, *parent_size)
         self.layout_inner()
+        self.overflow = self.layout_type.height > self.box.content_box.height
 
     def layout_inner(self):
         children = self.display_children
@@ -900,10 +903,10 @@ class InputElement(ReplacedElement):
                 return False
         if type_ == "number":
             value = value or "0"
-            for constraint, op in [
+            for constraint, op in (
                 ("max", operator.gt),
                 ("min", operator.lt),
-            ]:
+            ):
                 if constr := self.attrs.get(constraint):
                     with suppress(ValueError):
                         if op(float(value), float(constr)):

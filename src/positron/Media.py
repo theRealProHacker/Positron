@@ -96,7 +96,7 @@ class Image:
                 logging.debug(f"Cancelled loading image: {url!r}")
                 break
             except Exception as e:
-                util.log_error_once(f"Couldn't load image: {url!r}. Reason: {str(e)}")
+                util.log_error_once(f"Couldn't load image: {url!r}. Reason: {e}")
 
     def init_load(self):
         """

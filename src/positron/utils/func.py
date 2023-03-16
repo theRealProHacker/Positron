@@ -186,7 +186,6 @@ def tup_replace(
     elif isinstance(slice_, tuple):
         start, stop = slice_
         return *t[:start], elem, *t[stop:]
-    return
 
 
 def nice_number(num: complex) -> str:

@@ -255,8 +255,7 @@ class EditingContext(_History[tuple[str, int, Selection]]):
                 return (end, start)
             case (start, end) if start < end:
                 return selection
-            case _:
-                return None
+        return None
 
     def peek_back(self):
         value = self.value
