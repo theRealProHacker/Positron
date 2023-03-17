@@ -442,11 +442,15 @@ class EventManager:
                         if scroll_elem.overflow:
                             delta = event.y * (
                                 config.alt_scroll_factor
-                                if self.mods & pg.KMOD_ALT else                                
-                                config.scroll_factor
+                                if self.mods & pg.KMOD_ALT
+                                else config.scroll_factor
                             )
-                            if not self.release_event("scroll", target=scroll_elem, delta=delta).cancelled:
-                                self.release_event("scrollend") # TODO: Add real scroll delta
+                            if not self.release_event(
+                                "scroll", target=scroll_elem, delta=delta
+                            ).cancelled:
+                                self.release_event(
+                                    "scrollend"
+                                )  # TODO: Add real scroll delta
                             break
             ############################    Keyboard Events    ########################
             elif event.type in (pg.KEYDOWN, pg.TEXTINPUT):

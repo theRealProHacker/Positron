@@ -37,7 +37,7 @@ from .Style import (SourceSheet, bs_getter, bw_keys, calculator, has_prio,
                     is_custom, pack_longhands, parse_file, parse_sheet)
 from .types import (Auto, AutoType, Color, Coordinate, Cursor, DisplayType,
                     Drawable, Element_P, Leaf_P, Length, Number, Percentage,
-                    Rect, Surface, frozendict)
+                    Rect, Surface, Vector2, frozendict)
 from .utils import log_error, make_default
 from .utils.fonts import Font
 
@@ -331,8 +331,8 @@ class Element(Element_P):
         Makes the previously relative position to the parent absolute to the screen
         """
         self.box.pos += pos
-        self.box.y -= self.scrolly
-        self.layout_type.rel_pos(self.box.content_box.topleft)
+        content_pos = Vector2(self.box.content_box.topleft) - (0, self.scrolly)
+        self.layout_type.rel_pos(content_pos)
 
     def draw(self, surf: Surface):
         """
@@ -486,10 +486,8 @@ class HTMLElement(Element):
         # all children correct their display
         assert self.is_block()
         self.layout_inner()
-        max_scroll = self.layout_type.height - self.box.content_box.height
-        self.overflow = max_scroll > 0
-        if self.overflow:
-            self.scrolly = min(self.scrolly, max_scroll)
+        self.overflow = self.max_scroll > 0
+        self.scrolly = util.in_bounds(self.scrolly, 0, self.max_scroll)
         # all children correct their position
         self.rel_pos((0, 0))
 
@@ -965,7 +963,7 @@ class InputElement(ReplacedElement):
         set_height(self.line_height)
         if self.type == "number":
             # XXX: catch any scrolls
-            self.overflow = True 
+            self.overflow = True
 
     def draw_content(self, surf: Surface):
         if self.type in input_type_check_res:
