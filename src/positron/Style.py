@@ -726,7 +726,26 @@ BorderStyleAttr: StyleAttr[str] = StyleAttr(
 )
 BorderColorAttr: StyleAttr[Color] = StyleAttr("currentcolor", acc=color)
 BorderRadiusAttr: StyleAttr[LengthPerc] = StyleAttr("0", acc=border_radius)
-
+OverflowAttr: StyleAttr[CompStr] = StyleAttr(
+    "auto",
+    {
+        # we only implement overlay scroll bars and only when there actually is an overflow
+        "auto": "scroll",
+        **{
+            k: k
+            for k in (
+                # clip: clipping, no scroll container
+                # visible: no clipping
+                # hidden: just like scroll but user can't scroll
+                "scroll",
+                "clip",
+                "visible",
+                "hidden",
+            )
+        },
+    },
+)
+overflow_keys = ("overflow-x", "overflow-y")
 
 prio_keys = {"color", "font-size"}  # currentcolor and 1em for example
 
@@ -764,6 +783,7 @@ style_attrs: dict[str, StyleAttr[CompValue]] = {
     "outline-color": BorderColorAttr,
     "outline-offset": StyleAttr("0", acc=length),
     "cursor": StyleAttr("auto", auto | cursors),
+    **dict.fromkeys(overflow_keys, OverflowAttr),
 }
 
 abs_default_style: dict[str, str] = {
@@ -1056,6 +1076,12 @@ def process_property(key: str, value: str) -> list[tuple[str, str]] | CompValue 
                 ),
             )
         )
+    elif key == "overflow":
+        max_len = 2
+        split = value.split()
+        split_len = len(split)
+        assert split_len <= max_len, f"Too many values: {split_len}, max {max_len}"
+        return zip(overflow_keys, split * (max_len // split_len))
     elif (keys := dir_shorthands.get(key)) is not None:
         return list(zip(keys, process_dir(arr)))
     elif (shorthand := smart_shorthands.get(key)) is not None:
