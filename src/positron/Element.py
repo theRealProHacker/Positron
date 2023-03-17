@@ -617,14 +617,14 @@ class StyleElement(MetaElement):
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
     ):
         super().__init__(tag, attrs, children)
+        if self.text.strip():
+            self.inline_sheet = parse_sheet(self.text)
+            add_sheet(self.inline_sheet)
         if (src := attrs.get("src")) is not None:
             self.src = src
             if os.path.isfile(src):
                 config.file_watcher.add_file(src, self.reload_src)
             util.create_task(parse_file(src), True, self.parse_callback)
-        if self.text.strip():
-            self.inline_sheet = parse_sheet(self.text)
-            add_sheet(self.inline_sheet)
 
     def parse_callback(self, future: asyncio.Future[SourceSheet]):
         with suppress(Exception):
