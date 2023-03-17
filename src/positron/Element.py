@@ -350,7 +350,10 @@ class Element(Element_P):
         rounded_box.draw_outline(surf, self.box, style)
 
     def draw_content(self, surf: Surface):
+        clip = surf.get_clip()
+        surf.set_clip(self.box.content_box)
         self.layout_type.draw(surf)
+        surf.set_clip(clip)
 
     # Events
     def collide(self, pos: Coordinate) -> Element | None:
@@ -367,7 +370,7 @@ class Element(Element_P):
     ############################# Default Event Handlers ################################################################
 
     def on_scroll(self, event):
-        self.scrolly = util.in_bounds(self.scrolly + event.delta, 0, self.max_scroll)
+        self.scrolly += event.delta
 
     ###############################  API for Elements  ##################################################################
     @property

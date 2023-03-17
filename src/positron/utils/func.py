@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from copy import copy
+import itertools
 from typing import Callable, Iterable, Sequence, TypeVar
 
 from positron.types import CO_T, K_T, V_T, Index
@@ -161,15 +162,23 @@ def copy_with(obj, **kwargs):
         setattr(obj, k, v)
 
 
+def take_while(l: list[V_T], cond: Callable[[V_T], bool]):
+    """
+    Removes elements from the list while a certain 
+    """
+    return itertools.takewhile(l, cond), itertools.dropwhile(l, cond)
+
+
 # tuple mutations
 def mutate_tuple(tup: tuple, val, slicing: Index) -> tuple:
     """
     Mutate a tuple given the tuple, a slicing and the value to fill into that slicing
     Example:
-        ```python
-        t = (1,2)
-        mutate_tuple(t, 3, 0) == (3,2)
-        ```
+
+    ```python
+    t = (1,2)
+    mutate_tuple(t, 3, 0) == (3,2)
+    ```
     """
     l = list(tup)
     l[slicing] = val
