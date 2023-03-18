@@ -194,7 +194,7 @@ class Audio:
             # TODO: use fallbacks
 
     def init_load(self):
-        self.loading_task = asyncio.create_task(self.async_load())
+        self.loading_task = util.create_task(self.async_load())
         self.loading_task.add_done_callback(self.on_loaded)
         self.last_used = time.monotonic()
         return self
