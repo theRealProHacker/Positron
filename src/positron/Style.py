@@ -730,9 +730,9 @@ OverflowAttr: StyleAttr[CompStr] = StyleAttr(
     "auto",
     {
         # we only implement overlay scroll bars and only when there actually is an overflow
-        "auto": "scroll",
+        "auto": CompStr("scroll"),
         **{
-            k: k
+            k: CompStr(k)
             for k in (
                 # clip: clipping, no scroll container
                 # visible: no clipping
@@ -1081,7 +1081,7 @@ def process_property(key: str, value: str) -> list[tuple[str, str]] | CompValue 
         split = value.split()
         split_len = len(split)
         assert split_len <= max_len, f"Too many values: {split_len}, max {max_len}"
-        return zip(overflow_keys, split * (max_len // split_len))
+        return list(zip(overflow_keys, split * (max_len // split_len)))
     elif (keys := dir_shorthands.get(key)) is not None:
         return list(zip(keys, process_dir(arr)))
     elif (shorthand := smart_shorthands.get(key)) is not None:

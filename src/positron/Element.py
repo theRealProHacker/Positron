@@ -32,6 +32,7 @@ from .config import add_sheet, cursors, g, input_type_check_res
 from .element.ElementAttribute import *
 from .element.Parser import get_tag
 from .element.Parser import parse as parse_html
+from .element.Overflow import overflow, Overflow
 from .events.InputType import *
 from .Style import (SourceSheet, bs_getter, bw_keys, calculator, has_prio,
                     is_custom, pack_longhands, parse_file, parse_sheet)
@@ -67,11 +68,15 @@ class Element(Element_P):
     class_list = ClassListAttribute()
     data = DataAttribute()
     contextmenu: tuple[MenuItem, ...] = ()
-    scrolly = 0
-    overflow = False
+    # scrollx: float = 0
+    scrolly: float = 0
+    # is_overflown_x: bool = False
+    is_overflown_y: bool = False
+    # overflow_x: Overflow
+    overflow_y: Overflow
 
     @property
-    def max_scroll(self):
+    def max_scrolly(self):
         return self.layout_type.height - self.get_height()
 
     # Style
@@ -268,6 +273,8 @@ class Element(Element_P):
             if cursor is Auto
             else cursor
         )
+        # self.overflow_x = overflow[style["overflow-x"]]
+        self.overflow_y = overflow[style["overflow-y"]]
         # style sharing and child computing
         self.cstyle = g["cstyles"].add(style)
         for child in self.children:
@@ -310,8 +317,8 @@ class Element(Element_P):
         )
         self.box, _ = Box.make_box(width, self.cstyle, *parent_size)
         self.layout_inner()
-        self.overflow = self.max_scroll > 0
-        self.scrolly = util.in_bounds(self.scrolly, 0, self.max_scroll)
+        self.is_overflown_y = self.max_scrolly > 0
+        self.scrolly = self.overflow_y.calc_scroll(self.scrolly, self.max_scrolly)
 
     def layout_inner(self):
         children = self.display_children
@@ -350,10 +357,8 @@ class Element(Element_P):
         rounded_box.draw_outline(surf, self.box, style)
 
     def draw_content(self, surf: Surface):
-        clip = surf.get_clip()
-        surf.set_clip(self.box.content_box)
-        self.layout_type.draw(surf)
-        surf.set_clip(clip)
+        with self.overflow_y.clip_surf(surf, self.box.content_box):
+            self.layout_type.draw(surf)
 
     # Events
     def collide(self, pos: Coordinate) -> Element | None:
@@ -489,8 +494,8 @@ class HTMLElement(Element):
         # all children correct their display
         assert self.is_block()
         self.layout_inner()
-        self.overflow = self.max_scroll > 0
-        self.scrolly = util.in_bounds(self.scrolly, 0, self.max_scroll)
+        self.overflow = self.max_scrolly > 0
+        self.scrolly = util.in_bounds(self.scrolly, 0, self.max_scrolly)
         # all children correct their position
         self.rel_pos((0, 0))
 
@@ -964,9 +969,6 @@ class InputElement(ReplacedElement):
             )[0]
             self.box.set_width(int(_size) * avrg_letter_width, "content-box")
         set_height(self.line_height)
-        if self.type == "number":
-            # XXX: catch any scrolls
-            self.overflow = True
 
     def draw_content(self, surf: Surface):
         if self.type in input_type_check_res:
@@ -1059,6 +1061,7 @@ class InputElement(ReplacedElement):
     def on_wheel(self, event):
         if self.type == "number":
             self.value += event.delta[1]
+            event.cancelled = True
 
 
 class MeterElement(ReplacedElement):

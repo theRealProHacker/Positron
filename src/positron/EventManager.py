@@ -428,18 +428,17 @@ class EventManager:
                 #     # TODO: get the first draggable element colliding with the mouse
             elif event.type == pg.MOUSEWHEEL:
                 # TODO: What is event.flipped?
-                self.release_event(
+                if not self.release_event(
                     "wheel",
                     target=hov_elem,
                     pos=_pos,
                     mods=self.mods,
                     buttons=self.buttons,
                     delta=(event.x, event.y),
-                )
-                if isinstance(hov_elem, Element):
+                ).cancelled and isinstance(hov_elem, Element):
                     scroll_element = hov_elem or g["root"]
                     for scroll_elem in (scroll_element, *scroll_element.iter_anc()):
-                        if scroll_elem.overflow:
+                        if scroll_elem.is_overflown_y and scroll_elem.overflow_y.user_scroll:
                             delta = event.y * (
                                 config.alt_scroll_factor
                                 if self.mods & pg.KMOD_ALT
@@ -624,9 +623,10 @@ class EventManager:
                 pass
             ########################## Window Events ##############################################
             elif event.type == pg.WINDOWRESIZED:
-                g["W"] = event.x
-                g["H"] = event.y
-                g["css_dirty"] = True
+                if config.screen is pg.display.get_surface():
+                    g["W"] = event.x
+                    g["H"] = event.y
+                    g["css_dirty"] = True
                 self.release_event("resize", size=(event.x, event.y))
             elif _type.startswith("window"):
                 self.release_event(_type, **event.__dict__)

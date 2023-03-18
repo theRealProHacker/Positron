@@ -4,6 +4,7 @@ Utilities for all kinds of needs (funcs, regex, etc...)
 This module should slowly be dissolved into utils sub modules
 """
 
+from contextlib import contextmanager
 import numpy as np
 import pygame as pg
 
@@ -103,3 +104,16 @@ def draw_lines(surf: Surface, points, *args, **kwargs):
     ]
     for dline in dlines:
         dline.draw(surf)
+
+
+@contextmanager
+def surf_clip(surf: Surface, clip: Rect):
+    """
+    Sets the surfaces clip in a context manager.
+    """
+    original_clip = surf.get_clip()
+    surf.set_clip(clip)
+    try:
+        yield
+    finally:
+        surf.set_clip(original_clip)
