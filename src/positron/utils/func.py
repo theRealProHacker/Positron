@@ -164,9 +164,9 @@ def copy_with(obj, **kwargs):
 
 def take_while(l: list[V_T], cond: Callable[[V_T], bool]):
     """
-    Removes elements from the list while a certain 
+    Removes elements from the list while a certain
     """
-    return itertools.takewhile(l, cond), itertools.dropwhile(l, cond)
+    return itertools.takewhile(cond, l), itertools.dropwhile(cond, l)
 
 
 # tuple mutations
