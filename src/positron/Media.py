@@ -185,7 +185,7 @@ class Audio:
 
     async def async_load(self):
         try:
-            self.url = (await util.download(self.url)).name
+            self.url = await util.download(self.url)
             self.sound = await asyncio.to_thread(pg.mixer.Sound, self.url)
         except asyncio.CancelledError:
             pass
@@ -227,6 +227,9 @@ class Audio:
     def is_unloaded(self):
         """Whether the audio is unloaded (neither loading nor loaded)"""
         return not (self.is_loaded or self.is_loading)
+
+    def __del__(self):
+        self.stop()
 
 
 # TODO: Video: This is going to be insanely difficult and it might be that we can never implement this

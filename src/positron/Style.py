@@ -1208,7 +1208,6 @@ element_styles: dict[str, dict[str, str]] = defaultdict(
                 "display": "block",
             },
             "span": {"display": "inline"},
-            "img": {"display": "block"},
             "h1": {"display": "block", "font-size": "2em", "margin": ".1em 0"},
             "h2": {
                 "display": "block",
@@ -1235,6 +1234,13 @@ element_styles: dict[str, dict[str, str]] = defaultdict(
                 "border-radius": "3px",
                 "outline-offset": "1px",
                 "padding": "3px",
+            },
+            "audio": {
+                "border-style": "solid",
+                "border-radius": "3px",
+                "outline-offset": "1px",
+                "padding": "3px",
+                "background-color": "grey",
             },
             "meter": {
                 "width": "4em",

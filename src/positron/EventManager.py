@@ -438,7 +438,10 @@ class EventManager:
                 ).cancelled and isinstance(hov_elem, Element):
                     scroll_element = hov_elem or g["root"]
                     for scroll_elem in (scroll_element, *scroll_element.iter_anc()):
-                        if scroll_elem.is_overflown_y and scroll_elem.overflow_y.user_scroll:
+                        if (
+                            scroll_elem.is_overflown_y
+                            and scroll_elem.overflow_y.user_scroll
+                        ):
                             delta = event.y * (
                                 config.alt_scroll_factor
                                 if self.mods & pg.KMOD_ALT

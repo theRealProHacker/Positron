@@ -125,10 +125,10 @@ class BooleanAttribute(Attribute[bool]):
     attr=BooleanAttribute("disabled")
     ```
     ```html
-    <input> -> false
-    <input disabled> -> true
-    <input disabled="something"> -> true
-    <input disabled="false"> -> false
+    <input> -> default
+    <input disabled> -> True
+    <input disabled="something"> -> True
+    <input disabled="false"> -> False
     ```
     """
 
@@ -138,8 +138,11 @@ class BooleanAttribute(Attribute[bool]):
     def _get(self, elem):
         return elem.attrs[self.attr] != "false"
 
-    def __set__(self, elem, value):
-        elem.attrs[self.attr] == str(value).lower()
+    def __set__(self, elem, value: bool):
+        if value:
+            elem.attrs[self.attr] == ""
+        else:
+            del elem.attrs[self.attr]
 
 
 @dataclass
