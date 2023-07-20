@@ -23,7 +23,7 @@ dependencies = [
     "frozendict  == 2.3.4",
     "html5lib    == 1.1",
     "numpy       == 1.24.2",
-    "aiohttp     == 3.8.4",
+    "aiohttp     == 3.8.5",
     "aiodns      == 3.0.0",
     "cchardet    == 2.1.7",
     "Jinja2      == 3.1.2",
