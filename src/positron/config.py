@@ -1,4 +1,5 @@
 """ Any global variables are stored here"""
+
 import asyncio
 import math
 import re
@@ -153,7 +154,7 @@ cursors = {
     "ew-resize": Cursor(pg.SYSTEM_CURSOR_SIZEWE),
     "ns-resize": Cursor(pg.SYSTEM_CURSOR_SIZENS),
     "nesw-resize": Cursor(pg.SYSTEM_CURSOR_SIZENESW),
-    "nwse-resize": Cursor(pg.SYSTEM_CURSOR_SIZENWSE)
+    "nwse-resize": Cursor(pg.SYSTEM_CURSOR_SIZENWSE),
     # TODO: zoom-in and -out
 }
 
@@ -239,3 +240,6 @@ generic_font_families = {
     ],
     "math": ["Cambria Math"],
 }
+
+scroll_factor = -10
+alt_scroll_factor = -100

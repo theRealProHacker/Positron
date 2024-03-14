@@ -11,8 +11,7 @@ FullyComputedStyle = Mapping[str, CompValue]
 
 # https://stackoverflow.com/questions/54785148/destructuring-dicts-and-objects-in-python
 class T4Getter(Protocol[CO_T]):
-    def __call__(self, input: FullyComputedStyle) -> tuple[CO_T, CO_T, CO_T, CO_T]:
-        ...
+    def __call__(self, input: FullyComputedStyle) -> tuple[CO_T, CO_T, CO_T, CO_T]: ...
 
 
 class itemsetter(Generic[V_T]):

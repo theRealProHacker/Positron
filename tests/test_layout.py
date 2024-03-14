@@ -1,4 +1,3 @@
-import positron.config as config
 import positron.main
 from positron.Box import Box, make_box
 from positron.Element import HTMLElement
@@ -17,7 +16,7 @@ def test_p():
     """
 
     # XXX: To make sure this test works even if settings are
-    # altered default style of <p> is altered
+    # altered, default style of <p> is unset
     style_sheet = parse_sheet(
         """
         p {
@@ -31,7 +30,7 @@ def test_p():
 
     html = HTMLElement.from_string(text)
     body = html.children[1]
-    p = body.children[0]
+    # p = body.children[0]
 
     html.apply_style(style_sheet)
     html.compute()

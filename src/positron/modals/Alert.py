@@ -34,5 +34,4 @@ class Alert(Modal):
         width = max(rect.width // 3, 175)
         rect = Rect(0, 0, width, height)
 
-    def draw(self, surf: Surface):
-        ...
+    def draw(self, surf: Surface): ...

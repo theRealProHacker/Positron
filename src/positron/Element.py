@@ -30,14 +30,14 @@ from positron.utils.clipboard import put_clip
 
 from .config import add_sheet, cursors, g, input_type_check_res
 from .element.ElementAttribute import *
-from .element.Parser import get_tag
-from .element.Parser import parse as parse_html
+from .element.Parser import get_tag, parse as parse_html
+from .element.Overflow import overflow, Overflow
 from .events.InputType import *
 from .Style import (SourceSheet, bs_getter, bw_keys, calculator, has_prio,
                     is_custom, pack_longhands, parse_file, parse_sheet)
 from .types import (Auto, AutoType, Color, Coordinate, Cursor, DisplayType,
                     Drawable, Element_P, Leaf_P, Length, Number, Percentage,
-                    Rect, Surface, frozendict)
+                    Rect, Surface, Vector2, frozendict)
 from .utils import log_error, make_default
 from .utils.fonts import Font
 
@@ -67,8 +67,17 @@ class Element(Element_P):
     class_list = ClassListAttribute()
     data = DataAttribute()
     contextmenu: tuple[MenuItem, ...] = ()
-    scrolly = 0
-    overflow = False
+    # scrollx: float = 0
+    scrolly: float = 0
+    # is_overflown_x: bool = False
+    is_overflown_y: bool = False
+    # overflow_x: Overflow
+    overflow_y: Overflow
+
+    @property
+    def max_scrolly(self):
+        return self.layout_type.height - self.get_height()
+
     # Style
     istyle: Style.Style = frozendict()  # inline style
     estyle: Style.Style = frozendict()  # external style
@@ -227,13 +236,15 @@ class Element(Element_P):
             style[key] = new_val
             if has_prio(key):
                 parent_style[key] = new_val
-        # corrections
+        self.compute_corrections(style)
+
+    def compute_corrections(self, style: dict):
         for bw_key, bstyle in zip(bw_keys, bs_getter(style)):
             if bstyle in ("none", "hidden"):
                 style[bw_key] = Length(0)
         if style["outline-style"] in ("none", "hidden"):
             style["outline-width"] = Length(0)
-        self.display = str(style["display"])
+        self.display = str(style["display"])  # type: ignore[assignment]
         # fonts
         fsize: float = style["font-size"]
         self.font = Font(
@@ -263,6 +274,8 @@ class Element(Element_P):
             if cursor is Auto
             else cursor
         )
+        # self.overflow_x = overflow[style["overflow-x"]]
+        self.overflow_y = overflow[style["overflow-y"]]
         # style sharing and child computing
         self.cstyle = g["cstyles"].add(style)
         for child in self.children:
@@ -288,9 +301,7 @@ class Element(Element_P):
         return (
             self.box.height
             if self.box.height != -1
-            else self.parent.get_height()
-            if self.parent is not None
-            else 0
+            else self.parent.get_height() if self.parent is not None else 0
         )
 
     def layout(self, width: float) -> None:
@@ -305,7 +316,8 @@ class Element(Element_P):
         )
         self.box, _ = Box.make_box(width, self.cstyle, *parent_size)
         self.layout_inner()
-        self.overflow = self.layout_type.height > self.box.content_box.height
+        self.is_overflown_y = self.max_scrolly > 0
+        self.scrolly = self.overflow_y.calc_scroll(self.scrolly, self.max_scrolly)
 
     def layout_inner(self):
         children = self.display_children
@@ -325,7 +337,8 @@ class Element(Element_P):
         Makes the previously relative position to the parent absolute to the screen
         """
         self.box.pos += pos
-        self.layout_type.rel_pos(self.box.content_box.topleft)
+        content_pos = Vector2(self.box.content_box.topleft) - (0, self.scrolly)
+        self.layout_type.rel_pos(content_pos)
 
     def draw(self, surf: Surface):
         """
@@ -343,7 +356,8 @@ class Element(Element_P):
         rounded_box.draw_outline(surf, self.box, style)
 
     def draw_content(self, surf: Surface):
-        self.layout_type.draw(surf)
+        with self.overflow_y.clip_surf(surf, self.box.content_box):
+            self.layout_type.draw(surf)
 
     # Events
     def collide(self, pos: Coordinate) -> Element | None:
@@ -357,12 +371,10 @@ class Element(Element_P):
             return self
         return None
 
-    # def delete(self):
-    #     self.deleted = True
-    #     self.parent = None
-    #     for c in self.children:
-    #         c.delete()
-    #     self.children.clear()
+    ############################# Default Event Handlers ################################################################
+
+    def on_scroll(self, event):
+        self.scrolly += event.delta
 
     ###############################  API for Elements  ##################################################################
     @property
@@ -473,6 +485,10 @@ class HTMLElement(Element):
     def from_string(html: str):
         return HTMLElement.from_parsed(parse_html(html))
 
+    @staticmethod
+    def from_string(html: str):
+        return HTMLElement.from_parsed(parse_html(html))
+
     def get_height(self) -> float:
         return self.box.height
 
@@ -481,6 +497,8 @@ class HTMLElement(Element):
         # all children correct their display
         assert self.is_block()
         self.layout_inner()
+        self.overflow = self.max_scrolly > 0
+        self.scrolly = util.in_bounds(self.scrolly, 0, self.max_scrolly)
         # all children correct their position
         self.rel_pos((0, 0))
 
@@ -607,14 +625,14 @@ class StyleElement(MetaElement):
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
     ):
         super().__init__(tag, attrs, children)
+        if self.text.strip():
+            self.inline_sheet = parse_sheet(self.text)
+            add_sheet(self.inline_sheet)
         if (src := attrs.get("src")) is not None:
             self.src = src
             if os.path.isfile(src):
                 config.file_watcher.add_file(src, self.reload_src)
             util.create_task(parse_file(src), True, self.parse_callback)
-        if self.text.strip():
-            self.inline_sheet = parse_sheet(self.text)
-            add_sheet(self.inline_sheet)
 
     def parse_callback(self, future: asyncio.Future[SourceSheet]):
         with suppress(Exception):
@@ -817,26 +835,68 @@ class ImageElement(ReplacedElement):
 class AudioElement(ReplacedElement):
     tag = "audio"
 
-    # attrs: src, preload, loop, (autoplay, controls, muted, preload)
+    autoplay = BooleanAttribute("autoplay")
+    loop = BooleanAttribute("loop")
+    controls = BooleanAttribute("controls")
+    muted = BooleanAttribute("muted")
+
+    @property
+    def load(self):
+        return self.attrs.get("preload", "auto") not in ("none", "metadata")
+
     def __init__(
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
     ):
-        # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/audio
-        # TODO:
-        # autoplay: right now autoplay is always on
-        # controls: both draw and event handling
-        # muted: right now muted is always off
-        # preload: probably not gonna implement fully (is only a hint)
         super().__init__(tag, attrs, children)
+        self.make_audio()
+        # self.make_components()
+
+    def compute_corrections(self, style: dict):
+        if style["width"] is Auto:
+            style["width"] = Length(24)
+        if style["height"] is Auto:
+            style["height"] = Length(24)
+        return super().compute_corrections(style)
+
+    def make_audio(self):
         try:
             self.audio = Media.Audio(
-                attrs["src"],
-                load=attrs.get("preload", "auto") not in ("none", "metadata"),
-                autoplay=True,
-                loop="loop" in attrs,
+                self.attrs["src"],
+                load=self.load,
+                autoplay=self.autoplay,
+                loop=self.loop,
+                muted=self.muted,
             )
+            self.is_playing = self.autoplay
         except (KeyError, ValueError):
-            self.image = None
+            self.is_playing = False
+            self.audio = None
+
+    # def make_components(self):
+
+    def setattr(self, name: str, value):
+        super().setattr(name, value)
+        if name == "src":
+            self.make_audio()
+        # elif name == "controls":
+        #     self.make_components()
+
+    def layout_inner(self):
+        self.layout_type = layout.EmptyLayout()
+        if not self.controls:
+            self.box = Box.Box.empty()
+            return
+
+    def draw(self, surf: Surface):
+        if self.controls:
+            super().draw(surf)
+
+    def draw_content(self, surf: Surface):
+        from positron.components import PlayButton
+
+        play_button = PlayButton(self.is_playing)
+        play_button.rect = self.box.content_box.copy()
+        play_button.draw(surf)
 
 
 class InputElement(ReplacedElement):
@@ -853,6 +913,7 @@ class InputElement(ReplacedElement):
     # fmt: off
     type = EnumeratedAttribute("type", range = {
         "text", "tel", "password", "number", "email", "url", "search",
+        "checkbox", "radio", "slider",
         "checkbox", "radio", "slider",
         "file", "color", "hidden"
     }, default="text")
@@ -937,7 +998,7 @@ class InputElement(ReplacedElement):
 
     def layout(self, width: float):
         self.layout_type = layout.EmptyLayout()
-        if not self.parent:
+        if not self.parent or self.display == "none":
             self.display = "none"
             return
         type_ = self.type
@@ -1046,6 +1107,7 @@ class InputElement(ReplacedElement):
     def on_wheel(self, event):
         if self.type == "number":
             self.value += event.delta[1]
+            event.cancelled = True
 
 
 class MeterElement(ReplacedElement):
@@ -1200,8 +1262,10 @@ elem_type_map: dict[str, type[Element]] = {
     "style": StyleElement,
     "!comment": CommentElement,
     "meter": MeterElement,
+    "meter": MeterElement,
     "a": AnchorElement,
     "input": InputElement,
+    "md": MarkdownElement,
     "md": MarkdownElement,
 }
 
