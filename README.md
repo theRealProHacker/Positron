@@ -6,32 +6,10 @@
 
 Positron is a python package that allows you to write simple and elegant HTML, CSS and Python code and have a desktop app running.
 
-### The Name
+## Why you should use it
 
-[Electron](https://github.com/electron/electron) is a very popular framework that gives a very similar promise. 
-The idea is that you can write a desktop app with just HTML/CSS/JS - all of which a typical web developer is already familiar with. 
+You are tired of the ugliness of tkinter, already know web technologies and don't want to learn new frameworks like QT or Kivy and Electron is too slow for you then this is the perfect place to start!
 
-Positron is a spin-off of on Electron and makes a pun off the fact that a positron is the physical anti-matter to an electron. 
-Also, **E**lectron uses **E**CMAScript and **P**ositron uses **P**ython
-
-> I initially thought the name was really brilliant and original until I randomly searched for Positron and found like 5 other projects with the same name. One of them an Electron clone by Mozilla 😂.
-
-# Motivation
-
-When you use Python and you want to visualize something or even wrap it in an app then you have following routes:
-1. `tkinter` or other GUI libraries like `QT`
-2. `matplotlib`
-3. Creating an HTML file and opening it in a browser. 
-
-If you, however, want to have the feel of a real system application, then you will need to use a "real" GUI library. 
-
-An alternative is using Electron that calls python code. However, the problems of Electron are well known. 
-
-Specifically, Electron creates a server and a Chromium client that communicate per IPC. This makes Electron both relatively slow and also it uses **huge** amounts of memory. Apps that use Electron like VSCode or Discord pretty quickly add up to GBs of RAM usage. 4GB vanish quickly when you for example have 2 Browsers and 2 Electron apps open. When the OS has little RAM left it will start swapping RAM in and out of disk and this will make your whole computer lag a lot.
-
-Also, Electron has pretty slow load times. If you start any other regular app (a Flutter app for example), it seems like it opens almost instantly. However, Electron takes a few seconds to load and it really becomes obvious to the user. 
-
-Apart from this little thing, Electron is really great, if you know how to use it.
 
 # How to get started
 
@@ -39,9 +17,15 @@ You need Python >= 3.10 and Git installed
 
 ```shell
 git clone https://github.com/theRealProHacker/Positron.git
-cd Positron
-pip install .
-cd ..
+pip install Positron
+```
+
+There are some alternative installations for a live console, markdown support and to run the examples respectively
+
+```shell
+pip install Positron[console]
+pip install Positron[markdown]
+pip install Positron[examples]
 ```
 
 Now you can create your project using Positron. For a good example with a step-by-step guide look [here](https://github.com/theRealProHacker/Positron/wiki/Example:-Calculator). 
@@ -61,6 +45,27 @@ Uses [repo-visualization](https://githubnext.com/projects/repo-visualization/) b
 Check out the [live version](https://mango-dune-07a8b7110.1.azurestaticapps.net/?repo=theRealProHacker%2FPositron)
 
 ![Visualization of the codebase](./diagram.svg)
+
+
+### The Name
+
+[Electron](https://github.com/electron/electron) is a very popular framework that gives a very similar promise. 
+The idea is that you can write a desktop app with just HTML/CSS/JS - all of which a typical web developer is already familiar with. 
+
+Positron is a spin-off of on Electron and makes a pun off the fact that a positron is the physical anti-matter to an electron. 
+Also, **E**lectron uses **E**CMAScript and **P**ositron uses **P**ython
+
+> I initially thought the name was really brilliant and original until I randomly searched for Positron and found like 5 other projects with the same name. One of them an Electron clone by Mozilla 😂.
+
+### Why Electron doesn't work
+
+You can use Electron that calls python code. However, the problems of Electron are well known. 
+
+Specifically, Electron creates a server and a Chromium client that communicate per IPC. This makes Electron both relatively slow and also it uses **huge** amounts of memory. Apps that use Electron like VSCode or Discord pretty quickly add up to GBs of RAM usage. 4GB vanish quickly when you for example have 2 Browsers and 2 Electron apps open. When the OS has little RAM left it will start swapping RAM in and out of disk and this will make your whole computer lag a lot.
+
+Also, Electron has pretty slow load times. If you start any other regular app (a Flutter app for example), it seems like it opens almost instantly. However, Electron takes a few seconds to load and it really becomes obvious to the user. 
+
+Apart from this little thing, Electron is really great, if you know how to use it.
 
 # Sources
 
