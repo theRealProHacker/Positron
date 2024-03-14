@@ -1,7 +1,8 @@
 from contextlib import contextmanager
 from copy import copy
+from dataclasses import dataclass
 import itertools
-from typing import Callable, Iterable, Sequence, TypeVar
+from typing import Callable, Generic, Iterable, Sequence, TypeVar
 
 from positron.types import CO_T, K_T, V_T, Index
 
@@ -228,3 +229,31 @@ def set_context(obj, name: str, value):
 
 
 ####################################################################
+
+
+@dataclass
+class Redirect(Generic[V_T]):
+    """
+    Descriptor that redirects attribute accesses to another object
+    """
+
+    attr: str
+    to: str
+
+    def _get_to(self, obj):
+        return getattr(obj, self.to)
+
+    def __get__(self, obj, type=None) -> V_T:
+        return getattr(self._get_to(obj), self.attr)
+
+    def __set__(self, obj, value: V_T):
+        setattr(self._get_to(obj), self.attr, value)
+
+    def __delete__(self, obj):
+        delattr(self._get_to(obj), self.attr)
+
+
+class MultiDescriptor(Generic[V_T]):
+    """
+    A Descriptor that can combine two descriptors so that both are activated.
+    """
