@@ -30,8 +30,7 @@ from positron.utils.clipboard import put_clip
 
 from .config import add_sheet, cursors, g, input_type_check_res
 from .element.ElementAttribute import *
-from .element.Parser import get_tag
-from .element.Parser import parse as parse_html
+from .element.Parser import get_tag, parse as parse_html
 from .element.Overflow import overflow, Overflow
 from .events.InputType import *
 from .Style import (SourceSheet, bs_getter, bw_keys, calculator, has_prio,
@@ -486,6 +485,10 @@ class HTMLElement(Element):
     def from_string(html: str):
         return HTMLElement.from_parsed(parse_html(html))
 
+    @staticmethod
+    def from_string(html: str):
+        return HTMLElement.from_parsed(parse_html(html))
+
     def get_height(self) -> float:
         return self.box.height
 
@@ -911,6 +914,7 @@ class InputElement(ReplacedElement):
     type = EnumeratedAttribute("type", range = {
         "text", "tel", "password", "number", "email", "url", "search",
         "checkbox", "radio", "slider",
+        "checkbox", "radio", "slider",
         "file", "color", "hidden"
     }, default="text")
     # fmt: on
@@ -1258,8 +1262,10 @@ elem_type_map: dict[str, type[Element]] = {
     "style": StyleElement,
     "!comment": CommentElement,
     "meter": MeterElement,
+    "meter": MeterElement,
     "a": AnchorElement,
     "input": InputElement,
+    "md": MarkdownElement,
     "md": MarkdownElement,
 }
 

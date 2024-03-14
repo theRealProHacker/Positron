@@ -70,7 +70,8 @@ def _reset_config():
 
 
 @overload
-def set_mode(): ...
+def set_mode():
+    ...
 
 
 @overload
