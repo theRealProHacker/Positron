@@ -18,38 +18,39 @@ classifiers = [
 
 dependencies = [
     "tinycss     == 0.4",
-    "pygame      == 2.1.3",
-    "watchdog    == 2.2.1",
+    "pygame-ce   == 2.4.1",
+    "watchdog    >= 3.0.0, < 4",
     "frozendict  == 2.3.4",
     "html5lib    == 1.1",
-    "numpy       == 1.24.2",
-    "aiohttp     == 3.8.4",
-    "aiodns      == 3.0.0",
+    "numpy       >= 1.26.1, < 2",
+    "aiohttp     >= 3.9.3, < 4",
+    "aiodns      >= 3.1.1, < 4",
     "cchardet    == 2.1.7",
     "Jinja2      == 3.1.2",
 ]
 
 [project.optional-dependencies]
-console = ["aioconsole  == 0.5.0"]
+console = ["aioconsole  == 0.7.0"]
 
-markdown = ["mistune == 2.0.5"]
+markdown = ["mistune == 3.0.2"]
 
 examples = [
     "math_evaluator == 0.0.2",
-    "mistune == 2.0.5"
+    "mistune == 3.0.2"
 ]
 
 dev = [
     "pytest         == 7.2.1", 
     "pytest-asyncio == 0.20.3",
     "black          == 23.1.0",
-    "mypy           == 1.0.1"
+    "mypy           == 1.0.1",
+    "types-html5lib",
 ]
 
 all = [
-    "aioconsole  == 0.5.0",
+    "aioconsole     == 0.7.0",
     "math_evaluator == 0.0.2",
-    "mistune == 2.0.5",
+    "mistune        == 3.0.2",
     "pytest         == 7.2.1", 
     "pytest-asyncio == 0.20.3",
     "black          == 23.1.0",
@@ -76,10 +77,8 @@ ignore = [
 
 [tool.refurb]
 
-
 ignore = [
     123, # .copy() instead of dict()
     126, # return in else
-    131, # see: https://github.com/dosisod/refurb/issues/234
     141, # Path 
 ]
