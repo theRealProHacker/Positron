@@ -11,6 +11,7 @@ Here all children have display: inline
 
 If in the original DOM, block and layout childrens are mixed, we put the inline layout into virtual display boxes.
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -57,8 +58,7 @@ class InlineItem:
     # available after rel_pos
     abs_rect: Rect
 
-    def layout(self, width: float):
-        ...
+    def layout(self, width: float): ...
 
     def rel_pos(self, pos: Coordinate):
         """
@@ -134,17 +134,13 @@ class Layout:
 
     height: float
 
-    def layout(self, width: float):
-        ...
+    def layout(self, width: float): ...
 
-    def rel_pos(self, pos):
-        ...
+    def rel_pos(self, pos): ...
 
-    def draw(self, surf: Surface):
-        ...
+    def draw(self, surf: Surface): ...
 
-    def collide(self, pos: Coordinate) -> Element | None:
-        ...
+    def collide(self, pos: Coordinate) -> Element | None: ...
 
 
 class EmptyLayout(Layout):
@@ -152,11 +148,9 @@ class EmptyLayout(Layout):
 
 
 class RealLayoutItems(Protocol):
-    def rel_pos(self, pos: Coordinate):
-        ...
+    def rel_pos(self, pos: Coordinate): ...
 
-    def draw(self, surf: Surface):
-        ...
+    def draw(self, surf: Surface): ...
 
 
 class RealLayout(Layout):
@@ -326,16 +320,14 @@ class BlockLayout(RealLayout):
                     (
                         top
                         if top is not Auto
-                        else self.elem.get_height() - bottom
-                        if bottom is not Auto
-                        else 0
+                        else (
+                            self.elem.get_height() - bottom if bottom is not Auto else 0
+                        )
                     ),
                     (
                         left
                         if left is not Auto
-                        else inner.width - right
-                        if right is not Auto
-                        else 0
+                        else inner.width - right if right is not Auto else 0
                     ),
                 )
             )

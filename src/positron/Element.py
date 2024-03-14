@@ -302,9 +302,7 @@ class Element(Element_P):
         return (
             self.box.height
             if self.box.height != -1
-            else self.parent.get_height()
-            if self.parent is not None
-            else 0
+            else self.parent.get_height() if self.parent is not None else 0
         )
 
     def layout(self, width: float) -> None:

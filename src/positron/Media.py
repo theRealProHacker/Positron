@@ -1,6 +1,7 @@
 """
 This file includes Media classes like Image, Video or Audio
 """
+
 import asyncio
 from contextlib import suppress
 import logging

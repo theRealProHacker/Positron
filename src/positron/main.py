@@ -1,6 +1,7 @@
 """
 The main file that runs the browser
 """
+
 import asyncio
 import logging
 import os
@@ -69,8 +70,7 @@ def _reset_config():
 
 
 @overload
-def set_mode():
-    ...
+def set_mode(): ...
 
 
 @overload
@@ -88,8 +88,7 @@ def set_mode(
     key_delay: int | None = None,
     key_repeat: int | None = None,
     fps: float | None = None,
-):
-    ...
+): ...
 
 
 def set_mode(**kwargs):

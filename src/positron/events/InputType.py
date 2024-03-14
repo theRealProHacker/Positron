@@ -15,6 +15,7 @@ cursor positions are always equal to the position of the character after the cur
 |0123 -> 0
 012|3 -> 3
 """
+
 import re
 from dataclasses import dataclass
 from typing import Protocol, TYPE_CHECKING, cast

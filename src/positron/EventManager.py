@@ -520,9 +520,11 @@ class EventManager:
                     # Undo, Redo
                     elif event.mod & pg.KMOD_CTRL and event.key in (pg.K_z, pg.K_y):
                         input_type = History.from_history(
-                            History.Type.Undo
-                            if event.key == pg.K_z
-                            else History.Type.Redo,
+                            (
+                                History.Type.Undo
+                                if event.key == pg.K_z
+                                else History.Type.Redo
+                            ),
                             elem.editing_ctx,
                         )
                     # Copy/Cut/Paste

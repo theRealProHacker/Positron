@@ -2,6 +2,7 @@
 A single source of thruth for types that are used in other modules.
 Instead of importing Rects or Vectors from pygame, import them from here. 
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -81,11 +82,9 @@ class Element_P(Protocol):
     parent: Element_P | None
     children: Sequence[Element_P | Leaf_P]
 
-    def iter_anc(self) -> Iterable[Element_P]:
-        ...
+    def iter_anc(self) -> Iterable[Element_P]: ...
 
-    def iter_siblings(self) -> Iterable[Element_P]:
-        ...
+    def iter_siblings(self) -> Iterable[Element_P]: ...
 
 
 class Enum(_Enum):

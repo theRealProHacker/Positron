@@ -39,8 +39,7 @@ class PageRule(TinyPageRule, AtRule):
 
 
 class MediaClause:
-    def matches(self, media: MediaValue):
-        ...
+    def matches(self, media: MediaValue): ...
 
 
 @dataclass

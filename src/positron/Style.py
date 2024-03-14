@@ -93,9 +93,7 @@ def get_css_func(posses: Iterable[str] | str = ""):
     _posses: str = (
         ident_re
         if not posses
-        else re_join(*posses)
-        if isinstance(posses, Iterable)
-        else str
+        else re_join(*posses) if isinstance(posses, Iterable) else str
     )
     pattern = re.compile(rf"({_posses})\((.*)\)")
 
@@ -250,8 +248,9 @@ class Acceptor(Protocol[CompValue_T]):
     but depends on a value in p_style that doesn't exist
     """
 
-    def __call__(self, value: str, p_style: FullyComputedStyle) -> None | CompValue_T:
-        ...
+    def __call__(
+        self, value: str, p_style: FullyComputedStyle
+    ) -> None | CompValue_T: ...
 
 
 @dataclass
@@ -267,8 +266,7 @@ class BinOp:
             return self
 
     @abstractmethod
-    def get_type(self) -> CalcType:
-        ...
+    def get_type(self) -> CalcType: ...
 
     def __repr__(self):
         return f"{self.left}{_reversed_op_map[self.op]}{self.right}"
@@ -323,9 +321,7 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
             self.default_type = (
                 float
                 if float in self._accepts
-                else int
-                if int in self._accepts
-                else Percentage
+                else int if int in self._accepts else Percentage
             )
 
     def accepts_type(self, x):
@@ -904,7 +900,9 @@ async def parse_file(source: str) -> SourceSheet:
     Parses a file from the given source (any url).
     It sets the current_file globally which is just for debugging purposes.
     """
-    async with parse_lock:  # with this we ensure that only one css-sheet is ever parsed at the same time
+    async with (
+        parse_lock
+    ):  # with this we ensure that only one css-sheet is ever parsed at the same time
         with set_curr_file(source):
             return parse_sheet(await fetch_txt(source))
 
@@ -924,11 +922,13 @@ def handle_rules(rules: list):
 
 
 def handle_rule(
-    rule: tinycss.css21.RuleSet
-    | tinycss.css21.ImportRule
-    | tinycss.css21.MediaRule
-    | tinycss.css21.PageRule
-    | tinycss.css21.AtRule,
+    rule: (
+        tinycss.css21.RuleSet
+        | tinycss.css21.ImportRule
+        | tinycss.css21.MediaRule
+        | tinycss.css21.PageRule
+        | tinycss.css21.AtRule
+    ),
 ) -> Rule | None:
     """
     Converts a tinycss rule into an appropriate Rule
@@ -1000,13 +1000,11 @@ initial_value_cache: dict[str, str | CompValue] = {
 
 
 @overload
-def is_valid(key: str, value: GlobalValue) -> str | CompValue:
-    ...
+def is_valid(key: str, value: GlobalValue) -> str | CompValue: ...
 
 
 @overload
-def is_valid(key: str, value: str) -> None | str | CompValue:
-    ...
+def is_valid(key: str, value: str) -> None | str | CompValue: ...
 
 
 def is_valid(key: str, value: str) -> None | str | CompValue:
