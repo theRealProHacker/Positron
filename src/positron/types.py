@@ -251,9 +251,7 @@ class FontStyle:
 
 
 # tuples are probably irrelevant because Sequence[int] includes them
-ColorValue = Union[
-    pg.Color, int, str, tuple[int, int, int], tuple[int, int, int, int], Sequence[int]
-]
+ColorValue = Union[int, str]
 
 
 class Color(pg.Color):
