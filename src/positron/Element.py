@@ -237,13 +237,15 @@ class Element(Element_P):
             style[key] = new_val
             if has_prio(key):
                 parent_style[key] = new_val
-        # corrections
+        self.compute_corrections(style)
+
+    def compute_corrections(self, style: dict):
         for bw_key, bstyle in zip(bw_keys, bs_getter(style)):
             if bstyle in ("none", "hidden"):
                 style[bw_key] = Length(0)
         if style["outline-style"] in ("none", "hidden"):
             style["outline-width"] = Length(0)
-        self.display = str(style["display"])
+        self.display = str(style["display"])  # type: ignore[assignment]
         # fonts
         fsize: float = style["font-size"]
         self.font = Font(
@@ -832,26 +834,68 @@ class ImageElement(ReplacedElement):
 class AudioElement(ReplacedElement):
     tag = "audio"
 
-    # attrs: src, preload, loop, (autoplay, controls, muted, preload)
+    autoplay = BooleanAttribute("autoplay")
+    loop = BooleanAttribute("loop")
+    controls = BooleanAttribute("controls")
+    muted = BooleanAttribute("muted")
+
+    @property
+    def load(self):
+        return self.attrs.get("preload", "auto") not in ("none", "metadata")
+
     def __init__(
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
     ):
-        # https://developer.mozilla.org/en-US/docs/Web/HTML/Element/audio
-        # TODO:
-        # autoplay: right now autoplay is always on
-        # controls: both draw and event handling
-        # muted: right now muted is always off
-        # preload: probably not gonna implement fully (is only a hint)
         super().__init__(tag, attrs, children)
+        self.make_audio()
+        # self.make_components()
+
+    def compute_corrections(self, style: dict):
+        if style["width"] is Auto:
+            style["width"] = Length(24)
+        if style["height"] is Auto:
+            style["height"] = Length(24)
+        return super().compute_corrections(style)
+
+    def make_audio(self):
         try:
             self.audio = Media.Audio(
-                attrs["src"],
-                load=attrs.get("preload", "auto") not in ("none", "metadata"),
-                autoplay=True,
-                loop="loop" in attrs,
+                self.attrs["src"],
+                load=self.load,
+                autoplay=self.autoplay,
+                loop=self.loop,
+                muted=self.muted,
             )
+            self.is_playing = self.autoplay
         except (KeyError, ValueError):
-            self.image = None
+            self.is_playing = False
+            self.audio = None
+
+    # def make_components(self):
+
+    def setattr(self, name: str, value):
+        super().setattr(name, value)
+        if name == "src":
+            self.make_audio()
+        # elif name == "controls":
+        #     self.make_components()
+
+    def layout_inner(self):
+        self.layout_type = layout.EmptyLayout()
+        if not self.controls:
+            self.box = Box.Box.empty()
+            return
+
+    def draw(self, surf: Surface):
+        if self.controls:
+            super().draw(surf)
+
+    def draw_content(self, surf: Surface):
+        from positron.components import PlayButton
+
+        play_button = PlayButton(self.is_playing)
+        play_button.rect = self.box.content_box.copy()
+        play_button.draw(surf)
 
 
 class InputElement(ReplacedElement):
@@ -952,7 +996,7 @@ class InputElement(ReplacedElement):
 
     def layout(self, width: float):
         self.layout_type = layout.EmptyLayout()
-        if not self.parent:
+        if not self.parent or self.display == "none":
             self.display = "none"
             return
         type_ = self.type
