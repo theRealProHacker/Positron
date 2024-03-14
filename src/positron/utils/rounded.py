@@ -2,6 +2,7 @@
 Implements drawing rounded boxes.
 Includes background, border and outline convenience functions
 """
+
 # fmt: off
 import math
 from functools import cache

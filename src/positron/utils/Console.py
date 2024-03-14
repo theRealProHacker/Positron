@@ -9,6 +9,7 @@ However, the console will only work if DEBUG mode is turned on
 and the dependency `aioconsole` can be imported.
 If not `Console()` will just return a `sleep(0)` task.
 """
+
 import asyncio
 
 import positron.config as config

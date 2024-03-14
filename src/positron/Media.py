@@ -1,9 +1,12 @@
 """
 This file includes Media classes like Image, Video or Audio
 """
+
 import asyncio
+from contextlib import suppress
 import logging
-import time
+from pathlib import Path
+from typing import Any
 from weakref import WeakValueDictionary
 
 import pygame as pg
@@ -96,7 +99,7 @@ class Image:
                 logging.debug(f"Cancelled loading image: {url!r}")
                 break
             except Exception as e:
-                util.log_error_once(f"Couldn't load image: {url!r}. Reason: {str(e)}")
+                util.log_error_once(f"Couldn't load image: {url!r}. Reason: {e}")
 
     def init_load(self):
         """
@@ -168,50 +171,60 @@ def LinearGradient(Image):
 # TODO: stream audio directly from the internet
 # https://stackoverflow.com/a/46782229/15046005
 class Audio:
-    sound: pg.mixer.Sound | None
-    loading_task: util.Task | None
+    sound: pg.mixer.Sound | None = None
+    loading_task: util.Task | None = None
 
     def __init__(
-        self, url: str, load: bool = True, autoplay: bool = True, loop: bool = False
+        self,
+        url: str,
+        load: bool = True,
+        autoplay: bool = True,
+        loop: bool = False,
+        muted: bool = False,
     ):
         self.url = url
         self.autoplay = autoplay
-        self.loop = loop
-        self.sound = None
-        self.loading_task = None
+        self.loop = loop - 1
+        self.muted = muted
+        self.volume = 1.0
+
         if autoplay or load:
             self.init_load()
-        self.last_used = time.monotonic()
+        # self.last_used = time.monotonic()
 
-    async def async_load(self):
+    async def _async_load(self):
         try:
-            self.url = (await util.download(self.url)).name
+            self.url = await util.download(self.url)
             self.sound = await asyncio.to_thread(pg.mixer.Sound, self.url)
+            self._set_volume()
         except asyncio.CancelledError:
             pass
         except Exception as e:
             util.log_error(e)
             # TODO: use fallbacks
 
+    def _on_loaded(self, future: asyncio.Future):
+        assert future.done()
+        if self.autoplay:
+            self.play()
+
     def init_load(self):
-        self.loading_task = asyncio.create_task(self.async_load())
-        self.loading_task.add_done_callback(self.on_loaded)
-        self.last_used = time.monotonic()
+        self.loading_task = util.create_task(self._async_load())
+        self.loading_task.add_done_callback(self._on_loaded)
+        # self.last_used = time.monotonic()
         return self
 
     def play(self):
         if self.is_loaded:
-            self.sound.play(
-                -1 * self.loop,
-            )
+            self.sound.play(-1 * self.loop)
 
     def stop(self):
-        self.sound.stop()
+        if self.sound:
+            self.sound.stop()
 
-    def on_loaded(self, future: asyncio.Future):
-        assert future.done()
-        if self.autoplay:
-            self.play()
+    def _set_volume(self):
+        if self.sound:
+            self.sound.set_volume(self.volume * (not self.muted))
 
     @property
     def is_loading(self):
@@ -227,6 +240,51 @@ class Audio:
     def is_unloaded(self):
         """Whether the audio is unloaded (neither loading nor loaded)"""
         return not (self.is_loaded or self.is_loading)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in ("muted", "volume"):
+            self._set_volume()
+        super().__setattr__(name, value)
+
+    def __del__(self):
+        with suppress(pg.error):
+            self.stop()
+
+
+class FileAudio(Audio):
+    """
+    This Audio implementation uses the fact, that we can't stream audio from the network anyway
+    to only allow file audio. It always loads the sound synchronously.
+    """
+
+    is_loading = False
+    is_unloaded = True
+    is_loaded = False
+
+    def __init__(
+        self,
+        url: str,
+        load: bool = True,
+        autoplay: bool = True,
+        loop: bool = False,
+        muted: bool = False,
+    ):
+        if not Path(url).exists():
+            util.log_error_once(
+                f"Audio elements need to be local files. '{url}' could not be found locally. "
+            )
+        super().__init__(url, load, autoplay, loop, muted)
+
+    def init_load(self):
+        self.sound = pg.mixer.Sound(self.url)
+        self.is_loaded = True
+        self.is_unloaded = False
+        self.play()
+
+    def play(self):
+        if not self.is_loaded:
+            self.init_load()
+        self.sound.play(-1 * self.loop)
 
 
 # TODO: Video: This is going to be insanely difficult and it might be that we can never implement this

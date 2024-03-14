@@ -1,6 +1,8 @@
 from contextlib import contextmanager
 from copy import copy
-from typing import Callable, Iterable, Sequence, TypeVar
+from dataclasses import dataclass
+import itertools
+from typing import Callable, Generic, Iterable, Sequence, TypeVar
 
 from positron.types import CO_T, K_T, V_T, Index
 
@@ -24,6 +26,7 @@ def in_bounds(x: float, lower: float, upper: float) -> float:
     """
     Make `x` be between lower and upper
     """
+    upper = max(lower, upper)
     x = max(lower, x)
     x = min(upper, x)
     return x
@@ -160,15 +163,23 @@ def copy_with(obj, **kwargs):
         setattr(obj, k, v)
 
 
+def take_while(l: list[V_T], cond: Callable[[V_T], bool]):
+    """
+    Removes elements from the list while a certain
+    """
+    return itertools.takewhile(cond, l), itertools.dropwhile(cond, l)
+
+
 # tuple mutations
 def mutate_tuple(tup: tuple, val, slicing: Index) -> tuple:
     """
     Mutate a tuple given the tuple, a slicing and the value to fill into that slicing
     Example:
-        ```python
-        t = (1,2)
-        mutate_tuple(t, 3, 0) == (3,2)
-        ```
+
+    ```python
+    t = (1,2)
+    mutate_tuple(t, 3, 0) == (3,2)
+    ```
     """
     l = list(tup)
     l[slicing] = val
@@ -186,7 +197,6 @@ def tup_replace(
     elif isinstance(slice_, tuple):
         start, stop = slice_
         return *t[:start], elem, *t[stop:]
-    return
 
 
 def nice_number(num: complex) -> str:
@@ -219,3 +229,31 @@ def set_context(obj, name: str, value):
 
 
 ####################################################################
+
+
+@dataclass
+class Redirect(Generic[V_T]):
+    """
+    Descriptor that redirects attribute accesses to another object
+    """
+
+    attr: str
+    to: str
+
+    def _get_to(self, obj):
+        return getattr(obj, self.to)
+
+    def __get__(self, obj, type=None) -> V_T:
+        return getattr(self._get_to(obj), self.attr)
+
+    def __set__(self, obj, value: V_T):
+        setattr(self._get_to(obj), self.attr, value)
+
+    def __delete__(self, obj):
+        delattr(self._get_to(obj), self.attr)
+
+
+class MultiDescriptor(Generic[V_T]):
+    """
+    A Descriptor that can combine two descriptors so that both are activated.
+    """

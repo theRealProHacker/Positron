@@ -247,8 +247,7 @@ def make_box(
             case x, _o.Auto:
                 y = calc(x)
                 return (y, avail - y)
-            case _:
-                return calc.multi2(mrg_h)
+        return calc.multi2(mrg_h)
 
     box_sizing: str = style["box-sizing"]
 

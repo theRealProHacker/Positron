@@ -4,6 +4,9 @@ Utilities for all kinds of needs (funcs, regex, etc...)
 This module should slowly be dissolved into utils sub modules
 """
 
+from contextlib import contextmanager
+from functools import wraps
+from typing import Sequence
 import numpy as np
 import pygame as pg
 
@@ -31,6 +34,39 @@ def get_rect(rect: Rect, color: ColorValue, **kwargs):
     if color.a != 255:
         drawn_rect.set_alpha(color.a)
     return drawn_rect
+
+
+def _draw_transparent(func):
+    @wraps(func)
+    def inner(surf: Surface, *args, **kwargs):
+        drawn = Surface(surf.get_size(), pg.SRCALPHA)
+        drawn.fill("transparent")
+        func(drawn, *args, **kwargs)
+        surf.blit(drawn, (0, 0))
+
+    return inner
+
+
+draw_polygon = _draw_transparent(pg.draw.polygon)
+"""
+Draw a polygon onto the surf
+
+surf,
+color,
+points,
+width
+"""
+
+draw_line = _draw_transparent(pg.draw.line)
+"""
+Draw a line onto the surf
+
+surface: Surface,
+color: ColorValue,
+start_pos: Coordinate,
+end_pos: Coordinate,
+width: int = 1
+"""
 
 
 def surf_opaque(surf: Surface) -> bool:
@@ -103,3 +139,16 @@ def draw_lines(surf: Surface, points, *args, **kwargs):
     ]
     for dline in dlines:
         dline.draw(surf)
+
+
+@contextmanager
+def surf_clip(surf: Surface, clip: Rect):
+    """
+    Sets the surfaces clip in a context manager.
+    """
+    original_clip = surf.get_clip()
+    surf.set_clip(clip)
+    try:
+        yield
+    finally:
+        surf.set_clip(original_clip)

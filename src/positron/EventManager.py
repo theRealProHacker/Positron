@@ -110,6 +110,8 @@ supported_events: dict[str, EventData] = {
         EventData(bubbles=True, attrs=("pos", "mods", "buttons")),
     ),
     "wheel": EventData(bubbles=True, attrs=("pos", "mods", "buttons", "delta")),
+    "scroll": EventData(attrs=("delta",)),
+    "scrollend": EventData(),
     **dict.fromkeys(
         ("focus", "blur"),
         EventData(attrs=("related_target",)),
@@ -395,7 +397,7 @@ class EventManager:
                         ).cancelled
                     ):
                         menus: dict[str, Sequence[MenuItem]] = {}
-                        for anc in [hov_elem, *hov_elem.iter_anc()]:
+                        for anc in (hov_elem, *hov_elem.iter_anc()):
                             if cm := anc.contextmenu:
                                 menus.setdefault(anc.tag, cm)
                         default_ctx_menu = [
@@ -426,15 +428,32 @@ class EventManager:
                 #     # TODO: get the first draggable element colliding with the mouse
             elif event.type == pg.MOUSEWHEEL:
                 # TODO: What is event.flipped?
-                self.release_event(
+                if not self.release_event(
                     "wheel",
                     target=hov_elem,
                     pos=_pos,
                     mods=self.mods,
                     buttons=self.buttons,
                     delta=(event.x, event.y),
-                )
-                # TODO: emit the scroll event on the first scrollable element
+                ).cancelled and isinstance(hov_elem, Element):
+                    scroll_element = hov_elem or g["root"]
+                    for scroll_elem in (scroll_element, *scroll_element.iter_anc()):
+                        if (
+                            scroll_elem.is_overflown_y
+                            and scroll_elem.overflow_y.user_scroll
+                        ):
+                            delta = event.y * (
+                                config.alt_scroll_factor
+                                if self.mods & pg.KMOD_ALT
+                                else config.scroll_factor
+                            )
+                            if not self.release_event(
+                                "scroll", target=scroll_elem, delta=delta
+                            ).cancelled:
+                                self.release_event(
+                                    "scrollend"
+                                )  # TODO: Add real scroll delta
+                            break
             ############################    Keyboard Events    ########################
             elif event.type in (pg.KEYDOWN, pg.TEXTINPUT):
                 if event.type == pg.KEYDOWN:
@@ -501,9 +520,11 @@ class EventManager:
                     # Undo, Redo
                     elif event.mod & pg.KMOD_CTRL and event.key in (pg.K_z, pg.K_y):
                         input_type = History.from_history(
-                            History.Type.Undo
-                            if event.key == pg.K_z
-                            else History.Type.Redo,
+                            (
+                                History.Type.Undo
+                                if event.key == pg.K_z
+                                else History.Type.Redo
+                            ),
                             elem.editing_ctx,
                         )
                     # Copy/Cut/Paste
@@ -607,9 +628,10 @@ class EventManager:
                 pass
             ########################## Window Events ##############################################
             elif event.type == pg.WINDOWRESIZED:
-                g["W"] = event.x
-                g["H"] = event.y
-                g["css_dirty"] = True
+                if config.screen is pg.display.get_surface():
+                    g["W"] = event.x
+                    g["H"] = event.y
+                    g["css_dirty"] = True
                 self.release_event("resize", size=(event.x, event.y))
             elif _type.startswith("window"):
                 self.release_event(_type, **event.__dict__)

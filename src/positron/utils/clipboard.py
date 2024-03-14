@@ -10,7 +10,7 @@ def get_clip() -> str:
     """
     # https://www.pygame.org/docs/ref/scrap.html#pygame.scrap.get
     # XXX: Returns bytes|None -> Raises on None
-    x: bytes | None = scrap.get(pg.SCRAP_TEXT)  # type: ignore
+    x: bytes | None = scrap.get(pg.SCRAP_TEXT)
     if not x:
         return ""
     # byte strings are regularly c-strings and therefore null delimited

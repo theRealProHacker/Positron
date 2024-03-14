@@ -15,6 +15,7 @@ cursor positions are always equal to the position of the character after the cur
 |0123 -> 0
 012|3 -> 3
 """
+
 import re
 from dataclasses import dataclass
 from typing import Protocol, TYPE_CHECKING, cast
@@ -255,8 +256,7 @@ class EditingContext(_History[tuple[str, int, Selection]]):
                 return (end, start)
             case (start, end) if start < end:
                 return selection
-            case _:
-                return None
+        return None
 
     def peek_back(self):
         value = self.value
