@@ -26,5 +26,5 @@ async def startpage():
 
 config.password_replace_char = "*"
 set_cwd(__file__)
-set_mode(title="Features")
+set_config(title="Features")
 run("/#link")

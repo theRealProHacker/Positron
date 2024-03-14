@@ -1,4 +1,4 @@
-from positron.main import Event, alert, pg, arun, run, set_mode  # isort:skip
+from positron.main import Event, alert, pg, arun, run, set_config  # isort:skip
 import positron.config
 import positron.events.InputType as InputType
 import positron.utils.Navigator as Navigator
@@ -45,7 +45,7 @@ __all__ = [
     # run
     "arun",
     "run",
-    "set_mode",
+    "set_config",
     "load_dom",
     "aload_dom",
     "load_dom_frm_str",

@@ -70,11 +70,11 @@ def _reset_config():
 
 
 @overload
-def set_mode(): ...
+def set_config(): ...
 
 
 @overload
-def set_mode(
+def set_config(
     *,
     width: int | None = None,
     height: int | None = None,
@@ -91,7 +91,7 @@ def set_mode(
 ): ...
 
 
-def set_mode(**kwargs):
+def set_config(**kwargs):
     if (icon := kwargs.get("icon")) is not None:
         if icon.is_loading:
 
@@ -158,7 +158,7 @@ async def main(route: str):
     push(route)
     root: Element.HTMLElement
     if not hasattr(config, "screen"):
-        set_mode()
+        set_config()
     positron.utils.clipboard.init()
     while True:
         if pg.event.peek(pg.QUIT):
