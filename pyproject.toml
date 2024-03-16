@@ -81,3 +81,8 @@ ignore = [
     126, # return in else
     141, # Path 
 ]
+
+[tool.pytest.ini_options]
+# https://stackoverflow.com/a/73499640/15046005
+asyncio_mode = "auto"
+addopts = "-s"
