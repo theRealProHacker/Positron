@@ -48,10 +48,10 @@ dev = [
 
 all = [
     "aioconsole     == 0.7.0",
-    "math_evaluator == 0.0.2",
+    "math_evaluator == 0.0.3",
     "mistune        == 3.0.2",
-    "pytest         == 7.2.1", 
-    "pytest-asyncio == 0.20.3",
+    "pytest         == 8.1.0", 
+    "pytest-asyncio >= 0.23, < 0.24",
     "black          == 23.1.0",
     "mypy           == 1.0.1"
 ]
