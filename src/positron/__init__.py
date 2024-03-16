@@ -1,4 +1,4 @@
-from positron.main import Event, alert, pg, arun, run, set_config  # isort:skip
+from positron.main import Event, alert, pg, arun, run, set_config
 import positron.config
 import positron.events.InputType as InputType
 import positron.utils.Navigator as Navigator
