@@ -93,7 +93,9 @@ def get_css_func(posses: Iterable[str] | str = ""):
     _posses: str = (
         ident_re
         if not posses
-        else re_join(*posses) if isinstance(posses, Iterable) else str
+        else re_join(*posses)
+        if isinstance(posses, Iterable)
+        else str
     )
     pattern = re.compile(rf"({_posses})\((.*)\)")
 
@@ -248,9 +250,8 @@ class Acceptor(Protocol[CompValue_T]):
     but depends on a value in p_style that doesn't exist
     """
 
-    def __call__(
-        self, value: str, p_style: FullyComputedStyle
-    ) -> None | CompValue_T: ...
+    def __call__(self, value: str, p_style: FullyComputedStyle) -> None | CompValue_T:
+        ...
 
 
 @dataclass
@@ -266,7 +267,8 @@ class BinOp:
             return self
 
     @abstractmethod
-    def get_type(self) -> CalcType: ...
+    def get_type(self) -> CalcType:
+        ...
 
     def __repr__(self):
         return f"{self.left}{_reversed_op_map[self.op]}{self.right}"
@@ -321,7 +323,9 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
             self.default_type = (
                 float
                 if float in self._accepts
-                else int if int in self._accepts else Percentage
+                else int
+                if int in self._accepts
+                else Percentage
             )
 
     def accepts_type(self, x):
@@ -1000,11 +1004,13 @@ initial_value_cache: dict[str, str | CompValue] = {
 
 
 @overload
-def is_valid(key: str, value: GlobalValue) -> str | CompValue: ...
+def is_valid(key: str, value: GlobalValue) -> str | CompValue:
+    ...
 
 
 @overload
-def is_valid(key: str, value: str) -> None | str | CompValue: ...
+def is_valid(key: str, value: str) -> None | str | CompValue:
+    ...
 
 
 def is_valid(key: str, value: str) -> None | str | CompValue:

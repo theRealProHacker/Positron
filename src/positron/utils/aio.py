@@ -379,7 +379,9 @@ async def fetch(url: str, raw: bool = False) -> Response:
             code: int = (
                 403
                 if e.errno == errno.EACCES
-                else 404 if e.errno == errno.ENOENT else 400
+                else 404
+                if e.errno == errno.ENOENT
+                else 400
             )
             return Response(url, "", ResponseType.File, code)
 

@@ -70,7 +70,8 @@ def _reset_config():
 
 
 @overload
-def set_config(): ...
+def set_config():
+    ...
 
 
 @overload
@@ -88,7 +89,8 @@ def set_config(
     key_delay: int | None = None,
     key_repeat: int | None = None,
     fps: float | None = None,
-): ...
+):
+    ...
 
 
 def set_config(**kwargs):

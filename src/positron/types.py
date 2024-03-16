@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from enum import Enum as _Enum
 
 # fmt: off
-from typing import (Any, Generic, Hashable, Iterable, Literal, Protocol,
-                    Sequence, TypeVar, Union)
+from typing import (Any, Generic, Hashable, Iterable, Literal, 
+                    Protocol, Sequence, TypeVar, Union)
 # fmt: on
 from weakref import WeakValueDictionary
 
@@ -82,9 +82,11 @@ class Element_P(Protocol):
     parent: Element_P | None
     children: Sequence[Element_P | Leaf_P]
 
-    def iter_anc(self) -> Iterable[Element_P]: ...
+    def iter_anc(self) -> Iterable[Element_P]:
+        ...
 
-    def iter_siblings(self) -> Iterable[Element_P]: ...
+    def iter_siblings(self) -> Iterable[Element_P]:
+        ...
 
 
 class Enum(_Enum):

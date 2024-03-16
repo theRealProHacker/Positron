@@ -24,7 +24,8 @@ class MenuItem:
     w: int
     h: int
 
-    def draw(self, surf: Surface, pos: Coordinate): ...
+    def draw(self, surf: Surface, pos: Coordinate):
+        ...
 
 
 @dataclass
@@ -63,7 +64,8 @@ class TextButton(MenuItem):
             midleft=(x + 20, y + self.h / 2),
         )
 
-    def on_click(self): ...
+    def on_click(self):
+        ...
 
 
 class EasyTextButton(TextButton):

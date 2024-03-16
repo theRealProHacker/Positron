@@ -58,7 +58,8 @@ class InlineItem:
     # available after rel_pos
     abs_rect: Rect
 
-    def layout(self, width: float): ...
+    def layout(self, width: float):
+        ...
 
     def rel_pos(self, pos: Coordinate):
         """
@@ -134,13 +135,17 @@ class Layout:
 
     height: float
 
-    def layout(self, width: float): ...
+    def layout(self, width: float):
+        ...
 
-    def rel_pos(self, pos): ...
+    def rel_pos(self, pos):
+        ...
 
-    def draw(self, surf: Surface): ...
+    def draw(self, surf: Surface):
+        ...
 
-    def collide(self, pos: Coordinate) -> Element | None: ...
+    def collide(self, pos: Coordinate) -> Element | None:
+        ...
 
 
 class EmptyLayout(Layout):
@@ -148,9 +153,11 @@ class EmptyLayout(Layout):
 
 
 class RealLayoutItems(Protocol):
-    def rel_pos(self, pos: Coordinate): ...
+    def rel_pos(self, pos: Coordinate):
+        ...
 
-    def draw(self, surf: Surface): ...
+    def draw(self, surf: Surface):
+        ...
 
 
 class RealLayout(Layout):
@@ -327,7 +334,9 @@ class BlockLayout(RealLayout):
                     (
                         left
                         if left is not Auto
-                        else inner.width - right if right is not Auto else 0
+                        else inner.width - right
+                        if right is not Auto
+                        else 0
                     ),
                 )
             )

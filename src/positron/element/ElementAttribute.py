@@ -49,14 +49,16 @@ class Attribute(Protocol[types.V_T]):
     def get_default(self, elem):
         return self.default
 
-    def _get(self, elem: types.Element_P) -> types.V_T: ...
+    def _get(self, elem: types.Element_P) -> types.V_T:
+        ...
 
     def __get__(self, elem: types.Element_P, type=None) -> types.V_T:
         if self.attr not in elem.attrs:
             return self.get_default(elem)
         return self._get(elem)
 
-    def __set__(self, elem: types.Element_P, value: types.V_T): ...
+    def __set__(self, elem: types.Element_P, value: types.V_T):
+        ...
 
     def __delete__(self, elem: types.Element_P):
         del elem.attrs[self.attr]

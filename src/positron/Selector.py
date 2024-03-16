@@ -47,7 +47,8 @@ class Selector(Protocol):
 
     spec: Spec
 
-    def __call__(self, elem: Element_P) -> bool: ...
+    def __call__(self, elem: Element_P) -> bool:
+        ...
 
 
 # TODO: make abstract
@@ -56,7 +57,8 @@ class SingleSelector(Selector):
     spec: Spec
 
     @abstractmethod
-    def __call__(self, elem: Element_P) -> bool: ...
+    def __call__(self, elem: Element_P) -> bool:
+        ...
 
     def __hash__(self) -> int:
         return super().__hash__()
@@ -192,7 +194,8 @@ class CompositeSelector(Selector):
     delim: str
 
     @abstractmethod
-    def __call__(self, elem: Element_P) -> bool: ...
+    def __call__(self, elem: Element_P) -> bool:
+        ...
 
     def __str__(self):
         return self.delim.join(str(s) for s in self.selectors)
