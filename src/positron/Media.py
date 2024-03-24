@@ -173,6 +173,12 @@ def LinearGradient(Image):
 class Audio:
     sound: pg.mixer.Sound | None = None
     loading_task: util.Task | None = None
+    is_playing: bool = False
+    volume: float = 1.0
+    """
+    Volume between 0 and 1
+    volume*muted gives the actual volume
+    """
 
     def __init__(
         self,
@@ -186,7 +192,6 @@ class Audio:
         self.autoplay = autoplay
         self.loop = loop - 1
         self.muted = muted
-        self.volume = 1.0
 
         if autoplay or load:
             self.init_load()
@@ -216,11 +221,19 @@ class Audio:
 
     def play(self):
         if self.is_loaded:
+            self.is_playing = True
             self.sound.play(-1 * self.loop)
 
     def stop(self):
-        if self.sound:
+        if self.is_loaded:
+            self.is_playing = False
             self.sound.stop()
+
+    def toggle(self):
+        if self.is_playing:
+            self.stop()
+        else:
+            self.play()
 
     def _set_volume(self):
         if self.sound:
@@ -242,9 +255,9 @@ class Audio:
         return not (self.is_loaded or self.is_loading)
 
     def __setattr__(self, name: str, value: Any) -> None:
+        super().__setattr__(name, value)
         if name in ("muted", "volume"):
             self._set_volume()
-        super().__setattr__(name, value)
 
     def __del__(self):
         with suppress(pg.error):
@@ -255,6 +268,44 @@ class FileAudio(Audio):
     """
     This Audio implementation uses the fact, that we can't stream audio from the network anyway
     to only allow file audio. It always loads the sound synchronously.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        load: bool = True,
+        autoplay: bool = True,
+        loop: bool = False,
+        muted: bool = False,
+    ):
+        if not Path(url).exists():
+            util.log_error_once(
+                f"Audio sources need to be local files. '{url}' could not be found locally. "
+            )
+        super().__init__(url, load, autoplay, loop, muted)
+
+    def init_load(self):
+        self.sound = pg.mixer.Sound(self.url)
+        self.is_loaded = True
+        self.is_unloaded = False
+        if self.autoplay:
+            self.play()
+
+    def play(self):
+        if not self.is_loaded:
+            self.init_load()
+        self.is_playing = True
+        self.sound.play(-1 * self.loop)
+
+    def stop(self):
+        self.is_playing = False
+        if self.is_loaded:
+            self.sound.stop()
+
+
+class MusicAudio(Audio):
+    """
+    This Audio implementation uses the pygame music module
     """
 
     is_loading = False
@@ -271,20 +322,101 @@ class FileAudio(Audio):
     ):
         if not Path(url).exists():
             util.log_error_once(
-                f"Audio elements need to be local files. '{url}' could not be found locally. "
+                f"Audio sources need to be local files. '{url}' could not be found locally. "
             )
         super().__init__(url, load, autoplay, loop, muted)
 
     def init_load(self):
-        self.sound = pg.mixer.Sound(self.url)
+        if pg.mixer.music.get_busy():
+            pg.mixer.music.stop()
+        pg.mixer.music.load(self.url)
         self.is_loaded = True
         self.is_unloaded = False
-        self.play()
+        if self.autoplay:
+            self.play()
+
+    def unload(self):
+        self.is_loaded = False
+        self.is_unloaded = True
+        self.is_playing = False
+        pg.mixer.music.unload()
 
     def play(self):
         if not self.is_loaded:
             self.init_load()
-        self.sound.play(-1 * self.loop)
+        if self.is_playing:
+            pg.mixer.music.unpause()
+        else:
+            pg.mixer.music.play(-1 * self.loop)
+        self.is_playing = True
 
+    def stop(self):
+        if self.is_playing:
+            pg.mixer.music.pause()
+        self.is_playing = False
+
+    def seek(self, pos: float):
+        """
+        Seeks to the given position in seconds
+        """
+        path = Path(self.url)
+        if path.suffix == ".mp3":
+            pg.mixer.music.rewind()
+            pg.mixer.music.set_pos(pos)
+        else:
+            pg.mixer.music.set_pos(pos)
+
+    def _set_volume(self):
+        pg.mixer.music.set_volume(self.volume * (not self.muted))
+
+
+# class _Audio:
+#     """
+#     An Audio media that uses PyAudio under the hood
+#     """
+#     player: vlc.MediaPlayer
+#     is_playing = False
+#     is_loaded = False
+
+#     def __init__(self, url: str, load: bool = True, autoplay: bool = True, loop: bool = False, muted: bool = False):
+#         self.url = url
+#         self.autoplay = autoplay
+#         self.loop = loop
+#         self.muted = muted
+#         self.volume = 1.0
+#         self.player = instance.media_player_new()
+
+#         if load:
+#             self.load()
+
+#     def load(self):
+#         """
+#         Loads the audio file
+#         """
+#         if (window := pg.display.get_wm_info().get("window")):
+#             if platform.system() == "Linux":
+#                 self.mediaplayer.set_xwindow(window)
+#             elif platform.system() == "Windows":
+#                 self.mediaplayer.set_hwnd(window)
+#             elif platform.system() == "Darwin":
+#                 self.mediaplayer.set_nsobject(window)
+
+
+#         self.is_loaded = True
+
+#     def play(self):
+#         """
+#         Start playing
+#         """
+#         if not self.is_loaded:
+#             self.load()
+#         self.audio.
+#         self.is_playing = True
+
+#     def pause(self):
+#         ...
+#         self.is_playing = False
+
+#     ... # setters
 
 # TODO: Video: This is going to be insanely difficult and it might be that we can never implement this

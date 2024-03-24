@@ -20,7 +20,7 @@ class PlayButton(Component):
     A classical Play(▶)/Pause(⏸)-Button
     """
 
-    playing: bool = True
+    is_playing: bool = True
     color: ColorValue = Color("black")
 
     # config
@@ -30,10 +30,10 @@ class PlayButton(Component):
         self.rect = Rect((0, 0, 50, 50))
 
     def draw(self, surf: Surface):
-        if self.playing:
+        if self.is_playing:
             # draw two lines in the center of the rect
             height = self.rect.height
-            distance = max(10, self.rect.width)
+            distance = min(10, self.rect.width)
             draw_line(
                 surf,
                 self.color,

@@ -8,15 +8,17 @@ from __future__ import annotations
 import asyncio
 import operator
 import os
+import platform
 import re
 from contextlib import suppress
 from itertools import chain
 from typing import Iterable, Sequence
 
-
 import pygame as pg
+import vlc
 
 import positron.Box as Box
+from positron.components import PlayButton
 import positron.config as config
 import positron.Media as Media
 import positron.Style as Style
@@ -46,6 +48,8 @@ from .utils.fonts import Font
 
 ################################# Globals ###################################
 
+
+instance = vlc.Instance()
 
 word_re = re.compile(r"[^\s]+")
 ########################## Element ########################################
@@ -301,7 +305,9 @@ class Element(Element_P):
         return (
             self.box.height
             if self.box.height != -1
-            else self.parent.get_height() if self.parent is not None else 0
+            else self.parent.get_height()
+            if self.parent is not None
+            else 0
         )
 
     def layout(self, width: float) -> None:
@@ -839,6 +845,8 @@ class AudioElement(ReplacedElement):
     loop = BooleanAttribute("loop")
     controls = BooleanAttribute("controls")
     muted = BooleanAttribute("muted")
+    src = GeneralAttribute("src")
+    volume: float = 1.0
 
     @property
     def load(self):
@@ -848,8 +856,22 @@ class AudioElement(ReplacedElement):
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
     ):
         super().__init__(tag, attrs, children)
-        self.make_audio()
-        # self.make_components()
+        self.player: vlc.MediaPlayer = instance.media_player_new(*[
+            v for k,v in attrs.items() if k == "src"
+        ])
+        self._set_volume()
+        if (window := pg.display.get_wm_info().get("window")):
+            if platform.system() == "Linux":
+                self.player.set_xwindow(window)
+            elif platform.system() == "Windows":
+                self.player.set_hwnd(window)
+            elif platform.system() == "Darwin":
+                self.player.set_nsobject(window)
+        
+        if self.autoplay:
+            self.play()
+        if self.controls:
+            self._make_controls()
 
     def compute_corrections(self, style: dict):
         if style["width"] is Auto:
@@ -858,28 +880,19 @@ class AudioElement(ReplacedElement):
             style["height"] = Length(24)
         return super().compute_corrections(style)
 
-    def make_audio(self):
-        try:
-            self.audio = Media.Audio(
-                self.attrs["src"],
-                load=self.load,
-                autoplay=self.autoplay,
-                loop=self.loop,
-                muted=self.muted,
-            )
-            self.is_playing = self.autoplay
-        except (KeyError, ValueError):
-            self.is_playing = False
-            self.audio = None
+    def _make_controls(self):
+        self.play_button = PlayButton(self.player.is_playing())
 
-    # def make_components(self):
+    def _set_volume(self):
+        self.player.audio_set_volume(int(self.volume*(not self.muted)*100))
 
-    def setattr(self, name: str, value):
-        super().setattr(name, value)
+    def __setattr__(self, name: str, value):
+        super().__setattr__(name, value)
         if name == "src":
-            self.make_audio()
-        # elif name == "controls":
-        #     self.make_components()
+            print("setting src")
+            self.player.set_media(instance.media_new(value))
+        elif name == "muted":
+            self._set_volume()
 
     def layout_inner(self):
         self.layout_type = layout.EmptyLayout()
@@ -892,12 +905,30 @@ class AudioElement(ReplacedElement):
             super().draw(surf)
 
     def draw_content(self, surf: Surface):
-        from positron.components import PlayButton
+        if not self.play_button:
+            self._make_controls()
+        self.play_button.is_playing = self.player.is_playing()
+        self.play_button.rect = self.box.content_box.copy()
+        self.play_button.draw(surf)
 
-        play_button = PlayButton(self.is_playing)
-        play_button.rect = self.box.content_box.copy()
-        play_button.draw(surf)
+    def on_click(self):
+        self.toggle()
 
+    def play(self):
+        self.player.play()
+    
+    def pause(self):
+        self.player.pause()
+
+    def toggle(self):
+        if self.player.is_playing():
+            self.pause()
+        else:
+            self.play()
+
+    def __del__(self):
+        self.player.stop()
+        self.player.release()
 
 class InputElement(ReplacedElement):
     """
