@@ -6,7 +6,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
           # https://github.com/python/mypy/issues/13627#issuecomment-1245613842
