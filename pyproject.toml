@@ -106,14 +106,6 @@ lint.ignore = [
     "E501", # black already takes care of this
 ]
 
-[tool.refurb]
-
-ignore = [
-    123, # .copy() instead of dict()
-    126, # return in else
-    141, # Path 
-]
-
 [tool.pytest.ini_options]
 # https://stackoverflow.com/a/73499640/15046005
 asyncio_mode = "auto"
