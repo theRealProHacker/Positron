@@ -60,6 +60,38 @@ all = [
 "Homepage" = "https://github.com/theRealProHacker/Positron"
 "Bug Tracker" = "https://github.com/theRealProHacker/Positron/issues"
 
+[tool.mypy]
+
+# so sweet together
+disable_error_code = "annotation-unchecked"
+warn_no_return = false
+
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unused_configs = true
+show_error_codes = true
+allow_redefinition = true
+
+exclude = "concepts|venv"
+namespace_packages = true
+
+[[tool.mypy.overrides]]
+module = "positron.*"
+allow_redefinition = true
+
+[[tool.mypy.overrides]]
+module = [
+    "numpy",
+    "watchdog",
+    "tinycss.*",
+    "aioconsole",
+    "html5lib",
+    "mistune",
+    "vlc"
+]
+
+ignore_missing_imports = true
+
 [tool.ruff]
 
 ignore = [
