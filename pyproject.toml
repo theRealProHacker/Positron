@@ -94,7 +94,7 @@ ignore_missing_imports = true
 
 [tool.ruff]
 
-ignore = [
+lint.ignore = [
     "E402",
     "F401", # unused import
     "F403",
