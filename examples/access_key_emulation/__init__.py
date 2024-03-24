@@ -1,6 +1,6 @@
 """
 This is an emulation of the accesskey HTML attribute
-We map from the key button to the id 
+We map from the key button to the id
 """
 
 from positron import *

@@ -2,7 +2,7 @@
 There are three types of alerts:
 
 1. Alert: A title, message and an OK-Button
-2. Confirm: Ask the user for confirmation on something: 
+2. Confirm: Ask the user for confirmation on something:
     "Are you sure you want to delete these files forever?"
     -> Returns a bool
 3. Prompt: Displays an Input Field with Ok and Cancel

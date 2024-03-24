@@ -1,5 +1,5 @@
 """
-An EventManager takes pygame events and handles them correctly. 
+An EventManager takes pygame events and handles them correctly.
 
 The EventManager is responsible for handling the following:
 - event handling, propagation and callback calling
@@ -410,7 +410,8 @@ class EventManager:
                             ContextMenu(
                                 join(*menus.values(), default_ctx_menu, div=Divider())
                             ).fit_into_rect(
-                                config.screen.get_rect(), _pos  # type: ignore
+                                config.screen.get_rect(),
+                                _pos,  # type: ignore
                             )
                         )
                 self.active = None

@@ -1,6 +1,6 @@
 """
 A single source of thruth for types that are used in other modules.
-Instead of importing Rects or Vectors from pygame, import them from here. 
+Instead of importing Rects or Vectors from pygame, import them from here.
 """
 
 from __future__ import annotations
@@ -253,7 +253,7 @@ class FontStyle:
 
 
 # tuples are probably irrelevant because Sequence[int] includes them
-ColorValue = Union[int, str]
+ColorValue = Union[int, str, "Color"]
 
 
 class Color(pg.Color):

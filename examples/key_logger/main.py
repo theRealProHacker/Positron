@@ -1,7 +1,7 @@
 """
 A key logger application.
 Prints all relevant metadata of a keydown event to the console on every keydown.
-Helpful for understanding the different keydown event attributes. 
+Helpful for understanding the different keydown event attributes.
 """
 
 from positron import *

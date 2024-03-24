@@ -7,7 +7,7 @@ Generally, there are three kinds of editable elements:
 2. TextArea Elements
 3. Any elements that have contenteditable set to true
 
-We currently only care about input elements. 
+We currently only care about input elements.
 Also we only support plain text, so no copying of lists
 or any formatting.
 

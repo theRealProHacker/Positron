@@ -1,5 +1,5 @@
 """
-Utilities for all kinds of needs (funcs, regex, etc...) 
+Utilities for all kinds of needs (funcs, regex, etc...)
 
 This module should slowly be dissolved into utils sub modules
 """

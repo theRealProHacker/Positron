@@ -170,17 +170,18 @@ async def main(route: str):
             await _load_page(load_events[-1])
         root = g["root"]
         await util.gather_tasks(config.tasks)
-        if g["css_dirty"] or g["css_sheet_len"] != len(g["css_sheets"]):
-            root.apply_style(Style.SourceSheet.join(g["css_sheets"]))
-            g["css_dirty"] = False
-            g["css_sheet_len"] = len(g["css_sheets"])
+        if root:
+            if g["css_dirty"] or g["css_sheet_len"] != len(g["css_sheets"]):
+                root.apply_style(Style.SourceSheet.join(g["css_sheets"]))
+                g["css_dirty"] = False
+                g["css_sheet_len"] = len(g["css_sheets"])
 
-        root.compute()
-        root.layout()
+            root.compute()
+            root.layout()
 
-        config.screen.fill(g["bg_color"])
-        root.draw(config.screen)
-        config.event_manager.draw(config.screen)
+            config.screen.fill(g["bg_color"])
+            root.draw(config.screen)
+            config.event_manager.draw(config.screen)
         if config.DEBUG:
             util.draw_text(
                 config.screen,
@@ -191,9 +192,10 @@ async def main(route: str):
             )
         pg.display.flip()
         await asyncio.to_thread(CLOCK.tick, g["FPS"])
-        await config.event_manager.handle_events(
-            pg.event.get(exclude=(pg.QUIT, LOADPAGE))
-        )
+        if root:
+            await config.event_manager.handle_events(
+                pg.event.get(exclude=(pg.QUIT, LOADPAGE))
+            )
 
 
 async def arun(route: str = "/"):

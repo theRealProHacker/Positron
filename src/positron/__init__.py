@@ -28,7 +28,7 @@ def set_cwd(file: str):
     """
     import os
 
-    os.chdir(os.path.dirname(file))
+    os.chdir(os.path.dirname(os.path.abspath(file)))
 
 
 __all__ = [

@@ -189,9 +189,10 @@ def draw_rounded_border(
             side_vectors, adj_corners(corners), adj_corners(vectors), colors, widths
         ):
             absvec = abs_tup(vector)
-            startpoint, stoppoint = adjcorners[0] + mul_tup(
-                absvec, adjvectors[0]
-            ), adjcorners[1] + mul_tup(absvec, adjvectors[1])
+            startpoint, stoppoint = (
+                adjcorners[0] + mul_tup(absvec, adjvectors[0]),
+                adjcorners[1] + mul_tup(absvec, adjvectors[1]),
+            )
             counter = counter_vector(vector)
             draw_rect(color, Rect.from_span(startpoint, stoppoint + counter * width))
 
@@ -232,9 +233,10 @@ def draw_rounded_background(surf: Surface, box: Rect, bgcolor: Color, radii: Rad
             side_vectors, adj_corners(corners), adj_corners(vectors)
         ):
             absvec = abs_tup(vector)
-            startpoint, stoppoint = adjcorners[0] + mul_tup(
-                absvec, adjvectors[0]
-            ), adjcorners[1] + mul_tup(absvec, adjvectors[1])
+            startpoint, stoppoint = (
+                adjcorners[0] + mul_tup(absvec, adjvectors[0]),
+                adjcorners[1] + mul_tup(absvec, adjvectors[1]),
+            )
             counter = counter_vector(vector)
             abscounter = abs_tup(counter)
             draw_rect(

@@ -1,5 +1,5 @@
 """
-Handles everything revolving Selectors. 
+Handles everything revolving Selectors.
 Includes parsing (text->Selector) and matching
 """
 

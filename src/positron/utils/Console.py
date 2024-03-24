@@ -1,11 +1,11 @@
 """
 A console application
 
-`Console()` returns a `Task`. When that is run, user input can be taken asynchronously 
+`Console()` returns a `Task`. When that is run, user input can be taken asynchronously
 while other code is running.
 This console acts as an interpreter and evals the expression, printing the result.
 
-However, the console will only work if DEBUG mode is turned on 
+However, the console will only work if DEBUG mode is turned on
 and the dependency `aioconsole` can be imported.
 If not `Console()` will just return a `sleep(0)` task.
 """

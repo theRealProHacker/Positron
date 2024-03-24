@@ -1,14 +1,15 @@
-""" Any global variables are stored here"""
+"""Any global variables are stored here"""
 
 import asyncio
 import math
 import re
 from typing import TYPE_CHECKING, Any
+from weakref import WeakSet
 
 import aiohttp
 import jinja2
 import pygame as pg
-from .types import Color, Cursor, Length, Surface
+from .types import Color, Cursor, Length, Surface, FrozenDCache
 
 # fmt: off
 g: dict[str, Any] = {
@@ -28,6 +29,14 @@ g: dict[str, Any] = {
     # "zoom": 1,                      # float
     # reserved
     "root": None,                   # the root HTMLElement
+    "target": None,                 # the target of the url fragment
+    "icon_srcs": [],                # list[str] specified icon srcs
+    # css
+    "recompute": True,              # bool
+    "cstyles": FrozenDCache(),      # FrozenDCache[computed_style] # the style cache
+    "css_sheets": WeakSet(),        # a set of used css SourceSheets
+    "css_dirty": False,             # bool whether the css is dirty
+    "css_sheet_len": 0,             # int
 }
 # fmt: on
 

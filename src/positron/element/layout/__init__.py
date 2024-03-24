@@ -3,10 +3,10 @@ This is layout utilities for Elements
 
 In flow layout there are two layout modes
 
-An element can either layout its children in a block layout. 
+An element can either layout its children in a block layout.
 This means that all children have display: block.
 
-Or an element can layout its children in an inline layout. 
+Or an element can layout its children in an inline layout.
 Here all children have display: inline
 
 If in the original DOM, block and layout childrens are mixed, we put the inline layout into virtual display boxes.

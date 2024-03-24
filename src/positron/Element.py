@@ -491,10 +491,6 @@ class HTMLElement(Element):
     def from_string(html: str):
         return HTMLElement.from_parsed(parse_html(html))
 
-    @staticmethod
-    def from_string(html: str):
-        return HTMLElement.from_parsed(parse_html(html))
-
     def get_height(self) -> float:
         return self.box.height
 
@@ -856,18 +852,18 @@ class AudioElement(ReplacedElement):
         self, tag: str, attrs: dict[str, str], children: list[Element | TextElement]
     ):
         super().__init__(tag, attrs, children)
-        self.player: vlc.MediaPlayer = instance.media_player_new(*[
-            v for k,v in attrs.items() if k == "src"
-        ])
+        self.player: vlc.MediaPlayer = instance.media_player_new(
+            *[v for k, v in attrs.items() if k == "src"]
+        )
         self._set_volume()
-        if (window := pg.display.get_wm_info().get("window")):
+        if window := pg.display.get_wm_info().get("window"):
             if platform.system() == "Linux":
                 self.player.set_xwindow(window)
             elif platform.system() == "Windows":
                 self.player.set_hwnd(window)
             elif platform.system() == "Darwin":
                 self.player.set_nsobject(window)
-        
+
         if self.autoplay:
             self.play()
         if self.controls:
@@ -884,7 +880,7 @@ class AudioElement(ReplacedElement):
         self.play_button = PlayButton(self.player.is_playing())
 
     def _set_volume(self):
-        self.player.audio_set_volume(int(self.volume*(not self.muted)*100))
+        self.player.audio_set_volume(int(self.volume * (not self.muted) * 100))
 
     def __setattr__(self, name: str, value):
         super().__setattr__(name, value)
@@ -916,7 +912,7 @@ class AudioElement(ReplacedElement):
 
     def play(self):
         self.player.play()
-    
+
     def pause(self):
         self.player.pause()
 
@@ -929,6 +925,7 @@ class AudioElement(ReplacedElement):
     def __del__(self):
         self.player.stop()
         self.player.release()
+
 
 class InputElement(ReplacedElement):
     """

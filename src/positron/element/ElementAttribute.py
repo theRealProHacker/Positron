@@ -1,6 +1,6 @@
 """
 An Element Attribute is an attribute that is set on an Element.
-For example the NumberAttribute. It allows to get and set an attribute as a number but always sets it as a string in the actual attrs. 
+For example the NumberAttribute. It allows to get and set an attribute as a number but always sets it as a string in the actual attrs.
 """
 
 from __future__ import annotations

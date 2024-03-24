@@ -428,7 +428,9 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
             ):
                 raise ValueError
             t = tup_replace(
-                t, slice_, MulOp(left=l_val, op=op_map[op], right=r_val).resolve()  # type: ignore
+                t,
+                slice_,
+                MulOp(left=l_val, op=op_map[op], right=r_val).resolve(),  # type: ignore
             )
         while (op_i := find_index(t, _is_low)) is not None:
             slice_ = op_i - 1, op_i + 2
@@ -445,7 +447,9 @@ class Calc(Acceptor[CalcValue | BinOp], GeneralParser):
             ):
                 raise ValueError
             t = tup_replace(
-                t, slice_, AddOp(left=l_val, op=op_map[op], right=r_val).resolve()  # type: ignore
+                t,
+                slice_,
+                AddOp(left=l_val, op=op_map[op], right=r_val).resolve(),  # type: ignore
             )
         assert len(t) == 1 and not isinstance(t[0], str), BugError(
             f"calc_parsing failed, {d}->{t}"
@@ -816,7 +820,7 @@ def remove_importantd(style: dict[str, tuple[V_T, bool]]) -> dict[str, V_T]:
 
 
 def remove_importantl(
-    style: list[tuple[str, tuple[V_T, bool]]]
+    style: list[tuple[str, tuple[V_T, bool]]],
 ) -> list[tuple[str, V_T]]:
     """
     Remove the information whether a value in the style is important (lists)
