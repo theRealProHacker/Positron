@@ -1,0 +1,26 @@
+
+#button {
+    border: 1px solid #ccc;
+    padding: 5px 10px;
+    border-radius: 5px;
+    display: block;
+    width: 100px;
+    margin: 30px auto;
+}
+
+#button:hover {
+    background-color: #f0f0f0;
+}
+
+div {
+    display: block;
+    margin: 30px auto;
+    width: 100px;
+    height: 100px;
+}
+
+input {
+    display: block;
+    height: 20px;
+    width: 30px;
+}
